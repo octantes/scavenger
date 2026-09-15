@@ -1,0 +1,36 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+
+<html lang="en">
+<head><meta charset="utf-8"><title>webaudio-osc - scav node</title></head>
+<body>
+  <div>webaudio-osc - drop into a patchbay</div>
+  <script data-scv-node>
+typeof defineNode === 'function' && defineNode({
+  name: "webaudio-osc",
+  icon: "♪",
+  color: "#ffa500",
+  init(ctx) {
+    ctx._ac = new (window.AudioContext || window.webkitAudioContext)();
+    ctx._osc = ctx._ac.createOscillator();
+    ctx._g = ctx._ac.createGain();
+    ctx._g.gain.value = 0.05;
+    ctx._osc.connect(ctx._g).connect(ctx._ac.destination);
+    ctx._osc.start();
+    ctx._resume = function () { if (ctx._ac.state === 'suspended') ctx._ac.resume(); };
+    window.addEventListener('pointerdown', ctx._resume);
+    window.addEventListener('keydown', ctx._resume);
+  },
+  onReceive(value, ctx) {
+    const f = Math.max(20, Number(value) || 440);
+    ctx._osc.frequency.setValueAtTime(f, ctx._ac.currentTime);
+    ctx.emit(f);
+  },
+  teardown(ctx) {
+    try { window.removeEventListener('pointerdown', ctx._resume); window.removeEventListener('keydown', ctx._resume); } catch (e) {}
+    try { ctx._osc.stop(); } catch (e) {}
+    try { ctx._ac.close(); } catch (e) {} // close must still run even if stop() throws (e.g. osc already stopped) - else the audio context leaks
+  }
+})
+  </script>
+</body>
+</html>

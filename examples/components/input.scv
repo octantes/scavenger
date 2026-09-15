@@ -1,0 +1,22 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<html><head><meta charset="utf-8"><title>scv-input - scav component</title><link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Ctext%20x%3D%228%22%20y%3D%2212%22%20font-size%3D%2211%22%20font-family%3D%22monospace%22%20fill%3D%22%23986c98%22%20text-anchor%3D%22middle%22%3E%26lt%3B%26gt%3B%3C%2Ftext%3E%3C%2Fsvg%3E"></head>
+<body style="margin:0;background:#1a1c1c">
+<scv-input data-scv-component></scv-input>
+<script data-scv-comp data-scv-tag="scv-input" data-scv-source="PHN0eWxlPgouaWMgeyBiYWNrZ3JvdW5kOiB2YXIoLS1iYWNrZ3JvdW5kLXJhaXNlZCwgIzI1MjcyNyk7IGJvcmRlcjogMXB4IHNvbGlkIHZhcigtLWJvcmRlciwgIzNBM0MzQyk7IGJvcmRlci1yYWRpdXM6IHZhcigtLWNvcm5lci1sb3csIDVweCk7IHBhZGRpbmc6IDhweCAxMnB4OyBmb250LWZhbWlseTogdmFyKC0tZm9udC1tb25vLCAnU0YgTW9ubycsIG1vbm9zcGFjZSk7IHdpZHRoOiAxNTBweDsgYm94LXNpemluZzogYm9yZGVyLWJveDsgfQouaWMtbGFiIHsgY29sb3I6IHZhcigtLXRleHQtZmFpbnQsICM2NjY2NjYpOyBmb250LXNpemU6IDlweDsgdGV4dC10cmFuc2Zvcm06IHVwcGVyY2FzZTsgbGV0dGVyLXNwYWNpbmc6IDFweDsgbWFyZ2luLWJvdHRvbTogM3B4OyB9Ci5pYyBpbnB1dCB7IGJhY2tncm91bmQ6IHRyYW5zcGFyZW50OyBib3JkZXI6IG5vbmU7IGNvbG9yOiB2YXIoLS1pbnB1dCwgIzhBQjZCQik7IGZvbnQtZmFtaWx5OiBpbmhlcml0OyBmb250LXNpemU6IDE2cHg7IGZvbnQtd2VpZ2h0OiA2MDA7IHdpZHRoOiAxMDAlOyBvdXRsaW5lOiBub25lOyBwYWRkaW5nOiAwOyB9Ci5pYyBpbnB1dDpmb2N1cyB7IGNvbG9yOiB2YXIoLS10ZXh0LWJhc2UsICNBQUFCQUMpOyB9Cjwvc3R5bGU+Cgo8ZGl2IGNsYXNzPSJpYyI+PGRpdiBjbGFzcz0iaWMtbGFiIiBkYXRhLXNjdi1zbG90PSJsYWJlbCI+aW5wdXQ8L2Rpdj48aW5wdXQgdHlwZT0idGV4dCIgZGF0YS1zY3Ytc2xvdD0idmFsdWUiIHZhbHVlPSIwIj48L2Rpdj4KCjxzY3JpcHQ+CmNvbnN0IGlucCA9IHJvb3QucXVlcnlTZWxlY3RvcignaW5wdXQnKTsKY29uc3QgZmlyZSA9ICgpID0+IGVtaXQoaW5wLnZhbHVlKTsKaW5wLmFkZEV2ZW50TGlzdGVuZXIoJ2lucHV0JywgZmlyZSk7CnJlcXVlc3RBbmltYXRpb25GcmFtZSgoKSA9PiByZXF1ZXN0QW5pbWF0aW9uRnJhbWUoZmlyZSkpOyAvLyBzZWVkIG9uY2Ugc2libGluZ3MgaGF2ZSB3aXJlZCAocHVibGlzaCBib290KQpuZXcgTXV0YXRpb25PYnNlcnZlcigoKSA9PiB7IGlmICghaG9zdC5oYXNBdHRyaWJ1dGUoJ2RhdGEtc2N2LWVkaXQnKSkgZmlyZSgpOyB9KS5vYnNlcnZlKGhvc3QsIHsgYXR0cmlidXRlczogdHJ1ZSwgYXR0cmlidXRlRmlsdGVyOiBbJ2RhdGEtc2N2LWVkaXQnXSB9KTsgLy8gcmUtc2VlZCB3aGVuIGJvYXJkIGVudGVycyB1c2UgbW9kZSAocXVpbmUgcmVvcGVuKQo8L3NjcmlwdD4=" data-scv-icon="">
+customElements.define('scv-input', class extends HTMLElement { constructor() { super();
+const _baked = !this.shadowRoot && this.querySelector('template[shadowrootmode], template.custom-shadow');
+if (_baked) { this.attachShadow({mode: 'open'}).innerHTML = _baked.innerHTML; _baked.remove(); }
+else if (!this.shadowRoot) this.attachShadow({mode: 'open'}).innerHTML = `<style>.ic { background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-low, 5px); padding: 8px 12px; font-family: var(--font-mono, 'SF Mono', monospace); width: 150px; box-sizing: border-box; }
+.ic-lab { color: var(--text-faint, #666666); font-size: 9px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px; }
+.ic input { background: transparent; border: none; color: var(--input, #8AB6BB); font-family: inherit; font-size: 16px; font-weight: 600; width: 100%; outline: none; padding: 0; }
+.ic input:focus { color: var(--text-base, #AAABAC); }</style><div class="ic"><div class="ic-lab" data-scv-slot="label">input</div><input type="text" data-scv-slot="value" value="0"></div>`;
+const root = this.shadowRoot, host = this, emit = v => this.dispatchEvent(new CustomEvent('scv-emit', { detail: v, bubbles: true, composed: true }));
+const inp = root.querySelector('input');
+const fire = () => emit(inp.value);
+inp.addEventListener('input', fire);
+requestAnimationFrame(() => requestAnimationFrame(fire)); // seed once siblings have wired (publish boot)
+new MutationObserver(() => { if (!host.hasAttribute('data-scv-edit')) fire(); }).observe(host, { attributes: true, attributeFilter: ['data-scv-edit'] }); // re-seed when board enters use mode (quine reopen)
+}
+connectedCallback() { this.setAttribute('data-scv-emitter', ''); } });
+</script>
+</body></html>

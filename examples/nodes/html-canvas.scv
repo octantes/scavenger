@@ -1,0 +1,38 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+
+<html lang="en">
+<head><meta charset="utf-8"><title>canvas - scav node</title></head>
+<body>
+  <div>canvas - drop into a patchbay</div>
+  <script data-scv-node>
+typeof defineNode === 'function' && defineNode({
+  name: "canvas",
+  icon: "▦",
+  color: "#8ab6bb",
+  init(ctx) { // creates a canvas, inits its 2d context and emits the el - input sets w x h
+    function make() {
+      const [w, h] = (String(ctx.value).match(/\d+/g) || []).map(Number);
+      const cv = ctx._canvas || document.createElement('canvas');
+      cv.width = w || 320;
+      cv.height = h || 180;
+      cv.style.background = '#111';
+      cv.style.display = 'block';
+      if (!ctx._canvas) { ctx._canvas = cv; ctx.append(cv, ctx.x + 44, ctx.y); }
+      cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+      ctx.emit(cv); // emit the canvas to downstream nodes
+    }
+    ctx._make = make;
+    ctx.input.addEventListener('input', make);
+    make();
+  },
+  onReceive(value, ctx) { // received value re-broadcasts handle
+    if (ctx._canvas) ctx.emit(ctx._canvas);
+  },
+  teardown(ctx) {
+    if (ctx._make) ctx.input.removeEventListener('input', ctx._make);
+    if (ctx._canvas) ctx.remove(ctx._canvas);
+  }
+})
+  </script>
+</body>
+</html>

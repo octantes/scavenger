@@ -1,0 +1,17 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<html><head><meta charset="utf-8"><title>scv-readout - scav component</title><link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Ctext%20x%3D%228%22%20y%3D%2212%22%20font-size%3D%2211%22%20font-family%3D%22monospace%22%20fill%3D%22%23986c98%22%20text-anchor%3D%22middle%22%3E%26lt%3B%26gt%3B%3C%2Ftext%3E%3C%2Fsvg%3E"></head>
+<body style="margin:0;background:#1a1c1c">
+<scv-readout data-scv-component></scv-readout>
+<script data-scv-comp data-scv-tag="scv-readout" data-scv-source="PHN0eWxlPgoubWMgeyBiYWNrZ3JvdW5kOiB2YXIoLS1iYWNrZ3JvdW5kLXJhaXNlZCwgIzI1MjcyNyk7IGJvcmRlcjogMXB4IHNvbGlkIHZhcigtLWJvcmRlciwgIzNBM0MzQyk7IGJvcmRlci1yYWRpdXM6IHZhcigtLWNvcm5lci1oaWdoLCA4cHgpOyBwYWRkaW5nOiAxNHB4IDE4cHg7IGZvbnQtZmFtaWx5OiB2YXIoLS1mb250LW1vbm8sICdTRiBNb25vJywgbW9ub3NwYWNlKTsgbWluLXdpZHRoOiAxNjBweDsgYm94LXNpemluZzogYm9yZGVyLWJveDsgfQoubWMtbGJsIHsgY29sb3I6IHZhcigtLXRleHQtZmFpbnQsICM2NjY2NjYpOyBmb250LXNpemU6IDlweDsgdGV4dC10cmFuc2Zvcm06IHVwcGVyY2FzZTsgbGV0dGVyLXNwYWNpbmc6IDFweDsgfQoubWMtdmFsIHsgY29sb3I6IHZhcigtLW91dHB1dCwgIzk4NkM5OCk7IGZvbnQtc2l6ZTogMjZweDsgZm9udC13ZWlnaHQ6IDYwMDsgbWFyZ2luLXRvcDogNXB4OyBsaW5lLWhlaWdodDogMS4xOyB9Cjwvc3R5bGU+Cgo8ZGl2IGNsYXNzPSJtYyI+PGRpdiBjbGFzcz0ibWMtbGJsIiBkYXRhLXNjdi1zbG90PSJsYWJlbCI+cmVhZG91dDwvZGl2PjxkaXYgY2xhc3M9Im1jLXZhbCIgZGF0YS1zY3Ytc2xvdD0idmFsdWUiPuKAkzwvZGl2PjwvZGl2PgoKPHNjcmlwdD4KaG9zdC5hZGRFdmVudExpc3RlbmVyKCdzY3YtcmVjZWl2ZScsIGUgPT4geyByb290LnF1ZXJ5U2VsZWN0b3IoJ1tkYXRhLXNjdi1zbG90PXZhbHVlXScpLnRleHRDb250ZW50ID0gZS5kZXRhaWw7IH0pOwo8L3NjcmlwdD4=" data-scv-icon="">
+customElements.define('scv-readout', class extends HTMLElement { constructor() { super();
+const _baked = !this.shadowRoot && this.querySelector('template[shadowrootmode], template.custom-shadow');
+if (_baked) { this.attachShadow({mode: 'open'}).innerHTML = _baked.innerHTML; _baked.remove(); }
+else if (!this.shadowRoot) this.attachShadow({mode: 'open'}).innerHTML = `<style>.mc { background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); padding: 14px 18px; font-family: var(--font-mono, 'SF Mono', monospace); min-width: 160px; box-sizing: border-box; }
+.mc-lbl { color: var(--text-faint, #666666); font-size: 9px; text-transform: uppercase; letter-spacing: 1px; }
+.mc-val { color: var(--output, #986C98); font-size: 26px; font-weight: 600; margin-top: 5px; line-height: 1.1; }</style><div class="mc"><div class="mc-lbl" data-scv-slot="label">readout</div><div class="mc-val" data-scv-slot="value">–</div></div>`;
+const root = this.shadowRoot, host = this, emit = v => this.dispatchEvent(new CustomEvent('scv-emit', { detail: v, bubbles: true, composed: true }));
+host.addEventListener('scv-receive', e => { root.querySelector('[data-scv-slot=value]').textContent = e.detail; });
+}
+connectedCallback() { this.setAttribute('data-scv-emitter', ''); } });
+</script>
+</body></html>

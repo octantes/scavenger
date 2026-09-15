@@ -1,0 +1,25 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<html><head><meta charset="utf-8"><title>scv-ticker - scav component</title><link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Ctext%20x%3D%228%22%20y%3D%2212%22%20font-size%3D%2211%22%20font-family%3D%22monospace%22%20fill%3D%22%23986c98%22%20text-anchor%3D%22middle%22%3E%26lt%3B%26gt%3B%3C%2Ftext%3E%3C%2Fsvg%3E"></head>
+<body style="margin:0;background:#1a1c1c">
+<scv-ticker data-scv-component></scv-ticker>
+<script data-scv-comp data-scv-tag="scv-ticker" data-scv-source="PHN0eWxlPgouZnIgeyBmb250OiA3MDAgNDBweCB2YXIoLS1mb250LW1vbm8sICdTRiBNb25vJywgbW9ub3NwYWNlKTsgY29sb3I6IHZhcigtLXRleHQtYmFzZSwgI0FBQUJBQyk7IHBhZGRpbmc6IDIwcHggMzBweDsgYmFja2dyb3VuZDogdmFyKC0tYmFja2dyb3VuZC1yYWlzZWQsICMyNTI3MjcpOyBib3JkZXI6IDFweCBzb2xpZCB2YXIoLS1ib3JkZXIsICMzQTNDM0MpOyBib3JkZXItcmFkaXVzOiB2YXIoLS1jb3JuZXItaGlnaCwgOHB4KTsgdGV4dC1hbGlnbjogY2VudGVyOyB0cmFuc2l0aW9uOiBjb2xvciAuMTJzIGVhc2UsIGJvcmRlci1jb2xvciAuMTJzIGVhc2U7IH0KLmZyLnVwIHsgY29sb3I6IHZhcigtLXN1Y2Nlc3MsICM2RkFDNjcpOyBib3JkZXItY29sb3I6IHZhcigtLXN1Y2Nlc3MsICM2RkFDNjcpOyB9Ci5mci5kbiB7IGNvbG9yOiB2YXIoLS1kYW5nZXIsICM5ODU5NTQpOyBib3JkZXItY29sb3I6IHZhcigtLWRhbmdlciwgIzk4NTk1NCk7IH0KLmxibCB7IGRpc3BsYXk6IGJsb2NrOyBmb250LXNpemU6IDExcHg7IGNvbG9yOiB2YXIoLS10ZXh0LWRpbSwgIzg4ODg4OCk7IGxldHRlci1zcGFjaW5nOiAycHg7IG1hcmdpbi1ib3R0b206IDhweDsgdGV4dC10cmFuc2Zvcm06IHVwcGVyY2FzZTsgfQo8L3N0eWxlPgoKPGRpdiBjbGFzcz0iZnIiPjxzcGFuIGNsYXNzPSJsYmwiIGRhdGEtc2N2LXNsb3Q9ImxhYmVsIj52YWx1ZTwvc3Bhbj48c3BhbiBkYXRhLXNjdi1zbG90PSJ2YWx1ZSI+4oCUPC9zcGFuPjwvZGl2PgoKPHNjcmlwdD4KY29uc3QgYm94ID0gcm9vdC5xdWVyeVNlbGVjdG9yKCcuZnInKSwgdiA9IHJvb3QucXVlcnlTZWxlY3RvcignW2RhdGEtc2N2LXNsb3Q9dmFsdWVdJyk7CmxldCBwcmV2ID0gbnVsbDsKaG9zdC5hZGRFdmVudExpc3RlbmVyKCdzY3YtcmVjZWl2ZScsIGUgPT4gewogIGNvbnN0IHZhbCA9IGUuZGV0YWlsOyB2LnRleHRDb250ZW50ID0gdmFsOwogIGNvbnN0IG51bSA9IHBhcnNlRmxvYXQoU3RyaW5nKHZhbCkucmVwbGFjZSgvW14wLTkuXS9nLCAnJykpOwogIGlmIChwcmV2ICE9IG51bGwgJiYgIWlzTmFOKG51bSkgJiYgbnVtICE9PSBwcmV2KSB7IGJveC5jbGFzc0xpc3QucmVtb3ZlKCd1cCcsICdkbicpOyB2b2lkIGJveC5vZmZzZXRXaWR0aDsgYm94LmNsYXNzTGlzdC5hZGQobnVtID49IHByZXYgPyAndXAnIDogJ2RuJyk7IH0KICBpZiAoIWlzTmFOKG51bSkpIHByZXYgPSBudW07Cn0pOwo8L3NjcmlwdD4=" data-scv-icon="">
+customElements.define('scv-ticker', class extends HTMLElement { constructor() { super();
+const _baked = !this.shadowRoot && this.querySelector('template[shadowrootmode], template.custom-shadow');
+if (_baked) { this.attachShadow({mode: 'open'}).innerHTML = _baked.innerHTML; _baked.remove(); }
+else if (!this.shadowRoot) this.attachShadow({mode: 'open'}).innerHTML = `<style>.fr { font: 700 40px var(--font-mono, 'SF Mono', monospace); color: var(--text-base, #AAABAC); padding: 20px 30px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); text-align: center; transition: color .12s ease, border-color .12s ease; }
+.fr.up { color: var(--success, #6FAC67); border-color: var(--success, #6FAC67); }
+.fr.dn { color: var(--danger, #985954); border-color: var(--danger, #985954); }
+.lbl { display: block; font-size: 11px; color: var(--text-dim, #888888); letter-spacing: 2px; margin-bottom: 8px; text-transform: uppercase; }</style><div class="fr"><span class="lbl" data-scv-slot="label">value</span><span data-scv-slot="value">—</span></div>`;
+const root = this.shadowRoot, host = this, emit = v => this.dispatchEvent(new CustomEvent('scv-emit', { detail: v, bubbles: true, composed: true }));
+const box = root.querySelector('.fr'), v = root.querySelector('[data-scv-slot=value]');
+let prev = null;
+host.addEventListener('scv-receive', e => {
+  const val = e.detail; v.textContent = val;
+  const num = parseFloat(String(val).replace(/[^0-9.]/g, ''));
+  if (prev != null && !isNaN(num) && num !== prev) { box.classList.remove('up', 'dn'); void box.offsetWidth; box.classList.add(num >= prev ? 'up' : 'dn'); }
+  if (!isNaN(num)) prev = num;
+});
+}
+connectedCallback() { this.setAttribute('data-scv-emitter', ''); } });
+</script>
+</body></html>

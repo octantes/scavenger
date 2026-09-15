@@ -1,0 +1,70 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<html><head><meta charset="utf-8"><title>scv-launchpad - scav component</title><link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Ctext%20x%3D%228%22%20y%3D%2212%22%20font-size%3D%2211%22%20font-family%3D%22monospace%22%20fill%3D%22%23986c98%22%20text-anchor%3D%22middle%22%3E%26lt%3B%26gt%3B%3C%2Ftext%3E%3C%2Fsvg%3E"></head>
+<body style="margin:0;background:#1a1c1c">
+<scv-launchpad data-scv-component></scv-launchpad>
+<script data-scv-comp data-scv-tag="scv-launchpad" data-scv-source="PHN0eWxlPgogIDpob3N0IHsgZGlzcGxheTogYmxvY2s7IH0KICAucGcgeyB3aWR0aDogMjQwcHg7IGJhY2tncm91bmQ6IHZhcigtLWJhY2tncm91bmQtcmFpc2VkLCAjMjUyNzI3KTsgYm9yZGVyOiAxcHggc29saWQgdmFyKC0tYm9yZGVyLCAjM0EzQzNDKTsgYm9yZGVyLXJhZGl1czogdmFyKC0tY29ybmVyLWxvdywgNXB4KTsgcGFkZGluZzogOHB4IDEwcHg7IGJveC1zaXppbmc6IGJvcmRlci1ib3g7IGZvbnQtZmFtaWx5OiB2YXIoLS1mb250LW1vbm8sICdTRiBNb25vJywgdWktbW9ub3NwYWNlLCBtb25vc3BhY2UpOyB9CiAgLnBnLWxhYiB7IGNvbG9yOiB2YXIoLS10ZXh0LWZhaW50LCAjNjY2NjY2KTsgZm9udC1zaXplOiAxMHB4OyB0ZXh0LXRyYW5zZm9ybTogbG93ZXJjYXNlOyBsZXR0ZXItc3BhY2luZzogMXB4OyBtYXJnaW4tYm90dG9tOiA2cHg7IH0KICAucGctY2ZnIHsgZGlzcGxheTogZmxleDsgYWxpZ24taXRlbXM6IGNlbnRlcjsgZ2FwOiA0cHg7IG1hcmdpbi1ib3R0b206IDRweDsgfQogIC5wZy1jZmcgbGFiZWwgeyBkaXNwbGF5OiBmbGV4OyBmbGV4OiAxOyBhbGlnbi1pdGVtczogY2VudGVyOyBnYXA6IDRweDsgZm9udC1zaXplOiA5cHg7IGNvbG9yOiB2YXIoLS10ZXh0LWRpbSwgIzg4ODg4OCk7IHRleHQtdHJhbnNmb3JtOiBsb3dlcmNhc2U7IGxldHRlci1zcGFjaW5nOiAxcHg7IH0KICAucGctY2ZnIGlucHV0W3R5cGU9bnVtYmVyXSB7IHdpZHRoOiAxMDAlOyBiYWNrZ3JvdW5kOiB2YXIoLS1iYWNrZ3JvdW5kLXN1bmssICMxQTFDMUMpOyBib3JkZXI6IG5vbmU7IGJvcmRlci1yYWRpdXM6IHZhcigtLWNvcm5lci1sb3csIDVweCk7IGNvbG9yOiB2YXIoLS10ZXh0LWJhc2UsICNBQUFCQUMpOyBmb250OiAxMXB4IHZhcigtLWZvbnQtbW9ubywgJ1NGIE1vbm8nLCBtb25vc3BhY2UpOyBwYWRkaW5nOiAzcHggNHB4OyBvdXRsaW5lOiBub25lOyAtbW96LWFwcGVhcmFuY2U6IHRleHRmaWVsZDsgYXBwZWFyYW5jZTogdGV4dGZpZWxkOyB9CiAgLnBnLWNmZyBpbnB1dFt0eXBlPW51bWJlcl06Oi13ZWJraXQtaW5uZXItc3Bpbi1idXR0b24sCiAgLnBnLWNmZyBpbnB1dFt0eXBlPW51bWJlcl06Oi13ZWJraXQtb3V0ZXItc3Bpbi1idXR0b24geyAtd2Via2l0LWFwcGVhcmFuY2U6IG5vbmU7IG1hcmdpbjogMDsgfQogIC5wZy1jZmcgaW5wdXRbdHlwZT1udW1iZXJdOmZvY3VzIHsgYm9yZGVyLWNvbG9yOiB2YXIoLS1pbnB1dCwgIzhBQjZCQik7IH0KICAucGctZ3JpZCB7IGRpc3BsYXk6IGdyaWQ7IGdhcDogNHB4OyBncmlkLWF1dG8tcm93czogMzRweDsgfQogIC5wZy1ncmlkIC5wYWQgeyB3aWR0aDogMTAwJTsgaGVpZ2h0OiAxMDAlOyBib3JkZXI6IG5vbmU7IGJvcmRlci1yYWRpdXM6IHZhcigtLWNvcm5lci1sb3csIDVweCk7IGJhY2tncm91bmQ6IHZhcigtLWJhY2tncm91bmQtc3VuaywgIzFBMUMxQyk7IGN1cnNvcjogcG9pbnRlcjsgdG91Y2gtYWN0aW9uOiBub25lOyB0cmFuc2l0aW9uOiBiYWNrZ3JvdW5kIC4xcywgdHJhbnNmb3JtIC4wNXM7IH0KICAucGctZ3JpZCAucGFkOmhvdmVyIHsgYmFja2dyb3VuZDogdmFyKC0taGwtY3R4LCB2YXIoLS1vdXRwdXQsICM5ODZDOTgpKTsgfQogIC5wZy1ncmlkIC5wYWQ6YWN0aXZlIHsgdHJhbnNmb3JtOiBzY2FsZSguOTQpOyB9CiAgLnBnLWdyaWQgLnBhZC5oaXQgeyBiYWNrZ3JvdW5kOiB2YXIoLS1pbnB1dCwgIzhBQjZCQik7IH0KPC9zdHlsZT4KCjxkaXYgY2xhc3M9InBnIj4KICA8ZGl2IGNsYXNzPSJwZy1sYWIiIGRhdGEtc2N2LXNsb3Q9ImxhYmVsIj5wYWQgZ3JpZDwvZGl2PgogIDxkaXYgY2xhc3M9InBnLWNmZyI+CiAgICA8bGFiZWw+PGlucHV0IHR5cGU9Im51bWJlciIgbWluPSIxIiBtYXg9IjE2IiBwbGFjZWhvbGRlcj0iY29scyIgZGF0YS1zY3Ytc2xvdD0iY29scyI+PC9sYWJlbD4KICAgIDxsYWJlbD48aW5wdXQgdHlwZT0ibnVtYmVyIiBtaW49IjEiIG1heD0iMTYiIHBsYWNlaG9sZGVyPSJyb3dzIiBkYXRhLXNjdi1zbG90PSJyb3dzIj48L2xhYmVsPgogIDwvZGl2PgogIDxkaXYgY2xhc3M9InBnLWdyaWQiPjwvZGl2Pgo8L2Rpdj4KCjxzY3JpcHQ+CiAgY29uc3QgY29sc0luID0gcm9vdC5xdWVyeVNlbGVjdG9yKCdbZGF0YS1zY3Ytc2xvdD0iY29scyJdJyksCiAgICAgICAgcm93c0luID0gcm9vdC5xdWVyeVNlbGVjdG9yKCdbZGF0YS1zY3Ytc2xvdD0icm93cyJdJyksCiAgICAgICAgZ3JpZCA9IHJvb3QucXVlcnlTZWxlY3RvcignLnBnLWdyaWQnKTsKICBjb25zdCBwYWRzID0gbmV3IE1hcCgpOyAvLyBpbmRleCAtPiBwYWQgbm9kZTsgcmUtYXBwZW5kZWQgKHNhbWUgbm9kZSkgaWYgYSBtb3JwaCBkZXRhY2hlcyBpdCwgc28gZGF0YS1zY3YtZW1pdHMgKyB3aXJpbmcgc3Vydml2ZQogIGNvbnN0IGNsYW1wID0gbiA9PiBNYXRoLm1heCgxLCBNYXRoLm1pbigxNiwgTWF0aC5mbG9vcigrbikgfHwgMSkpOwogIGZ1bmN0aW9uIG1ha2VQYWQoKSB7CiAgICBjb25zdCBiID0gZG9jdW1lbnQuY3JlYXRlRWxlbWVudCgnYnV0dG9uJyk7CiAgICBiLnR5cGUgPSAnYnV0dG9uJzsgYi5jbGFzc05hbWUgPSAncGFkJzsKICAgIGIuZGF0YXNldC5zY3ZFbWl0cyA9ICcnOyAvLyBlYWNoIHBhZCBpdHMgb3duIHdpcmUgY2hhbm5lbAogICAgYi5hZGRFdmVudExpc3RlbmVyKCdjbGljaycsICgpID0+IHsKICAgICAgYi5jbGFzc0xpc3QuYWRkKCdoaXQnKTsgc2V0VGltZW91dCgoKSA9PiBiLmNsYXNzTGlzdC5yZW1vdmUoJ2hpdCcpLCAxNDApOwogICAgICBiLmRpc3BhdGNoRXZlbnQobmV3IEN1c3RvbUV2ZW50KCdzY3YtZW1pdCcsIHsgZGV0YWlsOiAxLCBidWJibGVzOiB0cnVlLCBjb21wb3NlZDogdHJ1ZSB9KSk7CiAgICB9KTsKICAgIHJldHVybiBiOwogIH0KICBsZXQgc3luY2luZyA9IGZhbHNlOwogIGZ1bmN0aW9uIHN5bmMoKSB7CiAgICBpZiAoc3luY2luZykgcmV0dXJuOyBzeW5jaW5nID0gdHJ1ZTsKICAgIHRyeSB7CiAgICAgIGNvbnN0IGNvbHMgPSBjbGFtcChjb2xzSW4udmFsdWUpLCByb3dzID0gY2xhbXAocm93c0luLnZhbHVlKSwgdG90YWwgPSBjb2xzICogcm93czsKICAgICAgZ3JpZC5zdHlsZS5ncmlkVGVtcGxhdGVDb2x1bW5zID0gYHJlcGVhdCgke2NvbHN9LCAxZnIpYDsKICAgICAgZm9yIChsZXQgaSA9IDA7IGkgPCB0b3RhbDsgaSsrKSB7CiAgICAgICAgbGV0IGIgPSBwYWRzLmdldChpKTsKICAgICAgICBpZiAoIWIpIHsgYiA9IG1ha2VQYWQoKTsgcGFkcy5zZXQoaSwgYik7IH0KICAgICAgICBpZiAoIWIuaXNDb25uZWN0ZWQpIGdyaWQuYXBwZW5kQ2hpbGQoYik7IC8vIHJlLWluc2VydCBTQU1FIG5vZGUgc3RyaXBwZWQgYnkgYSBwcmV2aWV3IG1vcnBoIChrZWVwcyBpdHMgY2hhbm5lbCArIGNhYmxlKQogICAgICAgIGIuaGlkZGVuID0gZmFsc2U7CiAgICAgIH0KICAgICAgZm9yIChsZXQgaSA9IHRvdGFsOyBpIDwgcGFkcy5zaXplOyBpKyspIHsgY29uc3QgYiA9IHBhZHMuZ2V0KGkpOyBpZiAoYi5pc0Nvbm5lY3RlZCkgYi5oaWRkZW4gPSB0cnVlOyB9IC8vIHNocmluayBoaWRlcywgbmV2ZXIgZGVzdHJveXMKICAgIH0gZmluYWxseSB7IHN5bmNpbmcgPSBmYWxzZTsgfQogIH0KICBuZXcgTXV0YXRpb25PYnNlcnZlcihzeW5jKS5vYnNlcnZlKGdyaWQsIHsgY2hpbGRMaXN0OiB0cnVlIH0pOyAvLyByZWJ1aWxkIGFmdGVyIENTUy1vbmx5IGVkaXRzL3JlLWRyb3Agc3RyaXAgcGFkcwogIGNvbHNJbi5hZGRFdmVudExpc3RlbmVyKCdpbnB1dCcsIHN5bmMpOwogIHJvd3NJbi5hZGRFdmVudExpc3RlbmVyKCdpbnB1dCcsIHN5bmMpOwogIHN5bmMoKTsKICByZXF1ZXN0QW5pbWF0aW9uRnJhbWUoc3luYyk7CiAgc2V0VGltZW91dChzeW5jLCAwKTsKPC9zY3JpcHQ+" data-scv-icon="">
+customElements.define('scv-launchpad', class extends HTMLElement { constructor() { super();
+const _baked = !this.shadowRoot && this.querySelector('template[shadowrootmode], template.custom-shadow');
+if (_baked) { this.attachShadow({mode: 'open'}).innerHTML = _baked.innerHTML; _baked.remove(); }
+else if (!this.shadowRoot) this.attachShadow({mode: 'open'}).innerHTML = `<style>:host { display: block; }
+  .pg { width: 240px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-low, 5px); padding: 8px 10px; box-sizing: border-box; font-family: var(--font-mono, 'SF Mono', ui-monospace, monospace); }
+  .pg-lab { color: var(--text-faint, #666666); font-size: 10px; text-transform: lowercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .pg-cfg { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
+  .pg-cfg label { display: flex; flex: 1; align-items: center; gap: 4px; font-size: 9px; color: var(--text-dim, #888888); text-transform: lowercase; letter-spacing: 1px; }
+  .pg-cfg input[type=number] { width: 100%; background: var(--background-sunk, #1A1C1C); border: none; border-radius: var(--corner-low, 5px); color: var(--text-base, #AAABAC); font: 11px var(--font-mono, 'SF Mono', monospace); padding: 3px 4px; outline: none; -moz-appearance: textfield; appearance: textfield; }
+  .pg-cfg input[type=number]::-webkit-inner-spin-button,
+  .pg-cfg input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .pg-cfg input[type=number]:focus { border-color: var(--input, #8AB6BB); }
+  .pg-grid { display: grid; gap: 4px; grid-auto-rows: 34px; }
+  .pg-grid .pad { width: 100%; height: 100%; border: none; border-radius: var(--corner-low, 5px); background: var(--background-sunk, #1A1C1C); cursor: pointer; touch-action: none; transition: background .1s, transform .05s; }
+  .pg-grid .pad:hover { background: var(--hl-ctx, var(--output, #986C98)); }
+  .pg-grid .pad:active { transform: scale(.94); }
+  .pg-grid .pad.hit { background: var(--input, #8AB6BB); }</style><div class="pg">
+  <div class="pg-lab" data-scv-slot="label">pad grid</div>
+  <div class="pg-cfg">
+    <label><input type="number" min="1" max="16" placeholder="cols" data-scv-slot="cols"></label>
+    <label><input type="number" min="1" max="16" placeholder="rows" data-scv-slot="rows"></label>
+  </div>
+  <div class="pg-grid"></div>
+</div>`;
+const root = this.shadowRoot, host = this, emit = v => this.dispatchEvent(new CustomEvent('scv-emit', { detail: v, bubbles: true, composed: true }));
+const colsIn = root.querySelector('[data-scv-slot="cols"]'),
+        rowsIn = root.querySelector('[data-scv-slot="rows"]'),
+        grid = root.querySelector('.pg-grid');
+  const pads = new Map(); // index -> pad node; re-appended (same node) if a morph detaches it, so data-scv-emits + wiring survive
+  const clamp = n => Math.max(1, Math.min(16, Math.floor(+n) || 1));
+  function makePad() {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'pad';
+    b.dataset.scvEmits = ''; // each pad its own wire channel
+    b.addEventListener('click', () => {
+      b.classList.add('hit'); setTimeout(() => b.classList.remove('hit'), 140);
+      b.dispatchEvent(new CustomEvent('scv-emit', { detail: 1, bubbles: true, composed: true }));
+    });
+    return b;
+  }
+  let syncing = false;
+  function sync() {
+    if (syncing) return; syncing = true;
+    try {
+      const cols = clamp(colsIn.value), rows = clamp(rowsIn.value), total = cols * rows;
+      grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+      for (let i = 0; i < total; i++) {
+        let b = pads.get(i);
+        if (!b) { b = makePad(); pads.set(i, b); }
+        if (!b.isConnected) grid.appendChild(b); // re-insert SAME node stripped by a preview morph (keeps its channel + cable)
+        b.hidden = false;
+      }
+      for (let i = total; i < pads.size; i++) { const b = pads.get(i); if (b.isConnected) b.hidden = true; } // shrink hides, never destroys
+    } finally { syncing = false; }
+  }
+  new MutationObserver(sync).observe(grid, { childList: true }); // rebuild after CSS-only edits/re-drop strip pads
+  colsIn.addEventListener('input', sync);
+  rowsIn.addEventListener('input', sync);
+  sync();
+  requestAnimationFrame(sync);
+  setTimeout(sync, 0);
+}
+connectedCallback() { this.setAttribute('data-scv-emitter', ''); } });
+</script>
+</body></html>

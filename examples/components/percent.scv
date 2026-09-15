@@ -1,0 +1,36 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<html><head><meta charset="utf-8"><title>scv-percent - scav component</title><link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Ctext%20x%3D%228%22%20y%3D%2212%22%20font-size%3D%2211%22%20font-family%3D%22monospace%22%20fill%3D%22%23986c98%22%20text-anchor%3D%22middle%22%3E%26lt%3B%26gt%3B%3C%2Ftext%3E%3C%2Fsvg%3E"></head>
+<body style="margin:0;background:#1a1c1c">
+<scv-percent data-scv-component></scv-percent>
+<script data-scv-comp data-scv-tag="scv-percent" data-scv-source="PHN0eWxlPgogIDpob3N0IHsgZGlzcGxheTogYmxvY2s7IH0KICAucHIgeyB3aWR0aDogMjQwcHg7IGJhY2tncm91bmQ6IHZhcigtLWJhY2tncm91bmQtcmFpc2VkLCAjMjUyNzI3KTsgYm9yZGVyOiAxcHggc29saWQgdmFyKC0tYm9yZGVyLCAjM0EzQzNDKTsgYm9yZGVyLXJhZGl1czogdmFyKC0tY29ybmVyLWxvdywgNXB4KTsgcGFkZGluZzogOHB4IDEwcHg7IGJveC1zaXppbmc6IGJvcmRlci1ib3g7IGZvbnQtZmFtaWx5OiB2YXIoLS1mb250LW1vbm8sICdTRiBNb25vJywgdWktbW9ub3NwYWNlLCBtb25vc3BhY2UpOyB9CiAgLnByLWxhYiB7IGNvbG9yOiB2YXIoLS10ZXh0LWZhaW50LCAjNjY2NjY2KTsgZm9udC1zaXplOiAxMHB4OyB0ZXh0LXRyYW5zZm9ybTogbG93ZXJjYXNlOyBsZXR0ZXItc3BhY2luZzogMXB4OyBtYXJnaW4tYm90dG9tOiA2cHg7IH0KICAucHItdHJhY2sgeyBoZWlnaHQ6IDEwcHg7IGJhY2tncm91bmQ6IHZhcigtLWJhY2tncm91bmQtc3VuaywgIzFBMUMxQyk7IGJvcmRlcjogMXB4IHNvbGlkIHZhcigtLWJvcmRlciwgIzNBM0MzQyk7IGJvcmRlci1yYWRpdXM6IHZhcigtLWNvcm5lci1sb3csIDVweCk7IG92ZXJmbG93OiBoaWRkZW47IH0KICAucHItZmlsbCB7IGhlaWdodDogMTAwJTsgd2lkdGg6IDAlOyBiYWNrZ3JvdW5kOiB2YXIoLS1pbnB1dCwgIzhBQjZCQik7IGJvcmRlci1yYWRpdXM6IGluaGVyaXQ7IHRyYW5zaXRpb246IHdpZHRoIC4xMnMgZWFzZTsgfQogIC5wci1yZWFkIHsgZGlzcGxheTogZmxleDsgYWxpZ24taXRlbXM6IGJhc2VsaW5lOyBnYXA6IDNweDsgbWFyZ2luLXRvcDogNnB4OyBmb250LXNpemU6IDEycHg7IH0KICAucHItcmVhZCAudiB7IGNvbG9yOiB2YXIoLS1pbnB1dCwgIzhBQjZCQik7IGZvbnQtd2VpZ2h0OiA2MDA7IH0KICAucHItcmVhZCAubSB7IGNvbG9yOiB2YXIoLS10ZXh0LWRpbSwgIzg4ODg4OCk7IH0KICAucHItcmVhZCAudnQgeyBmb250LXNpemU6IDlweDsgY29sb3I6IHZhcigtLXRleHQtZmFpbnQsICM2NjY2NjYpOyB0ZXh0LXRyYW5zZm9ybTogbG93ZXJjYXNlOyBsZXR0ZXItc3BhY2luZzogMXB4OyBtYXJnaW4tbGVmdDogYXV0bzsgfQo8L3N0eWxlPgoKPGRpdiBjbGFzcz0icHIiPgogIDxkaXYgY2xhc3M9InByLWxhYiIgZGF0YS1zY3Ytc2xvdD0ibGFiZWwiPnByb2dyZXNzPC9kaXY+CiAgPGRpdiBjbGFzcz0icHItdHJhY2siPjxkaXYgY2xhc3M9InByLWZpbGwiPjwvZGl2PjwvZGl2PgogIDxkaXYgY2xhc3M9InByLXJlYWQiPgogICAgPHNwYW4gY2xhc3M9InYiIGRhdGEtc2N2LXNsb3Q9InZhbHVlIj4wPC9zcGFuPjxzcGFuIGNsYXNzPSJtIj4vIDEwMDwvc3Bhbj4KICAgIDxzcGFuIGNsYXNzPSJ2dCI+JTwvc3Bhbj4KICA8L2Rpdj4KPC9kaXY+Cgo8c2NyaXB0PgogIGNvbnN0IGZpbGwgPSByb290LnF1ZXJ5U2VsZWN0b3IoJy5wci1maWxsJyksCiAgICAgICAgdmFsID0gcm9vdC5xdWVyeVNlbGVjdG9yKCdbZGF0YS1zY3Ytc2xvdD0idmFsdWUiXScpOwogIGNvbnN0IGNsYW1wUGN0ID0gcyA9PiB7IGNvbnN0IG4gPSBwYXJzZUZsb2F0KFN0cmluZyhzKSk7IHJldHVybiBOdW1iZXIuaXNGaW5pdGUobikgPyBNYXRoLm1pbigxMDAsIE1hdGgubWF4KDAsIG4pKSA6IDA7IH07CiAgY29uc3Qgc3luYyA9ICgpID0+IHsgZmlsbC5zdHlsZS53aWR0aCA9IGNsYW1wUGN0KHZhbC50ZXh0Q29udGVudCkgKyAnJSc7IH07CiAgaG9zdC5hZGRFdmVudExpc3RlbmVyKCdzY3YtcmVjZWl2ZScsIGUgPT4geyB2YWwudGV4dENvbnRlbnQgPSBlLmRldGFpbDsgc3luYygpOyB9KTsKICBuZXcgTXV0YXRpb25PYnNlcnZlcihzeW5jKS5vYnNlcnZlKHZhbCwgeyBjaGFyYWN0ZXJEYXRhOiB0cnVlLCBjaGlsZExpc3Q6IHRydWUgfSk7CiAgc3luYygpOwo8L3NjcmlwdD4=" data-scv-icon="">
+customElements.define('scv-percent', class extends HTMLElement { constructor() { super();
+const _baked = !this.shadowRoot && this.querySelector('template[shadowrootmode], template.custom-shadow');
+if (_baked) { this.attachShadow({mode: 'open'}).innerHTML = _baked.innerHTML; _baked.remove(); }
+else if (!this.shadowRoot) this.attachShadow({mode: 'open'}).innerHTML = `<style>:host { display: block; }
+  .pr { width: 240px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-low, 5px); padding: 8px 10px; box-sizing: border-box; font-family: var(--font-mono, 'SF Mono', ui-monospace, monospace); }
+  .pr-lab { color: var(--text-faint, #666666); font-size: 10px; text-transform: lowercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .pr-track { height: 10px; background: var(--background-sunk, #1A1C1C); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-low, 5px); overflow: hidden; }
+  .pr-fill { height: 100%; width: 0%; background: var(--input, #8AB6BB); border-radius: inherit; transition: width .12s ease; }
+  .pr-read { display: flex; align-items: baseline; gap: 3px; margin-top: 6px; font-size: 12px; }
+  .pr-read .v { color: var(--input, #8AB6BB); font-weight: 600; }
+  .pr-read .m { color: var(--text-dim, #888888); }
+  .pr-read .vt { font-size: 9px; color: var(--text-faint, #666666); text-transform: lowercase; letter-spacing: 1px; margin-left: auto; }</style><div class="pr">
+  <div class="pr-lab" data-scv-slot="label">progress</div>
+  <div class="pr-track"><div class="pr-fill"></div></div>
+  <div class="pr-read">
+    <span class="v" data-scv-slot="value">0</span><span class="m">/ 100</span>
+    <span class="vt">%</span>
+  </div>
+</div>`;
+const root = this.shadowRoot, host = this, emit = v => this.dispatchEvent(new CustomEvent('scv-emit', { detail: v, bubbles: true, composed: true }));
+const fill = root.querySelector('.pr-fill'),
+        val = root.querySelector('[data-scv-slot="value"]');
+  const clampPct = s => { const n = parseFloat(String(s)); return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 0; };
+  const sync = () => { fill.style.width = clampPct(val.textContent) + '%'; };
+  host.addEventListener('scv-receive', e => { val.textContent = e.detail; sync(); });
+  new MutationObserver(sync).observe(val, { characterData: true, childList: true });
+  sync();
+}
+connectedCallback() { this.setAttribute('data-scv-emitter', ''); } });
+</script>
+</body></html>

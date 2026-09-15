@@ -1,0 +1,21 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<html><head><meta charset="utf-8"><title>scv-slider - scav component</title><link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Ctext%20x%3D%228%22%20y%3D%2212%22%20font-size%3D%2211%22%20font-family%3D%22monospace%22%20fill%3D%22%23986c98%22%20text-anchor%3D%22middle%22%3E%26lt%3B%26gt%3B%3C%2Ftext%3E%3C%2Fsvg%3E"></head>
+<body style="margin:0;background:#1a1c1c">
+<scv-slider data-scv-component></scv-slider>
+<script data-scv-comp data-scv-tag="scv-slider" data-scv-source="PHN0eWxlPgogIC5zbCB7IGRpc3BsYXk6ZmxleDsgYWxpZ24taXRlbXM6Y2VudGVyOyBnYXA6MTBweDsgcGFkZGluZzoxMnB4IDE0cHg7IGJhY2tncm91bmQ6IzI1MjcyNzsgYm9yZGVyLXJhZGl1czo1cHg7IGZvbnQ6MTNweCAnU0YgTW9ubycsdWktbW9ub3NwYWNlLG1vbm9zcGFjZTsgY29sb3I6I0FBQUJBQzsgfQogIC5zbCBpbnB1dFt0eXBlPXJhbmdlXSB7IHdpZHRoOjEzMHB4OyBhY2NlbnQtY29sb3I6IzhBQjZCQjsgfQogIC5zbCAudiB7IG1pbi13aWR0aDoyOHB4OyB0ZXh0LWFsaWduOnJpZ2h0OyBjb2xvcjojOEFCNkJCOyB9Cjwvc3R5bGU+Cgo8ZGl2IGNsYXNzPSJzbCI+CiAgPGlucHV0IHR5cGU9InJhbmdlIiBtaW49IjAiIG1heD0iMTAwIiB2YWx1ZT0iNTAiIGRhdGEtc2N2LXNsb3Q9InYiPgogIDxzcGFuIGNsYXNzPSJ2IiBkYXRhLXNjdi1zbG90PSJsYWJlbCI+NTA8L3NwYW4+CjwvZGl2PgoKPHNjcmlwdD4KICBjb25zdCByID0gcm9vdC5xdWVyeVNlbGVjdG9yKCdpbnB1dCcpOwogIHIuYWRkRXZlbnRMaXN0ZW5lcignaW5wdXQnLCAoKSA9PiB7IHJvb3QucXVlcnlTZWxlY3RvcignW2RhdGEtc2N2LXNsb3Q9bGFiZWxdJykudGV4dENvbnRlbnQgPSByLnZhbHVlOyBlbWl0KCtyLnZhbHVlKTsgfSk7Cjwvc2NyaXB0Pg==" data-scv-icon="">
+customElements.define('scv-slider', class extends HTMLElement { constructor() { super();
+const _baked = !this.shadowRoot && this.querySelector('template[shadowrootmode], template.custom-shadow');
+if (_baked) { this.attachShadow({mode: 'open'}).innerHTML = _baked.innerHTML; _baked.remove(); }
+else if (!this.shadowRoot) this.attachShadow({mode: 'open'}).innerHTML = `<style>.sl { display:flex; align-items:center; gap:10px; padding:12px 14px; background:#252727; border-radius:5px; font:13px 'SF Mono',ui-monospace,monospace; color:#AAABAC; }
+  .sl input[type=range] { width:130px; accent-color:#8AB6BB; }
+  .sl .v { min-width:28px; text-align:right; color:#8AB6BB; }</style><div class="sl">
+  <input type="range" min="0" max="100" value="50" data-scv-slot="v">
+  <span class="v" data-scv-slot="label">50</span>
+</div>`;
+const root = this.shadowRoot, host = this, emit = v => this.dispatchEvent(new CustomEvent('scv-emit', { detail: v, bubbles: true, composed: true }));
+const r = root.querySelector('input');
+  r.addEventListener('input', () => { root.querySelector('[data-scv-slot=label]').textContent = r.value; emit(+r.value); });
+}
+connectedCallback() { this.setAttribute('data-scv-emitter', ''); } });
+</script>
+</body></html>

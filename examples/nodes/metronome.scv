@@ -1,0 +1,128 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>metronome - scav node</title>
+<style>
+body { margin:0; height:100vh; display:flex; align-items:center; justify-content:center; background:#1a1c1c; font-family:'SF Mono','Consolas','Menlo','DejaVu Sans Mono',monospace; color:#aaabac; }
+.n { display:flex; flex-direction:column; align-items:center; gap:12px; }
+.i { width:48px; height:48px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:22px; background:#8ab6bb; color:#1a1c1c; }
+.m { font-size:10px; opacity:0.5; }
+</style>
+</head>
+<body>
+<div class="n"><div class="i">▲</div><div>metronome</div><div class="m">scavenger node - drop into a patchbay</div></div>
+<script data-scv-node>
+typeof defineNode === 'function' && defineNode({
+  name: "metronome",
+  icon: "▲",
+  color: "#8ab6bb",
+  init(ctx) {
+  ctx._ac = new (window.AudioContext || window.webkitAudioContext)();
+  ctx._master = ctx._ac.createGain();
+  ctx._master.gain.value = 0.5;
+  ctx._master.connect(ctx._ac.destination);
+  ctx._resume = () => { if (ctx._ac.state === 'suspended') ctx._ac.resume(); };
+  window.addEventListener('pointerdown', ctx._resume);
+  window.addEventListener('keydown', ctx._resume);
+
+  const lookahead = 25;        // JS wake-up cadence (ms)
+  const scheduleAhead = 0.1;   // schedule window into the audio future (s)
+
+  ctx._timer = null;
+  ctx._tick = null;
+  ctx._nextBeatTime = 0;
+  ctx._bpm = Number(ctx.value) || 120;
+  ctx._beat = 0;
+  ctx._following = false;
+  ctx._muted = false;
+
+  ctx.clickAt = function (t, accent) {          // plays at exact audio time t
+    if (ctx._muted) return;
+    const ac = ctx._ac;
+    const osc = ac.createOscillator(), g = ac.createGain();
+    osc.type = 'square';
+    osc.frequency.value = accent ? 1760 : 1480;
+    const amp = accent ? 0.5 : 0.3;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(amp, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    osc.connect(g).connect(ctx._master);
+    osc.start(t);
+    osc.stop(t + 0.06);
+  };
+
+  ctx.clear = function () {
+    if (ctx._timer) { clearInterval(ctx._timer); ctx._timer = null; }
+    ctx._tick = null;
+  };
+
+  ctx.arm = function (enabled) {
+    ctx.clear();
+    if (!enabled || ctx._muted) return;
+    ctx._nextBeatTime = ctx._ac.currentTime;    // phase reset: next beat "now"
+    const schedule = () => {
+      if (ctx._muted) return;
+      const now = ctx._ac.currentTime;
+      while (ctx._nextBeatTime <= now + scheduleAhead) {
+        ctx._beat++;
+        ctx.clickAt(ctx._nextBeatTime, ctx._beat % 4 === 1);
+        ctx.emit(ctx._beat);
+        ctx._nextBeatTime += 60 / ctx._bpm;
+      }
+    };
+    ctx._tick = schedule;
+    ctx._timer = setInterval(schedule, lookahead);
+  };
+
+  ctx.retempo = () => {                  // phase reset on explicit BPM change (standalone)
+    if (ctx._following) return;          // transport owns tempo while following
+    ctx.arm(true);
+  };
+
+  ctx.onInput = () => {
+    if (ctx._following) return;
+    const b = Math.max(20, Math.min(300, Number(ctx.value) || 120));
+    if (Number.isFinite(b) && b !== ctx._bpm) { ctx._bpm = b; ctx.retempo(); }
+  };
+  ctx.input.addEventListener('input', ctx.onInput);
+  ctx.input.addEventListener('change', ctx.onInput);
+
+  ctx.toggleMute = () => {
+    ctx._muted = !ctx._muted;
+    ctx.clear();                          // _tick guards muted too; clear keeps lifecycle clean
+    if (!ctx._muted && !ctx._following) ctx.arm(true);
+    ctx.icon.textContent = ctx._muted ? '○' : '▲';
+  };
+  ctx.icon.addEventListener('click', () => ctx.toggleMute());
+  ctx.arm(true);
+},
+onReceive(value, ctx) {
+  if (value && typeof value === 'object' && value.beat !== undefined) {
+    ctx._following = true;
+    if (value.play === 0 || value.play === false || ctx._muted) { ctx.arm(false); return; }
+    const nb = Number(value.bpm) || ctx._bpm;
+    if (nb !== ctx._bpm) { ctx._bpm = nb; if (ctx._timer) { ctx.clear(); ctx.arm(true); } }
+    const beatNum = Number(value.beat) || 1;
+    const num = Number(value.num) || 4;
+    ctx.clickAt(ctx._ac.currentTime, beatNum % num === 1);   // follow envelope - click now
+    ctx.emit(beatNum);
+  } else if (typeof value === 'number') {
+    const b = Math.max(20, Math.min(300, value || 120));
+    if (Number.isFinite(b) && !ctx._following) { ctx._bpm = b; ctx.value = String(b); ctx.retempo(); }
+  } else {
+    const fb = Math.max(20, Math.min(300, Number(ctx.value) || 120));
+    if (!ctx._following && fb !== ctx._bpm) { ctx._bpm = fb; ctx.retempo(); }
+  }
+},
+teardown(ctx) {
+  try { window.removeEventListener('pointerdown', ctx._resume); window.removeEventListener('keydown', ctx._resume); } catch (e) {}
+  try { ctx.input.removeEventListener('input', ctx.onInput); ctx.input.removeEventListener('change', ctx.onInput); } catch (e) {}
+  try { ctx.clear(); } catch (e) {}
+  try { ctx._ac.close(); } catch (e) {}
+}
+});
+</script>
+</body>
+</html>

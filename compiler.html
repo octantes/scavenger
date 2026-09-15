@@ -1,0 +1,1780 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>compiler</title>
+  <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" fill="%238ab6bb" transform="rotate(45 8 8)"/></svg>'>
+<style>
+:root { /* matches kernel and patchbay theme - enforced by token tests */
+
+  --font-mono: 'SF Mono', 'Consolas', 'Menlo', 'DejaVu Sans Mono', monospace;
+
+  --output:            #986C98;
+  --input:             #8AB6BB;
+  --danger:            #985954;
+  --success:           #6FAC67;
+
+  --background-sunk:   #1A1C1C;
+  --background-raised: #252727;
+
+  --text-base:         #AAABAC;
+  --text-dim:          #888888;
+  --text-faint:        #666666;
+
+  --border:            #3A3C3C;
+
+  --corner-low:        5px;
+  --corner-high:       8px;
+
+  --ease-out:          cubic-bezier(.25,.46,.45,.94);
+  --ease-swift:        cubic-bezier(.25,.75,.45,1.0);
+
+  --duration-fast:     .15s;
+  --duration-base:     .20s;
+  --duration-slow:     .35s;
+
+  --fs-a:              12px;
+  --fs-b:              13px;
+  --fs-c:              14px;
+  --fs-d:              16px;
+
+  --hl-str:    #ce9178;
+  --hl-kw:     #569cd6;
+  --hl-num:    #b5cea8;
+  --hl-com:    var(--success);
+  --hl-method: var(--input);
+  --hl-ctx:    var(--output);
+  --hl-brace:  #6e7681;
+
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; height: 100vh; display: grid; grid-template-columns: 1fr 360px;
+  background: var(--background-sunk); color: var(--text-base);
+  font-family: var(--font-mono); font-size: var(--fs-c);
+}
+
+/* ─── editor (left) ─── */
+.editor { display: flex; flex-direction: column; gap: 12px; padding: 24px; overflow: hidden; }
+.title { font-size: var(--fs-d); color: var(--input); letter-spacing: 1px; flex-shrink: 0; padding: 2px 0 2px 2px; } /* sits on right pane, above mode toggle */
+.title .wm { color: var(--output); }
+.row { display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
+
+/* target toggle - names what is being built - node = logic - component = functional ui */
+.target-toggle { display: flex; flex-shrink: 0; height: 30px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.target-toggle .tgt {
+  flex: 1; height: 100%; display: flex; align-items: center; justify-content: center;
+  appearance: none; -webkit-appearance: none; -webkit-tap-highlight-color: transparent;
+  background: transparent; border: none; border-radius: 0; color: var(--text-dim); font: inherit; letter-spacing: 0.5px; cursor: pointer;
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+.target-toggle .tgt:active { transform: none; } /* no native press bounce */
+.target-toggle .tgt + .tgt { border-left: 1px solid var(--border); }
+.target-toggle .tgt.active { background: var(--input); color: var(--background-sunk); }
+.target-toggle .tgt[data-target="component"].active { background: var(--output); }
+body.mode-node .comp-only, body.mode-component .node-only { display: none !important; }
+#f-tag { flex: 1; }
+
+input[type=text] {
+  height: 24px; background: rgba(255,255,255,0.05); border: none; border-radius: var(--corner-low);
+  padding: 0 8px; color: var(--input); font-family: inherit; outline: none;
+}
+.row input[type=text] { flex: 1; min-width: 120px; }
+.row input[type=text].icon { width: 32px; min-width: 32px; max-width: 32px; height: 24px; text-align: center; padding: 0; }
+.row input[type=text].comp-icon { flex: 0 0 auto; width: 120px; min-width: 120px; } /* optional emoji or <svg> */
+
+::placeholder { color: var(--text-dim); opacity: 0.6; }
+.swatches input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+.swatches input[type=color]::-webkit-color-swatch { border: none; border-radius: 0; }
+
+.color-wrap {
+  width: 24px; height: 24px; border-radius: 50%; overflow: hidden; flex: none; order: 1; position: relative; cursor: pointer;
+  &::after {
+    content: ''; position: absolute; top: 50%; left: 50%; display: block; width: 8px; height: 8px;
+    transform: translate(-50%, -50%); border-radius: 50%; background: var(--background-sunk); pointer-events: none;
+  }
+}
+
+input[type=color] { width: 100%; height: 100%; border: none; border-radius: 0; background: none; padding: 0; cursor: pointer; outline: none; display: block; }
+.swatches { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+.swatch { width: 24px; height: 24px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; box-sizing: border-box; flex: none; } /* fixed size - fitSwatches hides them left-first when width is tight */
+
+/* ─── code editor ─── */
+.code-editor { position: relative; display: flex; flex: 1; min-height: 0; border: 1px solid var(--border); border-radius: var(--corner-low); }
+.code-gutter {
+  display: flex; flex-direction: column;
+  flex: 0 0 36px; background: rgba(255,255,255,0.02); border-right: 1px solid var(--border);
+  padding: 8px 4px; text-align: center; overflow: hidden;
+  font: var(--fs-c)/1.5 var(--font-mono);
+  color: var(--text-dim); user-select: none;
+}
+.code-gutter span { line-height: 21px; }
+.code-gutter .gutter-err { color: var(--danger); font-weight: bold; }
+.code-surface { position: relative; flex: 1; min-height: 0; }
+
+.code-ta, .code-syntax {
+  margin: 0; padding: 8px; position: absolute; inset: 0;
+  font: var(--fs-c)/1.5 var(--font-mono);
+  white-space: pre; tab-size: 2; -moz-tab-size: 2;
+  border: none; outline: none;
+}
+.code-ta {
+  display: block; width: 100%; height: 100%; resize: none;
+  overflow: auto;
+  background: transparent; color: transparent; -webkit-text-fill-color: transparent;
+  caret-color: var(--text-base);
+}
+.code-ta::selection { background: rgba(255,255,255,0.15); }
+
+.code-syntax { pointer-events: none; overflow: hidden; }
+.code-syntax .hl-str,    .compiled .hl-str    { color: var(--hl-str);    }
+.code-syntax .hl-kw,     .compiled .hl-kw     { color: var(--hl-kw);     }
+.code-syntax .hl-num,    .compiled .hl-num    { color: var(--hl-num);    }
+.code-syntax .hl-com,    .compiled .hl-com    { color: var(--hl-com);    }
+.code-syntax .hl-method, .compiled .hl-method { color: var(--hl-method); }
+.code-syntax .hl-ctx,    .compiled .hl-ctx    { color: var(--hl-ctx);    }
+.code-syntax .hl-brace,  .compiled .hl-brace  { color: var(--hl-brace);  }
+/* markup + css tokens in the project palette (pink tags/selectors, teal attrs/props, neutral values, faint punctuation) */
+.code-syntax .hl-tag,    .compiled .hl-tag    { color: var(--output);     }
+.code-syntax .hl-attr,   .compiled .hl-attr   { color: var(--input);      }
+.code-syntax .hl-val,    .compiled .hl-val    { color: var(--text-base);  }
+.code-syntax .hl-punc,   .compiled .hl-punc   { color: var(--text-faint); }
+
+/* line count sits in bottom-left corner (mirrors indent btn) */
+.code-surface .lines { position: absolute; bottom: 8px; left: 8px; z-index: 1; color: var(--text-dim); pointer-events: none; background: var(--background-sunk); padding: 0 3px; border-radius: var(--corner-low); }
+
+/* contract reference, hidden by default - help button toggles .code-editor.show-help */
+.tutorial { display: none; position: absolute; inset: 0; overflow-y: auto; padding: 16px 16px 44px; background: var(--background-sunk); border-radius: var(--corner-low); font-size: var(--fs-c); line-height: 1.6; color: var(--text-dim); } /* radius matches editor frame so sunk fill doesn't square corners */
+.code-editor.show-help .tutorial { display: flex; flex-direction: column; gap: 16px; }
+.code-editor.show-help .code-gutter, .code-editor.show-help .code-surface { display: none; }
+
+/* source view - swaps editor for generated .scv compiler emits */
+.code-editor.show-output .compiled { display: block; }
+.code-editor.show-output .code-gutter, .code-editor.show-output .code-surface { display: none; }
+.compiled { display: none; position: absolute; inset: 0; margin: 0; overflow: auto; padding: 12px 12px 44px; background: var(--background-sunk); border-radius: var(--corner-low); color: var(--text-base); font: var(--fs-c)/1.5 var(--font-mono); white-space: pre; }
+
+/* big preview - full-scale live instance in editor pane */
+.code-editor.show-preview .big-preview { display: flex; }
+.code-editor.show-preview .code-gutter, .code-editor.show-preview .code-surface { display: none; }
+.big-preview { display: none; position: absolute; inset: 0; align-items: safe center; justify-content: safe center; overflow: auto; padding: 28px; background: var(--background-sunk); border-radius: var(--corner-low); } /* safe centering - component larger than pane aligns to start so top-left stays scrollable-to */
+
+.format-btn.active { background: var(--output); color: var(--background-sunk); border-color: var(--output); }
+.format-btn.active:hover { color: var(--background-sunk); border-color: var(--output); }
+
+/* pipeline status bar under editor - parse, build, export state */
+.pipeline { flex-shrink: 0; display: flex; gap: 8px; align-items: center; min-height: 16px; font-size: var(--fs-c); }
+.pipeline .sep { color: var(--border); }
+.pipeline .st.ok { color: var(--input); }
+.pipeline .st.ready { color: var(--text-dim); }
+.pipeline .st.warn { color: var(--hl-str); }
+.pipeline .st.err { color: var(--danger); }
+.tutorial code { color: var(--text-base); }
+
+/* fixed code col so descriptions line up across sections - sized to longest snippet */
+.tutorial .cf-col { display: grid; grid-template-columns: 320px 1fr; gap: 4px 16px; align-items: baseline; }
+.tutorial .cf-col > div { display: contents; }
+.tutorial .desc { color: var(--text-dim); font-style: italic; }
+.tutorial .cd { white-space: nowrap; }
+.tutorial .cf-h { grid-column: 1 / -1; color: var(--output); }
+.tutorial .hl-fn, .tutorial .hl-prop { color: var(--input); }
+
+/* divider <hr> - padding gives gap, background-clip keeps line 1px centred */
+.tutorial hr { grid-column: 1 / -1; box-sizing: content-box; height: 1px; border: none; margin: 0; padding: 0 0 4px; background: var(--border); background-clip: content-box; }
+.tutorial .tut-about { display: flex; flex-direction: column; }
+.tutorial .tut-about p { margin: 0 0 10px; }
+.tutorial .tut-about p:last-child { margin: 0; }
+.tutorial .tut-about p strong { color: var(--output); }
+.tutorial .tut-about p code { color: var(--input); }
+.tutorial .tut-about strong { color: var(--text-base); font-weight: 600; }
+
+/* ─── preview (right) ─── */
+.preview { display: flex; flex-direction: column; background: var(--background-raised); border-left: 1px solid var(--border); padding: 24px; gap: 12px; overflow-y: auto; font-size: var(--fs-c); }
+
+/* ─── preview frames ─── */
+.preview-frame { background: var(--background-sunk); border: 1px solid var(--border); border-radius: var(--corner-low); }
+.node-preview-wrap {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 28px 0; min-height: 90px;
+}
+.preview-pair {
+  display: flex; align-items: center; gap: 32px;
+}
+.preview-node {
+  position: relative; display: flex; align-items: center;
+  background: var(--background-sunk);
+  box-shadow: 0 0 0 2px var(--background-sunk), 0 0 0 4px var(--output);
+}
+.preview-node .pl-icon {
+  width: 32px; height: 32px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; user-select: none;
+  background: var(--input); /* default fill so glyph is visible without compile; applyModeIcons overrides with node's color */
+  color: var(--background-sunk);
+}
+.preview-node.closed { width: 32px; height: 32px; border-radius: 16px; }
+.preview-node.closed .pl-icon { border-radius: 50%; }
+.preview-node.open { width: var(--node-open-width, 120px); height: 32px; border-radius: 16px; } /* rig has no per-content auto-grow (unlike real kernel's width:auto/max-width pair), so openWidth drives box directly instead of just capping it */
+.preview-node.open .pl-icon { border-radius: 16px 0 0 16px; }
+.preview-node .pl-input {
+  flex: 1; min-width: 60px; height: 100%; border: none; background: transparent;
+  font-family: inherit; outline: none;
+  padding: 0 8px; text-align: center; color: var(--text-base);
+}
+.preview-node .pl-caret {
+  position: absolute; right: -14px; font-size: var(--fs-c);
+  color: var(--text-base); opacity: 0.5; pointer-events: none;
+}
+@keyframes preview-node-pulse-anim { 0% { box-shadow: 0 0 0 2px var(--background-sunk), 0 0 0 4px var(--input); } 100% { box-shadow: 0 0 0 2px var(--background-sunk), 0 0 0 4px var(--output); } }
+.preview-node.node-pulse { animation: preview-node-pulse-anim 0.4s ease-out; }
+.preview-node.scv-node-error { box-shadow: 0 0 0 2px var(--background-sunk), 0 0 0 4px var(--danger) !important; }
+
+/* ─── test rig ─── */
+.rig { display: flex; flex-direction: column; gap: 12px; }
+.rig-line { display: flex; gap: 8px; align-items: center; }
+.rig-line input { flex: 1; } /* input grows, button fills tail */
+
+/* component preview - one live instance that morphs in place as the code changes */
+.comp-preview { display: flex; flex-direction: column; gap: 12px; } /* same rhythm as node preview */
+.cp-stage { display: flex; align-items: center; justify-content: center; padding: 28px; height: 240px; overflow: hidden; } /* fixed box - _pvFit scales instance down to fit with breathing room */
+.cp-rig { display: flex; flex-direction: column; gap: 12px; }
+.cp-rig .emit-history { height: 120px; }
+.emit-history {
+  background: var(--background-sunk); border: 1px solid var(--border); border-radius: var(--corner-low);
+  padding: 0; height: 350px; overflow-y: auto;
+  color: var(--input);
+}
+.emit-history .empty { color: var(--text-dim); font-style: italic; padding: 8px; }
+.emit-list { display: flex; flex-direction: column; }
+
+/* emit lines sit on darker base as pass marker - logs, warns and errors share lighter tone */
+.emit-entry { display: flex; align-items: center; gap: 8px; padding: 4px 6px; background: var(--background-raised); }
+.emit-entry.emit { background: var(--background-sunk); }
+.emit-entry .tag { flex-shrink: 0; min-width: 30px; color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8; }
+.emit-entry .val { color: var(--input); white-space: pre-wrap; overflow-wrap: anywhere; }
+.emit-entry.emit .tag { color: var(--input); }
+.emit-entry.log .val { color: var(--text-dim); }
+.emit-entry.warn .tag, .emit-entry.warn .val,
+.emit-entry.error .tag, .emit-entry.error .val { color: var(--danger); }
+.out { background: var(--background-sunk); border: 1px solid var(--border); border-radius: var(--corner-low); padding: 8px 10px; min-height: 34px; color: var(--input); word-break: break-all; }
+.out .lbl { color: var(--text-dim); }
+
+/* ─── buttons ─── */
+.btn-row { display: flex; gap: 8px; }
+.btn-row button { flex: 1; }
+button {
+  height: 24px; display: inline-flex; align-items: center; justify-content: center; /* optical centering, both axes */
+  background: var(--output); color: var(--background-sunk); border: none; border-radius: var(--corner-low);
+  padding: 0 10px; font-family: inherit; font-size: var(--fs-a); cursor: pointer; outline: none;
+  transition: transform var(--duration-fast), filter var(--duration-fast);
+  &:hover { filter: brightness(1.15); }
+  &:focus-visible { box-shadow: 0 0 0 1px var(--output); }
+  &:active { transform: scale(0.94); } /* press is scale - ring here reads as border thickening */
+  &.small { padding: 0 8px; }
+  &:disabled { opacity: 0.4; cursor: default; filter: none; }
+}
+.send {
+  background: var(--input); color: var(--background-sunk);
+  display: inline-flex; align-items: center; justify-content: center;
+  &:focus-visible { box-shadow: 0 0 0 1px var(--input); }
+}
+.send svg { display: block; }
+.import-btn { background: var(--input); }
+.code-actions { position: absolute; bottom: 8px; right: 8px; z-index: 1; display: flex; gap: 6px; } /* each button carries opaque fill */
+.format-btn {
+  background: var(--background-sunk); color: var(--text-dim); border: 1px solid var(--border);
+  &:hover { color: var(--output); border-color: var(--output); }
+  &:focus-visible { border-color: var(--output); }
+}
+
+/* hover tooltip - one fixed pill positioned by js (never occupies layout) */
+#cc-tooltip { display: none; position: fixed; background: var(--output); color: var(--background-sunk); padding: 2px 6px; font-size: 10px; font-weight: bold; pointer-events: none; z-index: 600; border-radius: var(--corner-low); text-transform: uppercase; }
+
+/* ─── stored nodes ─── */
+.stored-section { border-top: 1px solid var(--border); padding-top: 12px; min-height: 0; flex: 1; display: flex; flex-direction: column-reverse; gap: 12px; overflow-y: auto; }
+.stored-header { color: var(--text-dim); user-select: none; }
+.stored-list { display: flex; flex-direction: column; gap: 12px; }
+.stored-item {
+  display: flex; align-items: center; gap: 6px; padding: 5px 8px;
+  border-radius: var(--corner-low); cursor: pointer; background: rgba(255,255,255,0.03);
+  &:hover { background: rgba(255,255,255,0.07); }
+}
+.stored-item .si-icon {
+  width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; color: var(--background-sunk); flex-shrink: 0;
+}
+.stored-item .si-comp { border-radius: 3px; background: var(--output); font-size: 10px; letter-spacing: -1px; } /* square bracket icon - distinguishes component from node */
+.stored-item .si-comp svg { width: 12px; height: 12px; display: block; }
+.stored-item .si-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stored-item .si-date { color: var(--text-dim); flex-shrink: 0; }
+.stored-item .si-del {
+  background: none; color: var(--text-dim); padding: 2px 4px; border-radius: var(--corner-low);
+  &:hover { color: var(--danger); background: none; filter: none; }
+}
+
+/* ─── import overlay ─── */
+.drop-overlay {
+  display: none; position: fixed; inset: 0; z-index: 9999;
+  background: color-mix(in srgb, var(--background-sunk) 85%, transparent); align-items: center; justify-content: center;
+  &.show { display: flex; }
+}
+.drop-overlay .drop-msg {
+  border: 2px dashed var(--input); border-radius: var(--corner-high); padding: 40px 60px;
+  color: var(--input); font-size: var(--fs-c); text-align: center;
+}
+.drop-overlay .drop-msg small { display: block; color: var(--text-dim); margin-top: 8px; }
+
+/* ─── scrollbar - thin bar, no track, no arrows ─── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--output); border-radius: var(--corner-low); }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+::-webkit-scrollbar-corner { background: transparent; }
+</style>
+</head>
+
+<body>
+
+  <div id="cc-tooltip"></div>
+
+  <div class="editor">
+    <div class="row">
+      <input type="text" id="f-icon" class="icon node-only" placeholder="◆" maxlength="2">
+      <input type="text" id="f-name" class="node-only" placeholder="node name" spellcheck="false">
+      <div class="swatches node-only" id="swatches">
+        <div class="color-wrap"><input type="color" id="f-color" value="#8ab6bb"></div>
+      </div>
+      <input type="text" id="f-comp-icon" class="comp-only comp-icon" placeholder="icon (optional)" spellcheck="false">
+      <input type="text" id="f-tag" class="comp-only" placeholder="component name" spellcheck="false">
+    </div>
+    <div class="code-editor" id="code-editor">
+      <div class="code-gutter" id="code-gutter"></div>
+      <div class="code-surface">
+        <div class="code-syntax" id="code-syntax"></div>
+        <textarea id="f-code" class="code-ta" spellcheck="false" wrap="off">
+init(ctx) {
+  ctx.value = 0;
+},
+
+onReceive(value, ctx) {
+  ctx.emit(value * 2);
+},
+
+teardown(ctx) {
+}</textarea>
+        <span class="lines" id="code-lines"></span>
+      </div>
+      <div class="tutorial node-only">
+        <div class="tut-about">
+          <span class="cf-h">about</span>
+          <hr>
+          <p>
+            create custom logic nodes for the scavenger patchbay - each node is a tiny program - <code>init / onReceive / teardown</code> over the <code>ctx</code> api<br>
+            build it here, <strong>test</strong> it in the rig, then <strong>export</strong> a <code>.scv</code> - a self-contained file that holds your node's full definition in plain html<br>
+            <strong>drop it</strong> on the patchbay to register it and place an instance - nodes run arbitrary js - treat any <code>.scv</code> file and bay like a program<br>
+            to <strong>update</strong> every node instance keeping its wiring intact, <strong>re-drop</strong> the updated <code>.scv</code> onto the board - every instance will live update
+          </p>
+        </div>ee
+        <div class="cf-col">
+          <span class="cf-h">contract</span>
+          <hr>
+          <div><code><span class="hl-fn">init</span>(ctx)</code><span class="desc">called once when the node connects</span></div>
+          <div><code><span class="hl-fn">onReceive</span>(value, ctx)</code><span class="desc">called when a value arrives on the wire</span></div>
+          <div><code><span class="hl-fn">teardown</span>(ctx)</code><span class="desc">called when the node is removed</span></div>
+        </div>
+        <div class="cf-col">
+          <span class="cf-h">config</span>
+          <hr>
+          <div><code><span class="hl-prop">placeholder</span>: 'text'</code><span class="desc">input placeholder (default none)</span></div>
+          <div><code><span class="hl-prop">openWidth</span>: 400</code><span class="desc">node width in px when open</span></div>
+          <div><code><span class="hl-prop">label</span>: 'text'</code><span class="desc">hover tooltip (modes override)</span></div>
+          <div><code><span class="hl-prop">inputType</span>: 'number'</code><span class="desc">'text' or 'number'</span></div>
+        </div>
+        <div class="cf-col">
+          <span class="cf-h">output</span>
+          <hr>
+          <div><code>ctx.<span class="hl-fn">emit</span>(v)</code><span class="desc">sends a value through the wire</span></div>
+          <div><code>ctx.<span class="hl-fn">showFloat</span>(v)</code><span class="desc">shows overlay text above node</span></div>
+          <div><code>ctx.<span class="hl-fn">flashError</span>(label, err)</code><span class="desc">flashes red border + console warn</span></div>
+          <div><code>ctx.<span class="hl-prop">value</span></code><span class="desc">the node's stored value</span></div>
+        </div>
+        <div class="cf-col">
+          <span class="cf-h">spawn</span>
+          <hr>
+          <div><code>ctx.<span class="hl-fn">append</span>(el, x, y)</code><span class="desc">adds an element to the board</span></div>
+          <div><code>ctx.<span class="hl-fn">remove</span>(el)</code><span class="desc">removes a spawned element</span></div>
+          <div><span class="cd"><code>ctx.<span class="hl-prop">el</span></code> / <code>ctx.<span class="hl-prop">icon</span></code> / <code>ctx.<span class="hl-prop">input</span></code></span><span class="desc">the node's root / icon / input</span></div>
+          <div><code>ctx.<span class="hl-prop">el</span>.classList</code><span class="desc">toggle state classes: .active .node-pulse .scv-node-error</span></div>
+        </div>
+        <div class="cf-col">
+          <span class="cf-h">node</span>
+          <hr>
+          <div><span class="cd"><code>ctx.<span class="hl-prop">id</span></code> / <code>ctx.<span class="hl-prop">type</span></code></span><span class="desc">unique id / registered type name</span></div>
+          <div><span class="cd"><code>ctx.<span class="hl-prop">x</span></code> / <code>ctx.<span class="hl-prop">y</span></code></span><span class="desc">x/y position on the board</span></div>
+          <div><code>ctx.<span class="hl-fn">setPosition</span>(x, y)</code><span class="desc">repositions the node</span></div>
+        </div>
+        <div class="cf-col">
+          <span class="cf-h">modes</span>
+          <hr>
+          <div><code>modes: [{id, icon, label, color}]</code><span class="desc">declares toggleable node modes</span></div>
+          <div><code>ctx.<span class="hl-prop">mode</span></code><span class="desc">the active mode id</span></div>
+          <div><code><span class="hl-fn">onMode</span>(id, ctx)</code><span class="desc">called when the mode changes</span></div>
+        </div>
+      </div>
+      <div class="tutorial comp-only">
+        <div class="tut-about">
+          <span class="cf-h">about</span>
+          <hr>
+          <p>
+            author live html components for the scavenger patchbay - <code>&lt;div&gt; / &lt;style&gt; / &lt;script&gt;</code> - compile wraps it in a self-contained element<br>
+            build it here, <strong>test</strong> it in the rig, then <strong>export</strong> a <code>.scv</code> - a self-contained file holding your component's full definition in plain html<br>
+            <strong>drop it</strong> onto the patchbay to register it and place an instance - authored components keep their scripts and can run arbitrary js code<br>
+            to <strong>update</strong> every instance keeping data and wiring intact, <strong>re-drop</strong> the updated <code>.scv</code> on the board - instances update to the new template
+          </p>
+        </div>
+        <div class="cf-col">
+          <span class="cf-h">shape</span>
+          <hr>
+          <div><code><span class="hl-prop">data-scv-slot</span>="name"</code><span class="desc">marks a field's data - kept across a re-drop, matched by name</span></div>
+          <div><code><span class="hl-prop">text</span> &gt; html</code><span class="desc">editable text captured as html</span></div>
+          <div><code><span class="hl-prop">img</span> &gt; src</code><span class="desc">an image keeps its source</span></div>
+          <div><code><span class="hl-prop">input</span> &gt; value</code><span class="desc">a field keeps its value</span></div>
+          <div><code><span class="hl-prop">checkbox</span> &gt; checked</code><span class="desc">a toggle keeps its state</span></div>
+          <div><code><span class="hl-prop">unmarked</span></code><span class="desc">pure layout - replaced freely on re-drop</span></div>
+        </div>
+        <div class="cf-col">
+          <span class="cf-h">behavior</span>
+          <hr>
+          <div><code><span class="hl-prop">root</span></code><span class="desc">the shadow root - query and mutate your markup</span></div>
+          <div><code><span class="hl-prop">host</span></code><span class="desc">element itself - listen for <code>scv-receive</code> to take wired value</span></div>
+          <div><code><span class="hl-fn">emit</span>(v)</code><span class="desc">sends a value out the wire</span></div>
+          <div><code><span class="hl-fn">addEventListener</span></code><span class="desc">bind events here - <code>on*</code> is stripped, delegate on root to survive a re-drop</span></div>
+        </div>
+        <div class="cf-col">
+          <span class="cf-h">wire</span>
+          <hr>
+          <div><code><span class="hl-prop">data-scv-emits</span>="ch"</code><span class="desc">the element's output - its value travels out on channel ch</span></div>
+          <div><code><span class="hl-prop">data-scv-receives</span>="ch"</code><span class="desc">an input - values on channel ch land in the element</span></div>
+          <div><code><span class="hl-prop">data-scv-action</span>="ch"</code><span class="desc">runs the element when a signal arrives on ch</span></div>
+        </div>
+      </div>
+      <pre class="compiled" id="compiled"></pre>
+      <div class="big-preview" id="big-preview"></div>
+      <div class="code-actions">
+        <button class="format-btn" id="help-btn" data-tip="contract & api reference">help</button>
+        <button class="format-btn" id="src-btn" data-tip="view the generated .scv">source</button>
+        <button class="format-btn comp-only" id="preview-btn" data-tip="preview at full size">preview</button>
+        <button class="format-btn" id="fmt-btn" data-tip="tidy the indentation">indent</button>
+      </div>
+    </div>
+    <div class="pipeline" id="pipeline"></div>
+  </div>
+
+  <div class="preview">
+    <div class="title">
+      s<span class="wm">&lt;</span>av<span class="wm">&gt;</span>
+      <span class="wm">{</span> compiler <span class="wm">}</span>
+    </div>
+    <div class="target-toggle" id="target-toggle"> <!-- mode lives here now - wordmark stays static -->
+      <button class="tgt active" data-target="node">node</button>
+      <button class="tgt" data-target="component">component</button>
+    </div>
+    <div class="node-preview-wrap preview-frame node-only">
+      <div class="preview-pair">
+        <div class="preview-node closed" id="p-closed">
+          <div class="pl-icon" id="p-icon-closed">◆</div>
+          <div class="pl-caret">›</div>
+        </div>
+        <div class="preview-node open" id="p-open">
+          <div class="pl-icon" id="p-icon-open">◆</div>
+          <input class="pl-input" id="p-input" aria-label="node value" value="">
+          <div class="pl-caret">›</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rig node-only">
+      <div class="rig-line"><input type="text" id="r-in" placeholder="send" spellcheck="false"><button class="send" id="r-send" data-tip="feed a value to the node"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M2 8h9m-3.5-4L12 8l-4.5 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+      <div class="out"><span class="lbl">value:</span> <span id="r-val">-</span></div>
+      <div class="emit-history" id="r-emits">
+        <div class="empty" id="r-empty">no emissions yet — call emit(v)</div>
+        <div class="emit-list" id="r-emit-list"></div>
+      </div>
+    </div>
+
+    <!-- comp preview: one live instance that morphs in place as you edit, keeping data -->
+    <div class="comp-preview comp-only">
+      <div class="cp-stage preview-frame" id="cp-stage"></div>
+      <div class="cp-rig">
+        <div class="rig-line"><input type="text" id="cr-in" placeholder="send to a receiving slot" spellcheck="false"><button class="send" id="cr-send" data-tip="feed a value to a receiving slot"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M2 8h9m-3.5-4L12 8l-4.5 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+        <div class="emit-history" id="cr-emits">
+          <div class="empty" id="cr-empty">no emissions yet — call emit(v)</div>
+          <div class="emit-list" id="cr-emit-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stored-section" id="stored-section">
+      <div class="stored-header" id="stored-header"></div>
+      <div class="stored-list" id="stored-list"></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="send" id="save-btn" data-tip="keep a copy in this browser">save</button>
+      <button id="export" data-tip="download the .scv file">export .scv</button>
+      <button class="import-btn" id="import-btn" data-tip="load a .scv back in to edit">import .scv</button>
+    </div>
+  </div>
+
+  <div class="drop-overlay" id="drop-overlay">
+    <div class="drop-msg">drop .scv file here<small>to import a saved node definition</small></div>
+  </div>
+
+  <input type="file" id="file-picker" accept=".scv,.html" style="display:none">
+
+<script>
+
+const $ = id => document.getElementById(id);
+const DEFAULT_ICON = '◆', DEFAULT_COLOR = '#8ab6bb'; // fallbacks for node's icon/color inputs
+const logRuntimeError = msg => pushEntry('error', `error: ${msg}`); // runtime errors = emit history - compile = status bar
+
+let _buildCount = 0, _errorLine = -1; // editor state - last successful build count + gutter line of failed compile (-1 = none)
+let target = 'node'; // authoring target: 'node' or 'component'
+
+// SYNTAX HIGHLIGHTING - token type > css class (txt/ws carry none, emitted as bare escaped text)
+
+const HL_CLASS = { com: 'hl-com', str: 'hl-str', kw: 'hl-kw', num: 'hl-num', method: 'hl-method', ctx: 'hl-ctx', brace: 'hl-brace' };
+const KEYWORDS = ['function', 'return', 'let', 'const', 'var', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break',
+  'continue', 'new', 'delete', 'typeof', 'instanceof', 'true', 'false', 'null', 'undefined', 'this', 'try', 'catch', 'finally',
+  'throw', 'import', 'export', 'from', 'class', 'extends'];
+
+function highlightCode(src, inComment, inTemplate) { // per line - carries open /* block */ + open ` template across lines
+  const tok = [];
+  const done = (ic, it) => ({
+    html: tok.map(t => {
+      const cls = HL_CLASS[t.t];
+      return cls ? `<span class="${cls}">${escHtml(t.v)}</span>` : escHtml(t.v);
+    }).join(''),
+    inComment: ic,
+    inTemplate: !!it,
+  });
+  const findQuoteEnd = (s, q, from) => { // scan for closing quote, skipping \-escaped
+    for (let j = from; j < s.length; j++) {
+      if (s[j] === '\\') { j++; continue; }
+      if (s[j] === q) return j;
+    }
+    return -1;
+  };
+  let i = 0;
+  if (inTemplate) { // continue open ` template from previous line - only ` spans lines
+    const end = findQuoteEnd(src, '`', 0);
+    if (end === -1) { tok.push({ t: 'str', v: src }); return done(false, true); }
+    tok.push({ t: 'str', v: src.slice(0, end + 1) });
+    i = end + 1;
+  }
+  if (inComment) { // continue unterminated block comment from previous line
+    const end = src.indexOf('*/', i);
+    if (end === -1) { tok.push({ t: 'com', v: src.slice(i) }); return done(true, false); }
+    tok.push({ t: 'com', v: src.slice(i, end + 2) });
+    i = end + 2;
+  }
+  while (i < src.length) { // block comment
+    if (src[i] === '/' && src[i + 1] === '*') {
+      const end = src.indexOf('*/', i + 2);
+      if (end === -1) { tok.push({ t: 'com', v: src.slice(i) }); return done(true, false); }
+      tok.push({ t: 'com', v: src.slice(i, end + 2) });
+      i = end + 2;
+      continue;
+    }
+    if (src[i] === '/' && src[i + 1] === '/') { // line comment
+      const end = src.indexOf('\n', i);
+      const text = src.slice(i, end === -1 ? src.length : end);
+      tok.push({ t: 'com', v: text });
+      i += text.length;
+      continue;
+    }
+    if (src[i] === '`' || src[i] === '"' || src[i] === "'") { // string or template literal - scan to matching quote, escape-aware
+      const q = src[i];
+      const end = findQuoteEnd(src, q, i + 1);
+      if (end === -1) {
+        tok.push({ t: 'str', v: src.slice(i) });
+        if (q === '`') return done(false, true); // unterminated ` - rest of lines are string content until it closes
+        break; // unterminated "/' has no cross-line meaning in valid js - same as before, just stop here
+      }
+      tok.push({ t: 'str', v: src.slice(i, end + 1) });
+      i = end + 1;
+      continue;
+    }
+    if (/[0-9]/.test(src[i]) && (i === 0 || !/[$\w]/.test(src[i - 1]))) { // number - +/- only continue scan after e/E (exponent sign, not following operator)
+      let end = i + 1;
+      while (end < src.length && (/[0-9.eE]/.test(src[end]) || /[eE]/.test(src[end - 1]) && /[+\-]/.test(src[end]))) end++;
+      const word = src.slice(i, end);
+      if (!isNaN(Number(word))) { tok.push({ t: 'num', v: word }); i = end; continue; }
+    }
+    if (/[$\w]/.test(src[i])) { // word
+      let end = i + 1;
+      while (end < src.length && /[$\w]/.test(src[end])) end++;
+      const word = src.slice(i, end);
+      if (KEYWORDS.includes(word)) { tok.push({ t: 'kw', v: word }); }
+      else if (['init','onReceive','teardown'].includes(word) && (end >= src.length || src[end] === '(')) {
+        tok.push({ t: 'method', v: word });
+      }
+      else if (word === 'ctx' && (end < src.length && src[end] === '.')) {
+        tok.push({ t: 'ctx', v: 'ctx' });
+      }
+      else { tok.push({ t: 'txt', v: word }); }
+      i = end;
+      continue;
+    }
+    // ctx.emit, ctx.value, ctx.el, ctx.input
+    if (src[i] === '.' && i > 0 && tok.length > 0 && tok[tok.length - 1].v === 'ctx' && tok[tok.length - 1].t === 'ctx') {
+      let end = i + 1;
+      while (end < src.length && /[a-zA-Z]/.test(src[end])) end++;
+      const prop = src.slice(i, end);
+      tok.push({ t: 'ctx', v: prop });
+      i = end;
+      continue;
+    }
+    if ('{}()'.includes(src[i])) { // braces
+      tok.push({ t: 'brace', v: src[i] }); i++;
+      continue;
+    }
+    if (/[\s]/.test(src[i])) { // whitespace
+      let end = i + 1;
+      while (end < src.length && /[\s]/.test(src[end])) end++;
+      tok.push({ t: 'ws', v: src.slice(i, end) }); i = end;
+      continue;
+    }
+    tok.push({ t: 'txt', v: src[i] }); i++;
+  }
+  return done(false);
+}
+
+function escHtml(s) { // user controlled markup values go through here - quotes stay literal (values land in element, never attributes)
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// highlighter: html + css + js in one, lang switches at style/script, block state carried across lines
+
+function newCompState() { return { lang: 'html', htmlC: false, cssC: false, cssIn: false, jsC: false, jsT: false }; }
+const _cs = (cls, v) => `<span class="${cls}">${escHtml(v)}</span>`; // one highlighted span
+
+function _hlTag(tag) { // one <...> tag - name, attrs, quoted values, angle braces
+  const m = tag.match(/^(<\/?)([\w-]+)([\s\S]*)$/);
+  if (!m) return escHtml(tag);
+  let out = _cs('hl-punc', m[1]) + _cs('hl-tag', m[2]);
+  const re = /([\w:-]+)\s*=\s*("[^"]*"|'[^']*')|(\/?>)|([\s\S])/g;
+  for (let t; (t = re.exec(m[3]));) {
+    if (t[1] !== undefined) out += _cs('hl-attr', t[1]) + '=' + _cs('hl-val', t[2]);
+    else if (t[3]) out += _cs('hl-punc', t[3]);
+    else out += escHtml(t[4]);
+  }
+  return out;
+}
+
+function _hlCss(seg, st) { // css segment - selectors (kw), properties (method), values, numbers, strings, /* */ carried
+  let out = '', s = seg, i = 0;
+  while (i < s.length) {
+    if (st.cssC) { const e = s.indexOf('*/', i); const to = e === -1 ? s.length : e + 2; out += _cs('hl-com', s.slice(i, to)); st.cssC = e === -1; i = to; continue; }
+    if (s[i] === '/' && s[i + 1] === '*') { const e = s.indexOf('*/', i + 2); const to = e === -1 ? s.length : e + 2; out += _cs('hl-com', s.slice(i, to)); st.cssC = e === -1; i = to; continue; }
+    if (/\s/.test(s[i])) { let e = i + 1; while (e < s.length && /\s/.test(s[e])) e++; out += escHtml(s.slice(i, e)); i = e; continue; }
+    if (s[i] === '{') { out += _cs('hl-punc', '{'); st.cssIn = true; i++; continue; }
+    if (s[i] === '}') { out += _cs('hl-punc', '}'); st.cssIn = false; i++; continue; }
+    if (s[i] === '"' || s[i] === "'") { const q = s[i]; let e = i + 1; while (e < s.length && s[e] !== q) e++; e = Math.min(e + 1, s.length); out += _cs('hl-val', s.slice(i, e)); i = e; continue; }
+    if (!st.cssIn) { let e = i; while (e < s.length && !/[\s{]/.test(s[e])) e++; out += _cs('hl-tag', s.slice(i, e)); i = e; continue; } // selector
+    if (/[#0-9]/.test(s[i])) { let e = i + 1; while (e < s.length && /[\w.%#-]/.test(s[e])) e++; out += _cs('hl-val', s.slice(i, e)); i = e; continue; }
+    if (/[\w-]/.test(s[i])) { let e = i + 1; while (e < s.length && /[\w-]/.test(s[e])) e++; const w = s.slice(i, e); let j = e; while (j < s.length && /\s/.test(s[j])) j++; out += s[j] === ':' ? _cs('hl-attr', w) : escHtml(w); i = e; continue; }
+    out += escHtml(s[i]); i++;
+  }
+  return out;
+}
+
+function highlightComponentLine(line, st) { // one line - drives html/css/js by st.lang reusing highlightCode inside <script>
+  let out = '', rest = line;
+  while (rest.length) {
+    if (st.htmlC) { const e = rest.indexOf('-->'); const to = e === -1 ? rest.length : e + 3; out += _cs('hl-com', rest.slice(0, to)); st.htmlC = e === -1; rest = rest.slice(to); continue; }
+    if (st.lang === 'js') {
+      const m = rest.match(/<\/script\s*>/i), seg = m ? rest.slice(0, m.index) : rest;
+      if (seg) { const r = highlightCode(seg, st.jsC, st.jsT); st.jsC = r.inComment; st.jsT = r.inTemplate; out += r.html; }
+      if (m) { st.lang = 'html'; st.jsC = st.jsT = false; rest = rest.slice(m.index); } else rest = '';
+      continue;
+    }
+    if (st.lang === 'css') {
+      const m = rest.match(/<\/style\s*>/i), seg = m ? rest.slice(0, m.index) : rest;
+      out += _hlCss(seg, st);
+      if (m) { st.lang = 'html'; st.cssC = st.cssIn = false; rest = rest.slice(m.index); } else rest = '';
+      continue;
+    }
+    if (rest.startsWith('<!--')) { const e = rest.indexOf('-->'); const to = e === -1 ? rest.length : e + 3; out += _cs('hl-com', rest.slice(0, to)); st.htmlC = e === -1; rest = rest.slice(to); continue; }
+    if (rest[0] === '<') { const e = rest.indexOf('>'), to = e === -1 ? rest.length : e + 1, tag = rest.slice(0, to); out += _hlTag(tag); const om = tag.match(/^<(style|script)\b/i); if (om && e !== -1) st.lang = om[1].toLowerCase() === 'style' ? 'css' : 'js'; rest = rest.slice(to); continue; }
+    const nx = rest.indexOf('<'), txt = nx === -1 ? rest : rest.slice(0, nx); out += escHtml(txt); rest = nx === -1 ? '' : rest.slice(nx);
+  }
+  return { html: out, st };
+}
+
+function findSyntaxErrorLine(code) { // called after compile fails, points gutter at line to catch common mistakes, best effort
+  const opens = { '{': '}', '[': ']', '(': ')' };
+  const closes = { '}': '{', ']': '[', ')': '(' };
+  let i = 0, lineNo = 0, depth = [], lastSig = '';
+  // '/' starts regex (not division) when previous significant token can't be value
+  const regexPos = () => lastSig === '' || '([{,;:=!&|?+-*%^~<>'.includes(lastSig)
+    || /\b(return|typeof|throw|await|yield|case|instanceof|in|of|void|delete|do|else|new)\s*$/
+          .test(code.slice(Math.max(0, i - 16), i));
+  const skipTrivia = j => { // from index j, skip whitespace + comments and return next code index
+    while (j < code.length) {
+      if (/\s/.test(code[j])) { j++; continue; }
+      if (code[j] === '/' && code[j + 1] === '/') { const nl = code.indexOf('\n', j); j = nl === -1 ? code.length : nl; continue; }
+      if (code[j] === '/' && code[j + 1] === '*') {
+        const e = code.indexOf('*/', j + 2); j = e === -1 ? code.length : e + 2; continue;
+      }
+      break;
+    }
+    return j;
+  };
+  while (i < code.length) {
+    const c = code[i];
+    if (c === '\n') { lineNo++; i++; continue; }
+    if (/\s/.test(c)) { i++; continue; }
+    if (c === '/' && code[i + 1] === '*') { // block comment
+      const end = code.indexOf('*/', i + 2);
+      if (end === -1) return lineNo;
+      for (let j = i; j < end + 2; j++) if (code[j] === '\n') lineNo++;
+      i = end + 2; continue;
+    }
+    if (c === '/' && code[i + 1] === '/') { // line comment
+      const nl = code.indexOf('\n', i); i = nl === -1 ? code.length : nl; continue;
+    }
+    if (c === '/' && regexPos()) { // regex literal - skip it whole so [ { ( don't miscount
+      i++; let inClass = false;
+      while (i < code.length) {
+        const d = code[i];
+        if (d === '\\') { i += 2; continue; }
+        if (d === '\n') return lineNo; // unterminated regex
+        if (d === '[') inClass = true;
+        else if (d === ']') inClass = false;
+        else if (d === '/' && !inClass) { i++; break; }
+        i++;
+      }
+      lastSig = '/'; continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { // string / template
+      i++;
+      while (i < code.length && code[i] !== c) {
+        if (code[i] === '\\') { i += 2; continue; }
+        if (code[i] === '\n') { if (c !== '`') return lineNo; lineNo++; }
+        i++;
+      }
+      if (i >= code.length) return lineNo; // unterminated
+      i++; lastSig = c; continue;
+    }
+    if (opens[c]) { depth.push({ c: c, l: lineNo }); i++; lastSig = c; continue; }
+    if (closes[c]) {
+      if (!depth.length || depth[depth.length - 1].c !== closes[c]) return lineNo;
+      depth.pop(); i++; lastSig = c;
+      if (depth.length === 0) { // depth-0 only - bare id after close means missing comma, but valid js deeper
+        const j = skipTrivia(i);
+        if (j < code.length && /[A-Za-z_$]/.test(code[j])) {
+          let ln = lineNo;
+          for (let k = i; k < j; k++) if (code[k] === '\n') ln++;
+          return ln;
+        }
+      }
+      continue;
+    }
+    lastSig = c; i++;
+  }
+  return depth.length ? depth[depth.length - 1].l : -1;
+}
+
+function updateErrorLine() { // gutter render of error line - clears stale .gutter-err and re-applies current line
+  gutter.querySelectorAll('.gutter-err').forEach(el => el.classList.remove('gutter-err'));
+  if (_errorLine >= 0 && _errorLine < gutter.children.length) gutter.children[_errorLine].classList.add('gutter-err');
+}
+
+// CODE EDITOR
+
+const fields    = { name: $('f-name'), icon: $('f-icon'), color: $('f-color'), code: $('f-code') }; // node authoring inputs
+const NODE_SEED = fields.code.value; // default node body, restored when switching back from component target
+const gutter    = $('code-gutter'); // line-number column scroll synced to textarea
+const codeLines = $('code-lines');  // n lines label under code area
+const syntaxEl  = $('code-syntax'); // syntax highlighted overlay layered over textarea
+const LINE_H    = 21;               // pixel height of one editor line - positions overlay rows
+
+function updateEditor() { // rebuild gutter numbers + line-count label from current code value
+  const text = fields.code.value;
+  const count = Math.max(1, text.split('\n').length);
+  gutter.innerHTML = Array.from({ length: count }, (_, i) =>
+    `<span>${String(i + 1).padStart(2, '0')}</span>`
+  ).join('');
+  codeLines.textContent = `${count} line${count !== 1 ? 's' : ''}`;
+}
+
+function renderSyntax() { // re-render highlighted overlay - one absolutely positioned row per line
+  const lines = fields.code.value.split('\n');
+  const inner = document.createElement('div');
+  inner.className = 'syntax-inner';
+  inner.style.cssText = 'position:relative;height:' + (lines.length * LINE_H + 16) + 'px';
+  const comp = target === 'component';
+  const cst = comp ? newCompState() : null; // component carries html/css/js lang + block state; node carries js comment/template
+  let inComment = false, inTemplate = false;
+  inner.innerHTML = lines.map((line, i) => {
+    let html;
+    if (comp) { html = highlightComponentLine(line, cst).html; }
+    else { const r = highlightCode(line || ' ', inComment, inTemplate); inComment = r.inComment; inTemplate = r.inTemplate; html = r.html; } // comments and open ` template literals carried across lines
+    const style = `position:absolute;top:${i * LINE_H}px;left:0;right:0;height:${LINE_H}px;white-space:pre`;
+    return `<div class="syntax-line" style="${style}">${html}</div>`;
+  }).join('');
+  syntaxEl.innerHTML = '';
+  syntaxEl.appendChild(inner);
+  inner.style.transform = `translate(-${fields.code.scrollLeft}px,-${fields.code.scrollTop}px)`; // rebuild drops scroll transform - reapply it
+}
+
+function syncEditorScroll() { // keep gutter + overlay aligned with textarea scroll - both axes
+  const ta = fields.code;
+  gutter.scrollTop = ta.scrollTop;
+  const inner = syntaxEl.querySelector('.syntax-inner');
+  if (inner) inner.style.transform = `translate(-${ta.scrollLeft}px,-${ta.scrollTop}px)`;
+}
+
+function refreshEditor() { // both editor views together - call after any code-value change
+  updateEditor();
+  renderSyntax();
+}
+
+function flushPendingRecompile() { // an action needing current source (view/export) must not run on stale, pre-edit compile
+  if (!_recompileTimer && !_metaTimer) return;
+  clearTimeout(_recompileTimer); clearTimeout(_metaTimer);
+  _recompileTimer = _metaTimer = null;
+  recompile();
+}
+
+let _recompileTimer = null; // debounce handle
+fields.code.addEventListener('input', () => { // refresh + autosave + debounced recompile
+  refreshEditor();
+  autoSaveWip();
+  clearTimeout(_recompileTimer);
+  _recompileTimer = setTimeout(recompile, 300);
+});
+
+fields.code.addEventListener('scroll', syncEditorScroll);
+
+fields.code.addEventListener('keydown', function (e) { // tab = indent/outdent selection, enter = new line carrying indent
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const start = this.selectionStart;
+    const end = this.selectionEnd;
+    const val = this.value;
+    const multi = val.slice(start, end).includes('\n');
+    if (multi) { // indent/outdent every line in selection - keep selection
+      const lineStart = val.lastIndexOf('\n', start - 1) + 1;
+      const lineEnd = val.indexOf('\n', end);
+      const lastLineEnd = lineEnd === -1 ? val.length : lineEnd + 1;
+      const segment = val.slice(lineStart, lastLineEnd);
+      // replace via execCommand, not this.value which wipes textarea native undo stack
+      const replacement = e.shiftKey
+        ? segment.replace(/^( {1,2}|\t)/gm, '')
+        : segment.replace(/^/gm, '  ');
+      this.selectionStart = lineStart;
+      this.selectionEnd = lastLineEnd;
+      document.execCommand('insertText', false, replacement);
+      this.selectionStart = lineStart;
+      this.selectionEnd = lineStart + replacement.length;
+    } else if (e.shiftKey) { // outdent current line
+      const lineStart = val.lastIndexOf('\n', start - 1) + 1;
+      const m = val.slice(lineStart).match(/^( {1,2}|\t)/);
+      if (m) {
+        this.selectionStart = lineStart;
+        this.selectionEnd = lineStart + m[0].length;
+        document.execCommand('delete');
+        this.selectionStart = this.selectionEnd = Math.max(lineStart, start - m[0].length);
+      }
+    } else {
+      document.execCommand('insertText', false, '  ');
+    }
+  } else if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    // carry current line's leading whitespace to new line
+    const before = this.value.slice(0, this.selectionStart);
+    const indent = (before.slice(before.lastIndexOf('\n') + 1).match(/^[ \t]*/) || [''])[0];
+    document.execCommand('insertText', false, `\n${indent}`);
+  }
+});
+
+fields.code.addEventListener('paste', e => { // paste as plain text via execCommand - preserves native undo stack
+  e.preventDefault();
+  const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+  document.execCommand('insertText', false, text);
+});
+
+// FORMAT / INDENT NORMALIZATION
+
+$('fmt-btn').addEventListener('click', () => { // indent button - drop trailing ws, dedent to common base, snap to two space levels
+  const el = fields.code;
+  const lines = el.value.split('\n');
+  const stripped = lines.map(l => l.replace(/\s+$/, ''));
+  const indents = stripped.filter(l => l.trim().length > 0).map(l => (l.match(/^(\s*)/) || ['',''])[1].length);
+  const base = indents.length > 0 ? Math.min(...indents) : 0;
+  const normed = stripped.map(l => {
+    const content = l.slice(base);
+    const curIndent = (l.match(/^(\s*)/) || ['',''])[1];
+    const level = Math.round((curIndent.length - base) / 2);
+    return (level > 0 ? '  '.repeat(level) : '') + content.trimStart();
+  });
+  const formatted = normed.join('\n');
+  if (formatted !== el.value) { // replace via execCommand, not el.value, so it doesn't wipe textarea's native undo stack
+    el.focus(); // button click just took focus - execCommand needs it back on textarea to apply
+    el.selectionStart = 0; el.selectionEnd = el.value.length;
+    document.execCommand('insertText', false, formatted);
+  }
+  refreshEditor();
+  autoSaveWip();
+  recompile();
+});
+
+// NODE CONTRACT
+
+let instance    = null; // running node { def, ctx, state } from last successful build (set in recompile, read by send/makeCtx)
+let _lastCompile = null; // most recent compile() result - renderSource/emit reuse this instead of re-compiling independently
+let emitHistory = [];   // emit panel entries { type, val } appended by pushEntry, cleared on every rebuild
+
+const nodeConsole = new Proxy(console, { // capturing console injected into node code so .log/warn/error surface in emit panel
+  get: (target, prop) => {
+    if (prop === 'log' || prop === 'warn' || prop === 'error') {
+      return (...args) => {
+        target[prop](...args);
+        pushEntry(prop, args.map(fmtVal).join(' '));
+      };
+    }
+    const v = target[prop];
+    return typeof v === 'function' ? v.bind(target) : v;
+  }
+});
+
+// COMPILER
+
+function compile() { // compose node source, parse it, then build it - returns staged result
+  const src = `defineNode({\n  name: ${JSON.stringify(fields.name.value.trim() || 'node')},\n`
+    + `  icon: ${JSON.stringify(fields.icon.value || DEFAULT_ICON)},\n`
+    + `  color: ${JSON.stringify(fields.color.value)},\n  ${fields.code.value}\n});`;
+  let def = null, stage = 'parse';
+  try {
+    const defineNode = d => { def = d; };
+    const fn = new Function('defineNode', 'console', src); // parse
+    stage = 'build';
+    fn(defineNode, nodeConsole); // build (captures def)
+    if (!def || typeof def !== 'object') throw new Error('defineNode was not called');
+    if (def.name === '__proto__' || /["\]]/.test(def.name || '')) throw new Error('node name "' + def.name + '" is unsafe'); // __proto__ retargets patchbay type table, " and ] break re-point selector
+    // non-fatal diagnostics - artifact still emits, we just flag it
+    const warnings = [];
+    if (!def.init && !def.onReceive) warnings.push('no init or onReceive - node does nothing');
+    if (def.onMode && !(Array.isArray(def.modes) && def.modes.length)) warnings.push('onMode but no modes - it will never fire');
+    const html = scvHtml(def, src); // emitted artifact - measured + reused
+    return { ok: true, def, src, warnings, html, size: new TextEncoder().encode(html).length };
+  } catch (e) {
+    const ln = stage === 'parse' ? findSyntaxErrorLine(fields.code.value) : -1; // gutter only marks parse stage - build errors like throwing def getters are runtime, not syntax
+    return { ok: false, stage, error: e.message, errorLine: ln, src };
+  }
+}
+
+// STATUS BAR
+
+function stageSpan(text, cls) { return `<span class="st ${cls}">${escHtml(text)}</span>`; } // one status pill - escaped text + css class
+
+function fmtBytes(n) { return n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`; } // byte count for ready line
+
+const PIPE_SEP = '<span class="sep">|</span>'; // pill divider
+
+function setStatus(res) { // render compile result - ok chain or stage-specific error
+  const bar = $('pipeline');
+  if (res.ok) {
+    const ready = 'ready to export (' + fmtBytes(res.size) + ')';
+    let html = stageSpan('parsed ✓', 'ok') + PIPE_SEP + stageSpan('built #' + _buildCount + ' ✓', 'ok')
+      + PIPE_SEP + stageSpan(ready, 'ready');
+    if (res.warnings && res.warnings.length) html += PIPE_SEP + stageSpan('⚠ ' + res.warnings.join('; '), 'warn');
+    bar.innerHTML = html;
+  } else if (res.stage === 'parse') { // same line that gutter marks (1-indexed to match line numbers) or none
+    const loc = res.errorLine >= 0 ? ' (line ' + (res.errorLine + 1) + ')' : '';
+    bar.innerHTML = stageSpan('parse error' + loc + ': ' + res.error, 'err');
+  } else {
+    bar.innerHTML = stageSpan('parsed ✓', 'ok') + PIPE_SEP + stageSpan('build failed: ' + res.error, 'err');
+  }
+}
+
+function setStatusError(msg) { // failure pill - shared by .scv import, file-read, and save errors
+  $('pipeline').innerHTML = stageSpan(msg, 'err');
+}
+
+// RUNTIME CONTEXT
+
+function makeCtx(state, def) { // ctx object handed to compiled node code - runtime api
+  return {
+    el: $('p-open'), input: $('p-input'),
+    get mode() { return (def && def.modes && def.modes.length) ? def.modes[state.modeIdx || 0].id : undefined; },
+    get value() { return state.value; },
+    // read back through input, same toString() real <input>.value assignment does - kernel's ctx.value backed by input.value, can never hold anything but string
+    set value(v) { $('p-input').value = v; state.value = $('p-input').value; $('r-val').textContent = state.value; },
+    emit(v) {
+      $('r-val').textContent = fmtVal(v);
+      pushEntry('emit', fmtVal(v));
+    },
+    append(el, x = 0, y = 0) { // wrap in fixed box with drag handle
+      const wrap = document.createElement('div');
+      wrap.className = 'append-wrap';
+      wrap.style.cssText = 'position: fixed; z-index: 9999; display: inline-block;';
+      const handle = document.createElement('div');
+      handle.textContent = '+';
+      handle.style.cssText = 'position: absolute; top: -9px; left: -9px; width: 18px; height: 18px; '
+        + 'border-radius: 50%; background: var(--output); color: var(--background-sunk); display: flex; '
+        + 'align-items: center; justify-content: center; font-size: 14px; line-height: 1; '
+        + 'cursor: move; user-select: none;';
+      handle.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        const ox = e.clientX - (parseFloat(wrap.style.left) || 0);
+        const oy = e.clientY - (parseFloat(wrap.style.top) || 0);
+        handle.setPointerCapture(e.pointerId);
+        const move = ev => { wrap.style.left = (ev.clientX - ox) + 'px'; wrap.style.top = (ev.clientY - oy) + 'px'; };
+        // hijacked gesture (alt-tab, lost capture) fires pointercancel not pointerup - else box follows forever
+        const end = () => {
+          handle.removeEventListener('pointermove', move);
+          ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => handle.removeEventListener(t, end));
+        };
+        handle.addEventListener('pointermove', move);
+        ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => handle.addEventListener(t, end));
+      });
+      wrap.appendChild(handle);
+      wrap.appendChild(el);
+      document.body.appendChild(wrap);
+      // centred over code area - rig has no canvas for x/y, centered + handle-movable is intended
+      const area = document.getElementById('code-editor').getBoundingClientRect();
+      const box = wrap.getBoundingClientRect();
+      wrap.style.left = Math.round(area.left + area.width / 2 - box.width / 2) + 'px';
+      wrap.style.top = Math.round(area.top + area.height / 2 - box.height / 2) + 'px';
+      (state._appended || (state._appended = [])).push(wrap); // recompile cleans up wrapper
+      return wrap; // kernel returns wrapper (comp-wrapper) not bare child - node code restyling its append() result needs it
+    },
+    get id() { return 'compiler-node'; }, // no real spawned instance to have identity - stays placeholder, unlike type/x/y this is inherent to rig, not bug
+    get type() { return def?.name || 'custom'; }, // real spawned custom node's ctx.type is own def.name (dataset.type set at spawn), never literal string 'custom'
+    get x() { return state.posX || 0; },
+    get y() { return state.posY || 0; },
+    setPosition(x, y) { state.posX = x; state.posY = y; }, // was silent no-op - now round-trips, so position-tracking node code works even though rig has no real canvas
+    remove(el) { (el.closest('.append-wrap') || el).remove(); },
+    showFloat(v) { pushEntry('emit', fmtVal(v)); },
+    flashError(label, err) { console.warn(label, err); pushEntry('error', `${label}: ${err?.message ?? err}`); },
+    get icon() { return $('p-icon-open'); }
+  };
+}
+
+// EMIT PANEL
+
+function fmtVal(v) { // format any value for panel - dom nodes as <tag>, objects as json
+  if (v && typeof v === 'object') {
+    if (v.nodeType === 1) return `<${v.tagName.toLowerCase()}>`;
+    try { return JSON.stringify(v); } catch { return String(v); }
+  }
+  return String(v);
+}
+
+function pushEntry(type, str) { emitHistory.push({ type, val: str }); if (emitHistory.length > 200) emitHistory.shift(); renderEmits(); } // one entry stream (emit, log, warn, error) capped
+
+const EMIT_TAG = { emit: 'emit', log: 'log', warn: 'warn', error: 'err' }; // tag label per entry type
+function renderEmits() { // rebuild panel from emitHistory - empty state or one row per entry, then autoscroll to bottom
+  const list = $('r-emit-list');
+  const empty = $('r-empty');
+  if (emitHistory.length === 0) {
+    list.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = emitHistory.map(e =>
+    `<div class="emit-entry ${e.type}"><span class="tag">${EMIT_TAG[e.type]}</span><span class="val">${escHtml(String(e.val))}</span></div>`
+  ).join('');
+  $('r-emits').scrollTop = $('r-emits').scrollHeight;
+}
+
+// PREVIEW (closed + open)
+
+function applyModeIcons(def, state) { // if def.modes set, icon shows current mode icon and clicking cycles
+  const modes = (Array.isArray(def.modes) && def.modes.length) ? def.modes : null;
+  const m = modes ? modes[state.modeIdx || 0] : null;
+  const col = m?.color || def.color; // per-mode color, else base
+  ['closed', 'open'].forEach(suffix => {
+    const icon = $(`p-icon-${suffix}`);
+    icon.textContent = m ? (m.icon != null ? m.icon : def.icon) : def.icon;
+    icon.style.background = col || ''; // empty (not "undefined") so colorless node falls back to css default
+    icon.title = m ? (m.label != null ? m.label : m.id) : (def.label || ''); // no active mode - fall back to def's own label (documented, was silently dropped)
+    icon.style.cursor = modes ? 'pointer' : '';
+    icon.onclick = modes ? () => {
+      state.modeIdx = ((state.modeIdx || 0) + 1) % modes.length;
+      applyModeIcons(def, state);
+      if (def.onMode && instance) { try { def.onMode(modes[state.modeIdx].id, instance.ctx); } catch (e) { logRuntimeError(`onMode: ${e.message}`); } }
+    } : null;
+  });
+  $('p-input').style.color = col || ''; // fall back to css ink color if node has no color
+}
+
+function renderPreview(def, state) { // refresh open preview
+  applyModeIcons(def, state);
+  const input = $('p-input');
+  const v = def.defaultVal != null ? def.defaultVal : '';
+  input.value = v;
+  input.placeholder = def.placeholder || ''; // documented config keys - kernel applies these on every open/re-init (patchbay.html's _setupCustom)
+  input.type = def.inputType || 'text';
+  $('p-open').style.setProperty('--node-open-width', def.openWidth ? def.openWidth + 'px' : '');
+  state.value = v; // ctx.value must read boot value - kernel seeds state from input element
+}
+
+// ─── component target (prototype) ───────────────────────────────────────
+
+const COMPONENT_SEED = `<style>
+  .card { width: 190px; padding: 14px; background: #252727; border-radius: 5px; font: 14px 'SF Mono', ui-monospace, monospace; color: #AAABAC; }
+  .card h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: #AAABAC; }
+  .card input[type=text] { width: 100%; box-sizing: border-box; background: #1A1C1C; border: 0; border-radius: 5px; color: #AAABAC; padding: 5px 6px; font: inherit; }
+  .card input[type=text]:focus { outline: none; }
+  .card label { display: flex; gap: 6px; align-items: center; color: #8AB6BB; margin-top: 8px; }
+  .card input[type=checkbox] { appearance: none; width: 14px; height: 14px; margin: 0; border: 1px solid #3A3C3C; border-radius: 3px; background: #1A1C1C; cursor: pointer; }
+  .card input[type=checkbox]:checked { background: #8AB6BB; border-color: #8AB6BB; }
+  .card button { margin-top: 10px; background: #986C98; color: #1A1C1C; border: 0; border-radius: 5px; padding: 5px 12px; cursor: pointer; font: inherit; }
+</style>
+
+<div class="card">
+  <h3 data-scv-slot="title">untitled</h3>
+  <input type="text" data-scv-slot="note" placeholder="note...">
+  <label><input type="checkbox" data-scv-slot="done"> done</label>
+  <button>clicks: <span data-scv-slot="count">0</span></button>
+</div>
+
+<script>
+  // root = shadow root; emit(v) sends value through wire
+  root.querySelector('button').addEventListener('click', () => {
+    const c = root.querySelector('[data-scv-slot=count]');
+    c.textContent = +c.textContent + 1;
+    emit(c.textContent);
+  });
+<\/script>`;
+
+const _cEmbed = t => t.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$'); // css/markup go into template literal
+const _slug = s => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); // slug, empty on no alphanumerics - callers pick fallback
+const _escScvScript = s => s.replace(/<\/script/gi, '<\\/script').replace(/<!--/g, '<\\!--'); // neuter markup that would close embedded script early
+
+function parseComponentSource(text) { // split authored inline html into css/markup/script
+  const doc = new DOMParser().parseFromString(text, 'text/html');
+  const css = [...doc.querySelectorAll('style')].map(s => s.textContent).join('\n').trim();
+  const script = [...doc.querySelectorAll('script')].map(s => s.textContent).join('\n').trim();
+  doc.querySelectorAll('style, script').forEach(n => n.remove());
+  return { css, script, markup: doc.body.innerHTML.trim() };
+}
+
+function componentDef(tag, p) { // wrap authored html/css/js into canonical scv-comp def for patchbay
+  // direct reopen hydrates shadow before upgrade - paste/clone upgrade sees baked template as child - reuse either, paint when neither, run script so listeners rebind
+  return `customElements.define('${tag}', class extends HTMLElement { constructor() { super();\n`
+    + `const _baked = !this.shadowRoot && this.querySelector('template[shadowrootmode], template.custom-shadow');\n`
+    + `if (_baked) { this.attachShadow({mode: 'open'}).innerHTML = _baked.innerHTML; _baked.remove(); }\n`
+    + `else if (!this.shadowRoot) this.attachShadow({mode: 'open'}).innerHTML = \`<style>${_cEmbed(p.css)}</style>${_cEmbed(p.markup)}\`;\n`
+    + `const root = this.shadowRoot, host = this, emit = v => this.dispatchEvent(new CustomEvent('scv-emit', { detail: v, bubbles: true, composed: true }));\n`
+    + `${p.script}\n}\nconnectedCallback() { this.setAttribute('data-scv-emitter', ''); } });`; // marks it so patchbay routes emit(v), not raw dom values
+}
+
+const _b64 = s => btoa(unescape(encodeURIComponent(s || ''))); // utf8 safe base64 for attribute roundtrip
+const _unb64 = s => { try { return decodeURIComponent(escape(atob(s))); } catch { return ''; } };
+
+function _componentFavicon(icon) { // so bookmarked .scv shows component's own mark (or bracket default)
+  let svg;
+  if (icon && /^\s*<svg[\s>]/i.test(icon)) svg = icon;
+  else if (icon) svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><text x="8" y="13" font-size="13" text-anchor="middle">${icon.replace(/[<>&"']/g, '')}</text></svg>`;
+  else svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><text x="8" y="12" font-size="11" font-family="monospace" fill="#986c98" text-anchor="middle">&lt;&gt;</text></svg>`;
+  return `<link rel="icon" href="data:image/svg+xml,${encodeURIComponent(svg)}">`;
+}
+
+function scvComponentHtml(tag, def, source, icon) { // .scv file - host + data-scv-comp def - source/icon roundtrip on re-import
+  return `<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->\n<html><head><meta charset="utf-8"><title>${tag} - scav component</title>${_componentFavicon(icon)}</head>\n<body style="margin:0;background:#1a1c1c">\n<${tag} data-scv-component></${tag}>\n<script data-scv-comp data-scv-tag="${tag}" data-scv-source="${_b64(source)}" data-scv-icon="${_b64(icon)}">\n${_escScvScript(def)}\n<\/script>\n</body></html>`;
+}
+
+function compileComponent() { // { ok, tag, parts, def, html, size } | { ok:false, error }
+  try {
+    const parts = parseComponentSource(fields.code.value);
+    if (!parts.markup) throw new Error('no markup - write some html');
+    const tag = 'scv-' + (_slug($('f-tag').value) || 'component');
+    const def = componentDef(tag, parts);
+    const html = scvComponentHtml(tag, def, fields.code.value, $('f-comp-icon').value.trim());
+    return { ok: true, tag, parts, def, html, size: new TextEncoder().encode(html).length };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+// preview: mini (right pane, scaled) + optional big (editor pane, full) - both live instances of current def, each keeps data across edits
+let _pvMini = null, _pvBig = null, _pvScript = null, _pvCount = 0, _pvTag = null;
+const _pvVal = s => s.tagName === 'IMG' ? s.getAttribute('src') : (s.type === 'checkbox' || s.type === 'radio') ? s.checked : (s.matches('input,textarea,select') ? s.value : s.innerHTML);
+const _pvSet = (s, v) => { if (s.tagName === 'IMG') s.setAttribute('src', v); else if (s.type === 'checkbox' || s.type === 'radio') s.checked = v; else if (s.matches('input,textarea,select')) s.value = v; else s.innerHTML = v; };
+const _pvSnap = el => { const d = {}; el.shadowRoot?.querySelectorAll('[data-scv-slot]').forEach(s => d[s.getAttribute('data-scv-slot')] = _pvVal(s)); return d; };
+const _pvRestore = (el, d) => el.shadowRoot?.querySelectorAll('[data-scv-slot]').forEach(s => { const k = s.getAttribute('data-scv-slot'); if (k in d) _pvSet(s, d[k]); });
+
+function _pvMorph(root, fresh) { // minimal in-place shadow diff for preview - keeps element identity so scroll/focus/data survive
+  const lc = [...root.childNodes], fc = [...fresh.childNodes];
+  for (let i = 0; i < Math.max(lc.length, fc.length); i++) {
+    const a = lc[i], b = fc[i];
+    if (!b) { if (a) a.remove(); continue; }
+    if (!a) { root.appendChild(document.importNode(b, true)); continue; }
+    if (a.nodeType !== b.nodeType || (a.nodeType === 1 && a.tagName !== b.tagName)) { root.replaceChild(document.importNode(b, true), a); continue; }
+    if (a.nodeType === 3 || a.nodeType === 8) { if (a.nodeValue !== b.nodeValue) a.nodeValue = b.nodeValue; continue; }
+    if (a.nodeType === 1) { for (const at of b.attributes) if (a.getAttribute(at.name) !== at.value) a.setAttribute(at.name, at.value); for (const at of [...a.attributes]) if (!b.hasAttribute(at.name)) a.removeAttribute(at.name); _pvMorph(a, b); }
+  }
+}
+
+function pushCompEmit(v) { // instance's emit(v) lands in rig log
+  $('cr-empty').style.display = 'none';
+  const row = document.createElement('div'); row.className = 'emit-entry emit';
+  row.innerHTML = '<span class="tag"></span><span class="val"></span>';
+  row.querySelector('.tag').textContent = 'emit'; row.querySelector('.val').textContent = String(v);
+  const list = $('cr-emit-list'); list.appendChild(row);
+  while (list.children.length > 200) list.firstChild.remove();
+  list.parentElement.scrollTop = list.parentElement.scrollHeight;
+}
+
+function _pvFit(el, host) { // scale el so any size fits host with gap to frame
+  if (!el) return;
+  el.style.transform = ''; el.style.transformOrigin = 'center'; // measure natural size unscaled
+  const cs = getComputedStyle(host);
+  const availW = host.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const availH = host.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  const r = el.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  const scale = Math.min(1, availW / r.width, availH / r.height);
+  if (scale < 1) el.style.transform = `scale(${scale})`;
+}
+window.addEventListener('resize', () => _pvFit(_pvMini, $('cp-stage')));
+
+function _pvSync(host, el, scriptChanged, res, doScale) { // morph if only markup changed, else instantiate
+  if (el && !scriptChanged) { // markup/style edit - morph in place, keep data
+    const d = _pvSnap(el); const t = document.createElement('template'); t.innerHTML = `<style>${res.parts.css}</style>${res.parts.markup}`; _pvMorph(el.shadowRoot, t.content); _pvRestore(el, d);
+  } else { // script edit or first mount - fresh element of the current tag, carry data over
+    const data = el && _pvSnap(el);
+    if (el) el.remove();
+    el = document.createElement(_pvTag); host.appendChild(el);
+    el.addEventListener('scv-emit', e => pushCompEmit(e.detail));
+    const t = document.createElement('template'); t.innerHTML = `<style>${res.parts.css}</style>${res.parts.markup}`;
+    if (el.shadowRoot) _pvMorph(el.shadowRoot, t.content); // tag baked in define-time markup - new instance after markup-only edit is stale until morphed to current
+    if (data) requestAnimationFrame(() => _pvRestore(el, data));
+  }
+  if (doScale) requestAnimationFrame(() => _pvFit(el, host)); else el.style.transform = '';
+  return el;
+}
+
+const bigPreviewOn = () => codeEditor.classList.contains('show-preview');
+
+function renderComponentPreview(res) {
+  const scriptChanged = res.parts.script !== _pvScript;
+  if (scriptChanged || !_pvTag) { // new element class only if behaviour changes - tag can't be redefined
+    _pvTag = 'scv-pv-' + (++_pvCount);
+    document.querySelectorAll('script[data-pv]').forEach(s => s.remove()); // prune spent preview defs - element stays registered, script node needn't linger
+    try { const s = document.createElement('script'); s.dataset.pv = ''; s.textContent = componentDef(_pvTag, res.parts); document.body.appendChild(s); } catch { return; }
+  }
+  _pvMini = _pvSync($('cp-stage'), _pvMini, scriptChanged, res, true);
+  if (bigPreviewOn()) _pvBig = _pvSync($('big-preview'), _pvBig, scriptChanged, res, false);
+  _pvScript = res.parts.script;
+}
+
+function renderBigPreview() { // called when big view opens - mount full-size instance from last good compile
+  if (!_lastCompile || !_lastCompile.ok || target !== 'component') return;
+  _pvBig = _pvSync($('big-preview'), _pvBig, false, _lastCompile, false);
+}
+
+function closeBigPreview() { if (_pvBig) { _pvBig.remove(); _pvBig = null; } }
+
+function recompileComponent() {
+  const res = compileComponent();
+  _lastCompile = res;
+  if (!res.ok) { setStatusError('component error: ' + res.error); return; }
+  _buildCount++;
+  setStatus({ ok: true, size: res.size, warnings: [] });
+  renderComponentPreview(res);
+}
+
+function setTarget(t) { // swap whole surface between node and component
+  if (t === target) return;
+  target = t;
+  document.body.classList.toggle('mode-component', t === 'component');
+  document.body.classList.toggle('mode-node', t === 'node');
+  document.querySelectorAll('#target-toggle .tgt').forEach(b => b.classList.toggle('active', b.dataset.target === t));
+  fields.code.value = t === 'component' ? COMPONENT_SEED : NODE_SEED;
+  if (currentView() === 'preview') setEditorView('code'); // preview is component-only - drop it; help/source persist across the switch
+  closeBigPreview();
+  _pvMini = null; _pvScript = null; _pvTag = null;
+  $('cp-stage').innerHTML = '';
+  $('big-preview').innerHTML = ''; $('cr-emit-list').innerHTML = ''; $('cr-empty').style.display = '';
+  refreshEditor();
+  recompile();
+  renderStoredNodes(); // saved list mode-scoped - swap it with mode
+  requestAnimationFrame(fitSwatches); // node row reappears - re-fit chips
+}
+
+document.body.classList.add('mode-node'); // default target
+document.getElementById('target-toggle').addEventListener('click', e => { const b = e.target.closest('.tgt'); if (b) setTarget(b.dataset.target); });
+document.addEventListener('keydown', e => { // tab flips target - except when typing
+  if (e.key !== 'Tab' || e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.target.matches('textarea, input, select, [contenteditable]')) return;
+  e.preventDefault(); setTarget(target === 'node' ? 'component' : 'node');
+});
+document.getElementById('cr-send')?.addEventListener('click', () => { // send value into mini's first receiving slot (wire in)
+  const v = document.getElementById('cr-in').value; const el = _pvMini;
+  const recv = el?.shadowRoot?.querySelector('[data-scv-receives], [data-scv-slot]'); if (recv) _pvSet(recv, v);
+});
+
+function recompile() { // recompile on every edit (debounced) - failed compile is non destructive
+  if (target === 'component') return recompileComponent();
+  _errorLine = -1;
+  updateErrorLine();
+  const res = compile();
+  _lastCompile = res;
+  if (res.ok) _buildCount++; // count successful builds only
+  if (!res.ok && res.errorLine >= 0) _errorLine = res.errorLine;
+  setStatus(res);
+  updateErrorLine();
+  if (!res.ok) return;
+  if (instance) { // compile succeeded, swap to fresh instance
+    if (instance.def.teardown) { try { instance.def.teardown(instance.ctx); } catch {} }
+    // remove anything old node appended, so recompiles don't pile them up
+    if (instance.state._appended) instance.state._appended.forEach(el => { try { el.remove(); } catch {} });
+  }
+  const def = res.def;
+  const modeCount = Array.isArray(def.modes) ? def.modes.length : 0;
+  const prevModeIdx = instance ? instance.state.modeIdx : 0;
+  const state = { value: undefined, modeIdx: modeCount ? Math.min(prevModeIdx, modeCount - 1) : 0 }; // mode survives recompile, as it does in real kernel - clamped in case edit shrank modes list
+  const ctx = makeCtx(state, def);
+  instance = { def, ctx, state };
+  renderPreview(def, state);
+  emitHistory = [];
+  renderEmits();
+  $('r-val').textContent = '-';
+  if (def.init) {
+    try { def.init(ctx); }
+    catch (e) {
+      logRuntimeError(e.message); // init runtime errors belong in emit history
+      if (state._appended) state._appended.forEach(el => { try { el.remove(); } catch {} }); // don't strand an appended el until next successful recompile
+    }
+  }
+}
+
+function send() { // push test input into running node - numeric looking coerces to number, else stays string
+  if (!instance || !instance.def.onReceive) return;
+  const raw = $('r-in').value;
+  const v = raw !== '' && !isNaN(Number(raw)) ? Number(raw) : raw;
+  try { instance.def.onReceive(v, instance.ctx); }
+  catch (e) { logRuntimeError(e.message); }
+}
+
+// EMIT ARTIFACT
+
+function scvHtml(def, src) { // .scv is self contained html file embedding compiled node source
+  const { name, icon, color } = def;
+  const safeName = escHtml(name), safeIcon = escHtml(icon);
+  return `<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>${safeName} - scav node</title>
+<style>
+body { margin:0; height:100vh; display:flex; align-items:center; justify-content:center; background:#1a1c1c; font-family:'SF Mono','Consolas','Menlo','DejaVu Sans Mono',monospace; color:#aaabac; }
+.n { display:flex; flex-direction:column; align-items:center; gap:12px; }
+.i { width:48px; height:48px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:22px; background:${color}; color:#1a1c1c; }
+.m { font-size:10px; opacity:0.5; }
+</style>
+</head>
+<body>
+<div class="n"><div class="i">${safeIcon}</div><div>${safeName}</div><div class="m">scavenger node - drop into a patchbay</div></div>
+<script data-scv-node>
+typeof defineNode === 'function' && ${_escScvScript(src)}
+<\/script>
+</body>
+</html>`;
+}
+
+// SOURCE-VIEW HIGHLIGHTING
+
+function hlSpan(cls, text) { return `<span class="${cls}">${escHtml(text)}</span>`; } // escaped span with source view highlight class
+
+function highlightJs(js) { // node js through highlighter - one line at a time, carries block comments + open ` templates
+  let inComment = false, inTemplate = false;
+  return js.split('\n').map(line => {
+    const r = highlightCode(line, inComment, inTemplate);
+    inComment = r.inComment; inTemplate = r.inTemplate;
+    return r.html;
+  }).join('\n');
+}
+
+function highlightHtml(s) { // html shell pass - comments, tags with quoted attrs, text (all escaped)
+  let out = '', i = 0;
+  while (i < s.length) {
+    if (s.startsWith('<!--', i)) { // comment
+      const end = s.indexOf('-->', i), to = end === -1 ? s.length : end + 3;
+      out += hlSpan('hl-com', s.slice(i, to)); i = to; continue;
+    }
+    if (s[i] === '<') { // tag
+      const end = s.indexOf('>', i), to = end === -1 ? s.length : end + 1;
+      const tag = s.slice(i, to), nm = tag.match(/^<\/?[\w-]+/);
+      if (nm) {
+        const rest = escHtml(tag.slice(nm[0].length)).replace(/(=)(".+?")/g, '$1<span class="hl-str">$2</span>');
+        out += hlSpan('hl-kw', nm[0]) + rest;
+      } else out += escHtml(tag);
+      i = to; continue;
+    }
+    const next = s.indexOf('<', i), to = next === -1 ? s.length : next; // text
+    out += escHtml(s.slice(i, to)); i = to;
+  }
+  return out;
+}
+
+function highlightScv(src) { // split artifact into shell + embedded js - highlight each part
+  const m = src.match(/<script data-scv-(?:node|comp)\b[^>]*>/); // node def or component def
+  if (!m) return highlightHtml(src);
+  const jsStart = m.index + m[0].length, jsEnd = src.lastIndexOf('<\/script>'); // lastIndexOf not indexOf - <\/script inside js looks identical to real tag
+  return highlightHtml(src.slice(0, jsStart)) + highlightJs(src.slice(jsStart, jsEnd)) + highlightHtml(src.slice(jsEnd));
+}
+
+function renderSource() { // render generated .scv into source view - highlighted when it compiles
+  flushPendingRecompile(); // source view must reflect just-typed edit, not stale pre-debounce compile
+  const res = _lastCompile;
+  const pre = $('compiled');
+  if (res.ok) pre.innerHTML = highlightScv(res.html);
+  else pre.textContent = `// ${res.stage === 'parse' ? 'parse error' : 'build failed'}: ${res.error}`;
+}
+
+function emit() { // compiler's emit phase - write out artifact (distinct from ctx.emit which is node emitting value at runtime)
+  flushPendingRecompile(); // export must reflect just-typed edit, not stale pre-debounce compile
+  const res = _lastCompile;
+  setStatus(res);
+  if (!res.ok) return; // pipeline already shows why
+  const blob = new Blob([res.html], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${res.tag || res.def.name}.scv`; // component compile carries tag, node carries def.name
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000); // defer revoke - syncing it can abort download in some browsers
+}
+
+// IMPORT NODE
+
+function parseScv(text) { // strip wrapper, re-run defineNode in sandbox - returns { def, src } or null
+  let doc;
+  try { doc = new DOMParser().parseFromString(text, 'text/html'); } catch { return null; }
+  const script = doc.querySelector('script[data-scv-node]');
+  if (!script) return null;
+  // strip guard prefix + trailing \n scvHtml adds before <\/script> - else exact-match misses
+  const src = script.textContent.replace(/^\s*typeof\s+defineNode\s*===\s*['"]function['"]\s*&&\s*/, '').replace(/\n$/, '');
+  let def = null;
+  const defineNode = d => { def = d; };
+  try { new Function('defineNode', src)(defineNode); } catch { return null; }
+  return def ? { def, src } : null;
+}
+
+function extractVerbatimCode(src, def) { // src matching compile() wrapper: recover code verbatim - else null, caller reconstructs lossily
+  const prefix = `defineNode({\n  name: ${JSON.stringify(def.name)},\n  icon: ${JSON.stringify(def.icon)},\n  color: ${JSON.stringify(def.color)},\n  `;
+  const suffix = '\n});';
+  if (!src.startsWith(prefix) || !src.endsWith(suffix)) return null;
+  // undo scvHtml script-tag/comment escaping - can't spell literal out, this file has its own script tag
+  return src.slice(prefix.length, -suffix.length).replace(/<\\(\/script)/gi, '<$1').replace(/<\\(!--)/g, '<$1');
+}
+
+function loadIntoEditor(n) { // load saved item into editor, switching mode to match its kind
+  const wantComp = n.kind === 'component';
+  if (wantComp !== (target === 'component')) setTarget(wantComp ? 'component' : 'node'); // setTarget seeds code - overwritten below
+  if (wantComp) { $('f-tag').value = n.name || ''; $('f-comp-icon').value = n.icon || ''; }
+  else { fields.name.value = n.name || 'node'; fields.icon.value = n.icon || DEFAULT_ICON; fields.color.value = n.color || DEFAULT_COLOR; }
+  fields.code.value = n.code || '';
+  refreshEditor();
+  recompile();
+  autoSaveWip();
+}
+
+function importComponentScv(doc) { // restore authored component from embedded source + icon
+  const script = doc.querySelector('script[data-scv-comp]');
+  const source = _unb64(script.getAttribute('data-scv-source'));
+  if (!source) { setStatusError('.scv carries no recoverable component source'); return false; }
+  if (target !== 'component') setTarget('component');
+  $('f-tag').value = (script.getAttribute('data-scv-tag') || 'scv-component').replace(/^scv-/, '');
+  $('f-comp-icon').value = _unb64(script.getAttribute('data-scv-icon'));
+  fields.code.value = source;
+  refreshEditor(); recompile(); autoSaveWip();
+  return true;
+}
+
+function importScv(text) { // import .scv into editor - true on success - routes node vs component by marker
+  let doc; try { doc = new DOMParser().parseFromString(text, 'text/html'); } catch { doc = null; }
+  if (doc && doc.querySelector('script[data-scv-comp]')) return importComponentScv(doc);
+  const parsed = parseScv(text);
+  if (!parsed) { setStatusError('invalid .scv file'); return false; }
+  const { def, src } = parsed;
+  const verbatim = extractVerbatimCode(src, def); // prefer verbatim original - fall back to lossy def-reconstruction only for foreign .scv
+  const code = verbatim != null ? verbatim : Object.keys(def)
+    .filter(k => !['name', 'icon', 'color'].includes(k))
+    .map(k => {
+      const v = def[k];
+      if (typeof v === 'function') {
+        const s = v.toString();
+        // method shorthand carries key and splices as is - everything else needs key prefix - detect shorthand and apply matching key
+        const head = s.replace(/^async\s+/, '').replace(/^\*\s*/, '');
+        const keyParen = new RegExp(`^${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\(`);
+        return keyParen.test(head) ? s + ',' : k + ': ' + s + ',';
+      }
+      let json; try { json = JSON.stringify(v, null, 2); } catch { json = 'null'; } // circular/bigint value can't round-trip - drop to null rather than throw and abort whole import
+      return k + ': ' + json + ',';
+    })
+    .join('\n\n');
+  loadIntoEditor({ name: def.name, icon: def.icon, color: def.color, code });
+  return true;
+}
+
+// FILE PICKER
+
+$('import-btn').addEventListener('click', () => $('file-picker').click()); // open hidden file input
+
+$('file-picker').addEventListener('change', function () { // selected file read as text into importScv
+  const file = this.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => importScv(e.target.result);
+  reader.onerror = () => setStatusError('could not read file');
+  reader.readAsText(file);
+  this.value = '';
+});
+
+// DRAG AND DROP IMPORT (track enter/leave depth - hides overlay only when drag leaves window at depth 0)
+
+const dropOverlay = $('drop-overlay'); // full window layer shown while file is dragged over page
+let dragDepth     = 0; // dragenter/leave nesting - overlay hides only when drag truly leaves
+
+document.addEventListener('dragenter', e => { e.preventDefault(); if (dragDepth++ === 0) dropOverlay.classList.add('show'); });
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; dropOverlay.classList.remove('show'); } });
+
+document.addEventListener('drop', e => { // file drop imports
+  e.preventDefault();
+  dragDepth = 0;
+  dropOverlay.classList.remove('show');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    if (!importScv(ev.target.result)) setStatusError('not a valid .scv file');
+  };
+  reader.onerror = () => setStatusError('could not read file');
+  reader.readAsText(file);
+});
+
+// LOCALSTORAGE PERSISTENCE
+
+const STORAGE_KEY = 'scav-nodes'; // saved node definitions
+const WIP_KEY     = 'scav-wip'; // autosaved drafts
+
+function loadNodes() { // read saved nodes - array of objects or [] on miss/corruption
+  try {
+    const v = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    return Array.isArray(v) ? v.filter(n => n && typeof n === 'object') : [];
+  } catch { return []; }
+}
+
+const _attrEsc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); // attribute context - escHtml keeps quotes literal, attrs can't
+function saveNodes(nodes) { // persist saved nodes array
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(nodes)); } catch {}
+}
+
+function _iconMarkup(icon) { // authored icon (trusted) - inline svg, else glyph/emoji, else bracket default
+  if (!icon) return '&lt;&gt;';
+  return /^\s*<svg[\s>]/i.test(icon) ? icon : escHtml(icon);
+}
+
+function renderStoredNodes() { // rebuild saved list for current mode - newest first, kind-specific per row
+  const list = $('stored-list');
+  const comp = target === 'component';
+  const items = loadNodes().filter(n => (n.kind === 'component') === comp);
+  const noun = comp ? 'components' : 'nodes';
+  $('stored-header').textContent = items.length === 0 ? 'no saved ' + noun : 'saved ' + noun;
+  const p2 = v => String(v).padStart(2, '0');
+  list.innerHTML = items.slice().reverse().map(n => {
+    const date = new Date(n.ts || 0);
+    const ds = `${p2(date.getDate())}/${p2(date.getMonth() + 1)}/${p2(date.getFullYear() % 100)} ${p2(date.getHours())}:${p2(date.getMinutes())}`;
+    const chip = n.kind === 'component'
+      ? `<div class="si-icon si-comp">${_iconMarkup(n.icon)}</div>`
+      : `<div class="si-icon" style="background:${_attrEsc(n.color || '')}">${escHtml(n.icon || DEFAULT_ICON)}</div>`;
+    return `<div class="stored-item" data-id="${_attrEsc(n.id)}">
+      ${chip}
+      <span class="si-name">${escHtml(n.name)}</span>
+      <span class="si-date">${ds}</span>
+      <button class="si-del small" data-del="${_attrEsc(n.id)}">✕</button>
+    </div>`;
+  }).join('');
+}
+
+$('stored-list').addEventListener('click', e => { // one delegated handler for saved list - x deletes, anywhere else loads node
+  const del = e.target.closest('.si-del');
+  if (del) {
+    saveNodes(loadNodes().filter(x => x.id !== del.dataset.del));
+    renderStoredNodes();
+    return;
+  }
+  const item = e.target.closest('.stored-item');
+  if (item) {
+    const n = loadNodes().find(x => x.id === item.dataset.id);
+    if (n) loadIntoEditor(n);
+  }
+});
+
+function saveCurrentNode() { // persist draft - id from slug, overwrite on same id
+  const comp = target === 'component';
+  const items = loadNodes();
+  const name = comp ? ($('f-tag').value.trim() || 'component') : (fields.name.value.trim() || 'node');
+  const slug = _slug(name);
+  const id = comp ? 'scv-' + (slug || 'component') : (slug || 'node-' + Date.now().toString(36)); // never let data-id empty (would nuke store)
+  const existing = items.findIndex(n => n.id === id);
+  // two different names can slug to same id - real collision, not re-save
+  if (existing !== -1 && items[existing].name !== name
+      && !confirm(`"${items[existing].name}" already saves to this same id - overwrite it with "${name}"?`)) return;
+  const entry = comp
+    ? { id, kind: 'component', name, icon: $('f-comp-icon').value.trim(), code: fields.code.value, ts: Date.now() }
+    : { id, kind: 'node', name, icon: fields.icon.value || DEFAULT_ICON, color: fields.color.value, code: fields.code.value, ts: Date.now() };
+  if (existing !== -1) items[existing] = entry;
+  else items.push(entry);
+  saveNodes(items);
+  renderStoredNodes();
+}
+
+// AUTO-SAVE WIP
+
+let wipTimer = null; // debounce handler
+function writeWip() { // write draft to localstorage now
+  try {
+    localStorage.setItem(WIP_KEY, JSON.stringify({
+      target,
+      name: fields.name.value,
+      icon: fields.icon.value,
+      color: fields.color.value,
+      tag: $('f-tag').value,
+      compIcon: $('f-comp-icon').value,
+      code: fields.code.value
+    }));
+  } catch {}
+}
+function autoSaveWip() { // save draft to localstorage 500ms after last edit
+  clearTimeout(wipTimer);
+  wipTimer = setTimeout(writeWip, 500);
+}
+window.addEventListener('pagehide', () => { // flush pending draft on tab close - edits inside debounce window must not be lost
+  if (wipTimer) { clearTimeout(wipTimer); wipTimer = null; writeWip(); }
+});
+
+function restoreWip() { // load saved draft back into editor fields (boot)
+  try {
+    const raw = localStorage.getItem(WIP_KEY);
+    if (!raw) return;
+    const wip = JSON.parse(raw);
+    if (wip.target === 'component' && target !== 'component') setTarget('component'); // setTarget seeds code - overwritten below
+    if (wip.name) fields.name.value = wip.name;
+    if (wip.icon) fields.icon.value = wip.icon;
+    if (wip.color) fields.color.value = wip.color;
+    if (wip.tag) $('f-tag').value = wip.tag;
+    if (wip.compIcon) $('f-comp-icon').value = wip.compIcon;
+    if (wip.code) { fields.code.value = wip.code; refreshEditor(); }
+  } catch {}
+}
+
+// THEME SWATCHES
+
+['#986c98', '#8ab6bb', '#985954', '#6fac67', '#888888'].forEach(c => { // preset color chips - click sets node color + recompiles
+  const s = document.createElement('div'); s.className = 'swatch'; s.style.background = c;
+  s.onclick = () => { fields.color.value = c; autoSaveWip(); recompile(); };
+  $('swatches').appendChild(s);
+});
+
+function fitSwatches() { // tight row - drop preset chips left-first - custom picker never goes
+  const row = document.querySelector('.row');
+  const chips = [...document.querySelectorAll('#swatches .swatch')];
+  chips.forEach(s => s.style.display = '');
+  for (let i = 0; i < chips.length && row.scrollWidth > row.clientWidth + 1; i++) chips[i].style.display = 'none';
+}
+window.addEventListener('resize', fitSwatches);
+requestAnimationFrame(fitSwatches);
+
+// EVENT WIRING
+
+let _metaTimer = null; // debounce for name/icon/color recompiles - metadata edits shouldn't rebuild per keystroke
+const metaChanged = () => { // edits, autosave, debounced recompile
+  autoSaveWip();
+  clearTimeout(_metaTimer);
+  _metaTimer = setTimeout(recompile, 300);
+};
+[fields.name, fields.icon, fields.color, $('f-tag'), $('f-comp-icon')].forEach(f => f.addEventListener('input', metaChanged));
+
+$('r-send').addEventListener('click', send); // send button
+$('r-in').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) send(); }); // enter in test input sends
+// ctrl + enter emits (sends test value) from anywhere, including editor
+document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); flushPendingRecompile(); send(); } });
+$('export').addEventListener('click', emit); // export button
+$('save-btn').addEventListener('click', saveCurrentNode); // save button
+
+const codeEditor = $('code-editor');
+function setEditorView(view) { // code|help|output|preview
+  codeEditor.classList.toggle('show-help', view === 'help');
+  codeEditor.classList.toggle('show-output', view === 'output');
+  codeEditor.classList.toggle('show-preview', view === 'preview');
+  $('help-btn').classList.toggle('active', view === 'help');
+  $('src-btn').classList.toggle('active', view === 'output');
+  $('preview-btn').classList.toggle('active', view === 'preview');
+  if (view === 'output') renderSource(); // freshly compiled + highlighted
+  if (view === 'preview') renderBigPreview(); else closeBigPreview();
+}
+const currentView = () => codeEditor.classList.contains('show-help') ? 'help'
+  : codeEditor.classList.contains('show-output') ? 'output'
+  : codeEditor.classList.contains('show-preview') ? 'preview' : 'code';
+const toggleView = v => setEditorView(currentView() === v ? 'code' : v);
+
+$('help-btn').addEventListener('click', () => toggleView('help'));
+$('src-btn').addEventListener('click', () => toggleView('output'));
+$('preview-btn').addEventListener('click', () => toggleView('preview'));
+document.addEventListener('keydown', e => { // esc anywhere and ? outside field flips help on and off
+  if (e.key === 'Escape') { e.preventDefault(); toggleView('help'); }
+  else if (e.key === '?' && !e.target.matches('textarea, input, select, [contenteditable]')) { e.preventDefault(); toggleView('help'); }
+});
+
+const ccTip = $('cc-tooltip'); // single fixed pill placed by js
+const hideTip = () => { ccTip.style.display = 'none'; };
+const placeTip = (x, y) => { // mirror patchbay's placeTooltip - open toward screen center so edges never clip it
+  const pad = 15, w = ccTip.offsetWidth, h = ccTip.offsetHeight, vw = innerWidth, vh = innerHeight;
+  const left = x > vw / 2 ? x - pad - w : x + pad;
+  const top = y > vh / 2 ? y - h - 2 : y + pad;
+  ccTip.style.left = Math.max(2, Math.min(left, vw - w - 2)) + 'px';
+  ccTip.style.top = Math.max(2, Math.min(top, vh - h - 2)) + 'px';
+};
+document.addEventListener('mouseover', e => {
+  const t = e.target.closest?.('[data-tip]'); if (!t) return;
+  ccTip.textContent = t.getAttribute('data-tip'); ccTip.style.display = 'block';
+  placeTip(e.clientX, e.clientY);
+});
+document.addEventListener('mousemove', e => { if (ccTip.style.display === 'block' && e.target.closest?.('[data-tip]')) placeTip(e.clientX, e.clientY); });
+document.addEventListener('mouseout', e => { if (e.target.closest?.('[data-tip]')) hideTip(); });
+document.addEventListener('mousedown', hideTip);
+
+window.addEventListener('error', e => { // uncaught node-code errors (async/interval) surface as entries - only once running, else it's our bug
+  if (!e || !e.message) return;
+  console.error(e.error || e.message); // full stack stays visible in devtools even once summarized into panel below
+  if (instance) pushEntry('error', `error: ${e.message}`);
+});
+
+window.addEventListener('unhandledrejection', e => { // error event only sees sync throws - catch unhandled rejections
+  const r = e?.reason;
+  console.error(r); // keep full reason/stack visible - panel below only has room for its message
+  if (instance) pushEntry('error', `async error: ${r?.message ?? r ?? 'Promise rejected'}`);
+});
+
+// INIT/BOOT - restore wip, refresh editor, render saved nodes, first compile
+
+restoreWip();
+refreshEditor();
+renderStoredNodes();
+recompile();
+
+</script>
+
+</body>
+</html>

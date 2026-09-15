@@ -1,0 +1,80 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<html><head><meta charset="utf-8"><title>scv-store-images - scav component</title><link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Ctext%20x%3D%228%22%20y%3D%2212%22%20font-size%3D%2211%22%20font-family%3D%22monospace%22%20fill%3D%22%23986c98%22%20text-anchor%3D%22middle%22%3E%26lt%3B%26gt%3B%3C%2Ftext%3E%3C%2Fsvg%3E"></head>
+<body style="margin:0;background:#1a1c1c">
+<scv-store-images data-scv-component></scv-store-images>
+<script data-scv-comp data-scv-tag="scv-store-images" data-scv-source="PHN0eWxlPgogIDpob3N0IHsgZGlzcGxheTogYmxvY2s7IH0KICAuZ2EgeyB3aWR0aDogMjYwcHg7IGJhY2tncm91bmQ6IHZhcigtLWJhY2tncm91bmQtcmFpc2VkLCAjMjUyNzI3KTsgYm9yZGVyOiAxcHggc29saWQgdmFyKC0tYm9yZGVyLCAjM0EzQzNDKTsgYm9yZGVyLXJhZGl1czogdmFyKC0tY29ybmVyLWhpZ2gsIDhweCk7IHBhZGRpbmc6IDhweCAxMHB4IDEwcHg7IGJveC1zaXppbmc6IGJvcmRlci1ib3g7IGZvbnQtZmFtaWx5OiB2YXIoLS1mb250LW1vbm8sICdTRiBNb25vJywgdWktbW9ub3NwYWNlLCBtb25vc3BhY2UpOyB9CiAgLmdhLWxhYiB7IGNvbG9yOiB2YXIoLS10ZXh0LWZhaW50LCAjNjY2NjY2KTsgZm9udC1zaXplOiAxMHB4OyB0ZXh0LXRyYW5zZm9ybTogbG93ZXJjYXNlOyBsZXR0ZXItc3BhY2luZzogMXB4OyBtYXJnaW4tYm90dG9tOiA2cHg7IH0KICAuZ2Etc3RhZ2UgeyBkaXNwbGF5OiBmbGV4OyBhbGlnbi1pdGVtczogc3RyZXRjaDsgZ2FwOiA0cHg7IG1hcmdpbi1ib3R0b206IDRweDsgfQogIC5nYS1uYXYgeyBmbGV4OiBub25lOyB3aWR0aDogMjRweDsgYmFja2dyb3VuZDogdmFyKC0tYmFja2dyb3VuZC1zdW5rLCAjMUExQzFDKTsgYm9yZGVyOiBub25lOyBib3JkZXItcmFkaXVzOiB2YXIoLS1jb3JuZXItbG93LCA1cHgpOyBjb2xvcjogdmFyKC0tdGV4dC1iYXNlLCAjQUFBQkFDKTsgZm9udDogMTRweCB2YXIoLS1mb250LW1vbm8sICdTRiBNb25vJywgbW9ub3NwYWNlKTsgY3Vyc29yOiBwb2ludGVyOyB9CiAgLmdhLW5hdjpob3ZlciB7IGNvbG9yOiB2YXIoLS1pbnB1dCwgIzhBQjZCQik7IH0KICAuZ2EtdGh1bWIgeyBwb3NpdGlvbjogcmVsYXRpdmU7IGZsZXg6IDE7IGFzcGVjdC1yYXRpbzogMTsgYm9yZGVyLXJhZGl1czogdmFyKC0tY29ybmVyLWxvdywgNXB4KTsgYmFja2dyb3VuZDogdmFyKC0tYmFja2dyb3VuZC1zdW5rLCAjMUExQzFDKTsgb3ZlcmZsb3c6IGhpZGRlbjsgfQogIC5nYS10aHVtYiBpbWcgeyBwb3NpdGlvbjogYWJzb2x1dGU7IGluc2V0OiAwOyB3aWR0aDogMTAwJTsgaGVpZ2h0OiAxMDAlOyBvYmplY3QtZml0OiBjb3ZlcjsgZGlzcGxheTogYmxvY2s7IGJvcmRlcjogMDsgb3V0bGluZTogMDsgfQogIC5nYS10aHVtYiBpbWc6bm90KFtzcmNdKSB7IGRpc3BsYXk6IG5vbmU7IH0KICAuZ2EtYWRkIHsgZGlzcGxheTogZmxleDsgZ2FwOiA0cHg7IH0KICAuZ2EtaW5wdXQgeyBmbGV4OiAxOyBtaW4td2lkdGg6IDA7IGJveC1zaXppbmc6IGJvcmRlci1ib3g7IGJhY2tncm91bmQ6IHZhcigtLWJhY2tncm91bmQtc3VuaywgIzFBMUMxQyk7IGJvcmRlcjogbm9uZTsgYm9yZGVyLXJhZGl1czogdmFyKC0tY29ybmVyLWxvdywgNXB4KTsgY29sb3I6IHZhcigtLXRleHQtZGltLCAjODg4ODg4KTsgZm9udDogMTBweCB2YXIoLS1mb250LW1vbm8sICdTRiBNb25vJywgbW9ub3NwYWNlKTsgcGFkZGluZzogNnB4IDhweDsgb3V0bGluZTogbm9uZTsgfQogIC5nYS1pbnB1dDpmb2N1cyB7IGNvbG9yOiB2YXIoLS10ZXh0LWJhc2UsICNBQUFCQUMpOyBib3JkZXItY29sb3I6IHZhcigtLWlucHV0LCAjOEFCNkJCKTsgfQogIC5nYS1maWxlIHsgcG9zaXRpb246IHJlbGF0aXZlOyBmbGV4OiBub25lOyB3aWR0aDogMjRweDsgaGVpZ2h0OiAyNHB4OyBib3JkZXI6IG5vbmU7IGJvcmRlci1yYWRpdXM6IHZhcigtLWNvcm5lci1sb3csIDVweCk7IGJhY2tncm91bmQ6IHZhcigtLWJhY2tncm91bmQtc3VuaywgIzFBMUMxQyk7IGNvbG9yOiB2YXIoLS1pbnB1dCwgIzhBQjZCQik7IGZvbnQ6IDE2cHgvMSB2YXIoLS1mb250LW1vbm8sICdTRiBNb25vJywgbW9ub3NwYWNlKTsgZGlzcGxheTogZmxleDsgYWxpZ24taXRlbXM6IGNlbnRlcjsganVzdGlmeS1jb250ZW50OiBjZW50ZXI7IGN1cnNvcjogcG9pbnRlcjsgfQogIC5nYS1maWxlOmhvdmVyIHsgYm9yZGVyLWNvbG9yOiB2YXIoLS1pbnB1dCwgIzhBQjZCQik7IH0KICAuZ2EtZmlsZSBpbnB1dFt0eXBlPWZpbGVdIHsgcG9zaXRpb246IGFic29sdXRlOyBpbnNldDogMDsgb3BhY2l0eTogMDsgY3Vyc29yOiBwb2ludGVyOyB9CiAgdGV4dGFyZWFbaGlkZGVuXSB7IGRpc3BsYXk6IG5vbmU7IH0KPC9zdHlsZT4KCjxkaXYgY2xhc3M9ImdhIj4KICA8ZGl2IGNsYXNzPSJnYS1sYWIiIGRhdGEtc2N2LXNsb3Q9ImxhYmVsIj5nYWxsZXJ5PC9kaXY+CiAgPGRpdiBjbGFzcz0iZ2Etc3RhZ2UiPgogICAgPGJ1dHRvbiB0eXBlPSJidXR0b24iIGNsYXNzPSJnYS1uYXYiIGRhdGEtZ2E9InByZXYiPuKXgDwvYnV0dG9uPgogICAgPGRpdiBjbGFzcz0iZ2EtdGh1bWIiPgogICAgICA8aW1nIGFsdD0iIiBkYXRhLWdhPSJpbWciIGRhdGEtc2N2LWVtaXRzPSIiPgogICAgPC9kaXY+CiAgICA8YnV0dG9uIHR5cGU9ImJ1dHRvbiIgY2xhc3M9ImdhLW5hdiIgZGF0YS1nYT0ibmV4dCI+4pa2PC9idXR0b24+CiAgPC9kaXY+CiAgPGRpdiBjbGFzcz0iZ2EtYWRkIj4KICAgIDxpbnB1dCB0eXBlPSJ0ZXh0IiBjbGFzcz0iZ2EtaW5wdXQiIGRhdGEtZ2E9InBhc3RlIiBwbGFjZWhvbGRlcj0icGFzdGUgYW4gaW1hZ2UgaGVyZSIgc3BlbGxjaGVjaz0iZmFsc2UiPgogICAgPGxhYmVsIGNsYXNzPSJnYS1maWxlIiB0aXRsZT0iYWRkIGltYWdlIj4rPGlucHV0IHR5cGU9ImZpbGUiIGFjY2VwdD0iaW1hZ2UvKiIgZGF0YS1nYT0iZmlsZSI+PC9sYWJlbD4KICA8L2Rpdj4KICA8dGV4dGFyZWEgZGF0YS1zY3Ytc2xvdD0iaW1hZ2VzIiBoaWRkZW4+PC90ZXh0YXJlYT4KPC9kaXY+Cgo8c2NyaXB0PgogIGNvbnN0IGltZ0VsID0gcm9vdC5xdWVyeVNlbGVjdG9yKCdbZGF0YS1nYT0iaW1nIl0nKSwgcHJldiA9IHJvb3QucXVlcnlTZWxlY3RvcignW2RhdGEtZ2E9InByZXYiXScpLAogICAgICAgIG5leHQgPSByb290LnF1ZXJ5U2VsZWN0b3IoJ1tkYXRhLWdhPSJuZXh0Il0nKSwgcGFzdGVJbiA9IHJvb3QucXVlcnlTZWxlY3RvcignW2RhdGEtZ2E9InBhc3RlIl0nKSwKICAgICAgICBmaWxlSW4gPSByb290LnF1ZXJ5U2VsZWN0b3IoJ1tkYXRhLWdhPSJmaWxlIl0nKSwgc2xvdCA9IHJvb3QucXVlcnlTZWxlY3RvcignW2RhdGEtc2N2LXNsb3Q9ImltYWdlcyJdJyk7CiAgbGV0IGltYWdlcyA9IFtdOwogIGxldCBpZHggPSAwOwogIGNvbnN0IHRvRGF0YVVSTCA9IGZpbGUgPT4gbmV3IFByb21pc2UoKHJlcywgcmVqKSA9PiB7IGNvbnN0IHIgPSBuZXcgRmlsZVJlYWRlcigpOyByLm9ubG9hZCA9ICgpID0+IHJlcyhyLnJlc3VsdCk7IHIub25lcnJvciA9IHJlajsgci5yZWFkQXNEYXRhVVJMKGZpbGUpOyB9KTsgLy8gc2FtZSBuYXRpdmUgcGF0aCBhcyBwYXRjaGJheQogIGZ1bmN0aW9uIHBlcnNpc3QoKSB7IHNsb3QudmFsdWUgPSBpbWFnZXMuam9pbignXG4nKTsgfQogIGZ1bmN0aW9uIHNob3coKSB7CiAgICBpZiAoaW1hZ2VzLmxlbmd0aCA9PT0gMCkgeyBpbWdFbC5yZW1vdmVBdHRyaWJ1dGUoJ3NyYycpOyByZXR1cm47IH0KICAgIGlmIChpZHggPj0gaW1hZ2VzLmxlbmd0aCkgaWR4ID0gMDsgaWYgKGlkeCA8IDApIGlkeCA9IGltYWdlcy5sZW5ndGggLSAxOwogICAgaW1nRWwuc2V0QXR0cmlidXRlKCdzcmMnLCBpbWFnZXNbaWR4XSk7CiAgfQogIGNvbnN0IGVtaXRDdXJyZW50ID0gKCkgPT4geyBpZiAoaW1hZ2VzLmxlbmd0aCkgaW1nRWwuZGlzcGF0Y2hFdmVudChuZXcgQ3VzdG9tRXZlbnQoJ3Njdi1lbWl0JywgeyBkZXRhaWw6IGltYWdlc1tpZHhdLCBidWJibGVzOiB0cnVlLCBjb21wb3NlZDogdHJ1ZSB9KSk7IH07CiAgcHJldi5hZGRFdmVudExpc3RlbmVyKCdjbGljaycsICgpID0+IHsgaWYgKGltYWdlcy5sZW5ndGgpIHsgaWR4ID0gKGlkeCAtIDEgKyBpbWFnZXMubGVuZ3RoKSAlIGltYWdlcy5sZW5ndGg7IHNob3coKTsgZW1pdEN1cnJlbnQoKTsgfSB9KTsKICBuZXh0LmFkZEV2ZW50TGlzdGVuZXIoJ2NsaWNrJywgKCkgPT4geyBpZiAoaW1hZ2VzLmxlbmd0aCkgeyBpZHggPSAoaWR4ICsgMSkgJSBpbWFnZXMubGVuZ3RoOyBzaG93KCk7IGVtaXRDdXJyZW50KCk7IH0gfSk7CiAgaW1nRWwuYWRkRXZlbnRMaXN0ZW5lcignY2xpY2snLCBlbWl0Q3VycmVudCk7CiAgcGFzdGVJbi5hZGRFdmVudExpc3RlbmVyKCdwYXN0ZScsIGUgPT4gewogICAgY29uc3QgZiA9IChlLmNsaXBib2FyZERhdGE/LmZpbGVzIHx8IFtdKVswXTsKICAgIGlmIChmICYmIGYudHlwZS5zdGFydHNXaXRoKCdpbWFnZS8nKSkgewogICAgICBlLnByZXZlbnREZWZhdWx0KCk7CiAgICAgIHRvRGF0YVVSTChmKS50aGVuKHVybCA9PiB7IGltYWdlcy5wdXNoKHVybCk7IGlkeCA9IGltYWdlcy5sZW5ndGggLSAxOyBzaG93KCk7IHBlcnNpc3QoKTsgfSk7CiAgICB9CiAgfSk7CiAgZmlsZUluLmFkZEV2ZW50TGlzdGVuZXIoJ2NoYW5nZScsICgpID0+IHsKICAgIGNvbnN0IGYgPSBmaWxlSW4uZmlsZXNbMF07CiAgICBpZiAoZiAmJiBmLnR5cGUuc3RhcnRzV2l0aCgnaW1hZ2UvJykpIHRvRGF0YVVSTChmKS50aGVuKHVybCA9PiB7IGltYWdlcy5wdXNoKHVybCk7IGlkeCA9IGltYWdlcy5sZW5ndGggLSAxOyBzaG93KCk7IHBlcnNpc3QoKTsgfSk7CiAgICBmaWxlSW4udmFsdWUgPSAnJzsKICB9KTsKICBmdW5jdGlvbiByZW5kZXIoKSB7CiAgICBpbWFnZXMgPSBzbG90LnZhbHVlLnNwbGl0KCdcbicpLm1hcChzID0+IHMudHJpbSgpKS5maWx0ZXIoQm9vbGVhbik7CiAgICBpZiAoaW1hZ2VzLmxlbmd0aCkgaWR4ID0gTWF0aC5taW4oaWR4LCBpbWFnZXMubGVuZ3RoIC0gMSk7CiAgICBzaG93KCk7CiAgfQogIGZ1bmN0aW9uIGJvb3QoKSB7IHJlbmRlcigpOyB9CiAgYm9vdCgpOwogIHJlcXVlc3RBbmltYXRpb25GcmFtZShib290KTsKICBzZXRUaW1lb3V0KGJvb3QsIDApOwo8L3NjcmlwdD4=" data-scv-icon="">
+customElements.define('scv-store-images', class extends HTMLElement { constructor() { super();
+const _baked = !this.shadowRoot && this.querySelector('template[shadowrootmode], template.custom-shadow');
+if (_baked) { this.attachShadow({mode: 'open'}).innerHTML = _baked.innerHTML; _baked.remove(); }
+else if (!this.shadowRoot) this.attachShadow({mode: 'open'}).innerHTML = `<style>:host { display: block; }
+  .ga { width: 260px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); padding: 8px 10px 10px; box-sizing: border-box; font-family: var(--font-mono, 'SF Mono', ui-monospace, monospace); }
+  .ga-lab { color: var(--text-faint, #666666); font-size: 10px; text-transform: lowercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .ga-stage { display: flex; align-items: stretch; gap: 4px; margin-bottom: 4px; }
+  .ga-nav { flex: none; width: 24px; background: var(--background-sunk, #1A1C1C); border: none; border-radius: var(--corner-low, 5px); color: var(--text-base, #AAABAC); font: 14px var(--font-mono, 'SF Mono', monospace); cursor: pointer; }
+  .ga-nav:hover { color: var(--input, #8AB6BB); }
+  .ga-thumb { position: relative; flex: 1; aspect-ratio: 1; border-radius: var(--corner-low, 5px); background: var(--background-sunk, #1A1C1C); overflow: hidden; }
+  .ga-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; border: 0; outline: 0; }
+  .ga-thumb img:not([src]) { display: none; }
+  .ga-add { display: flex; gap: 4px; }
+  .ga-input { flex: 1; min-width: 0; box-sizing: border-box; background: var(--background-sunk, #1A1C1C); border: none; border-radius: var(--corner-low, 5px); color: var(--text-dim, #888888); font: 10px var(--font-mono, 'SF Mono', monospace); padding: 6px 8px; outline: none; }
+  .ga-input:focus { color: var(--text-base, #AAABAC); border-color: var(--input, #8AB6BB); }
+  .ga-file { position: relative; flex: none; width: 24px; height: 24px; border: none; border-radius: var(--corner-low, 5px); background: var(--background-sunk, #1A1C1C); color: var(--input, #8AB6BB); font: 16px/1 var(--font-mono, 'SF Mono', monospace); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .ga-file:hover { border-color: var(--input, #8AB6BB); }
+  .ga-file input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  textarea[hidden] { display: none; }</style><div class="ga">
+  <div class="ga-lab" data-scv-slot="label">gallery</div>
+  <div class="ga-stage">
+    <button type="button" class="ga-nav" data-ga="prev">◀</button>
+    <div class="ga-thumb">
+      <img alt="" data-ga="img" data-scv-emits="">
+    </div>
+    <button type="button" class="ga-nav" data-ga="next">▶</button>
+  </div>
+  <div class="ga-add">
+    <input type="text" class="ga-input" data-ga="paste" placeholder="paste an image here" spellcheck="false">
+    <label class="ga-file" title="add image">+<input type="file" accept="image/*" data-ga="file"></label>
+  </div>
+  <textarea data-scv-slot="images" hidden=""></textarea>
+</div>`;
+const root = this.shadowRoot, host = this, emit = v => this.dispatchEvent(new CustomEvent('scv-emit', { detail: v, bubbles: true, composed: true }));
+const imgEl = root.querySelector('[data-ga="img"]'), prev = root.querySelector('[data-ga="prev"]'),
+        next = root.querySelector('[data-ga="next"]'), pasteIn = root.querySelector('[data-ga="paste"]'),
+        fileIn = root.querySelector('[data-ga="file"]'), slot = root.querySelector('[data-scv-slot="images"]');
+  let images = [];
+  let idx = 0;
+  const toDataURL = file => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); }); // same native path as patchbay
+  function persist() { slot.value = images.join('\n'); }
+  function show() {
+    if (images.length === 0) { imgEl.removeAttribute('src'); return; }
+    if (idx >= images.length) idx = 0; if (idx < 0) idx = images.length - 1;
+    imgEl.setAttribute('src', images[idx]);
+  }
+  const emitCurrent = () => { if (images.length) imgEl.dispatchEvent(new CustomEvent('scv-emit', { detail: images[idx], bubbles: true, composed: true })); };
+  prev.addEventListener('click', () => { if (images.length) { idx = (idx - 1 + images.length) % images.length; show(); emitCurrent(); } });
+  next.addEventListener('click', () => { if (images.length) { idx = (idx + 1) % images.length; show(); emitCurrent(); } });
+  imgEl.addEventListener('click', emitCurrent);
+  pasteIn.addEventListener('paste', e => {
+    const f = (e.clipboardData?.files || [])[0];
+    if (f && f.type.startsWith('image/')) {
+      e.preventDefault();
+      toDataURL(f).then(url => { images.push(url); idx = images.length - 1; show(); persist(); });
+    }
+  });
+  fileIn.addEventListener('change', () => {
+    const f = fileIn.files[0];
+    if (f && f.type.startsWith('image/')) toDataURL(f).then(url => { images.push(url); idx = images.length - 1; show(); persist(); });
+    fileIn.value = '';
+  });
+  function render() {
+    images = slot.value.split('\n').map(s => s.trim()).filter(Boolean);
+    if (images.length) idx = Math.min(idx, images.length - 1);
+    show();
+  }
+  function boot() { render(); }
+  boot();
+  requestAnimationFrame(boot);
+  setTimeout(boot, 0);
+}
+connectedCallback() { this.setAttribute('data-scv-emitter', ''); } });
+</script>
+</body></html>

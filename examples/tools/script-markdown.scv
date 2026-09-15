@@ -1,0 +1,99 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<html><head><meta charset="utf-8"><title>scv-script-markdown - scav component</title><link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Ctext%20x%3D%228%22%20y%3D%2212%22%20font-size%3D%2211%22%20font-family%3D%22monospace%22%20fill%3D%22%23986c98%22%20text-anchor%3D%22middle%22%3E%26lt%3B%26gt%3B%3C%2Ftext%3E%3C%2Fsvg%3E"></head>
+<body style="margin:0;background:#1a1c1c">
+<scv-script-markdown data-scv-component></scv-script-markdown>
+<script data-scv-comp data-scv-tag="scv-script-markdown" data-scv-source="PHN0eWxlPgogIDpob3N0IHsgZGlzcGxheTogYmxvY2s7IH0KICAuc2MgeyB3aWR0aDogNDYwcHg7IGJhY2tncm91bmQ6IHZhcigtLWJhY2tncm91bmQtcmFpc2VkLCAjMjUyNzI3KTsgYm9yZGVyOiAxcHggc29saWQgdmFyKC0tYm9yZGVyLCAjM0EzQzNDKTsgYm9yZGVyLXJhZGl1czogdmFyKC0tY29ybmVyLWhpZ2gsIDhweCk7IHBhZGRpbmc6IDEwcHg7IGJveC1zaXppbmc6IGJvcmRlci1ib3g7IGZvbnQtZmFtaWx5OiB2YXIoLS1mb250LW1vbm8sICdTRiBNb25vJywgdWktbW9ub3NwYWNlLCBtb25vc3BhY2UpOyB9CiAgLnNjLWxhYiB7IGNvbG9yOiB2YXIoLS10ZXh0LWZhaW50LCAjNjY2NjY2KTsgZm9udC1zaXplOiAxMHB4OyB0ZXh0LXRyYW5zZm9ybTogbG93ZXJjYXNlOyBsZXR0ZXItc3BhY2luZzogMXB4OyBtYXJnaW4tYm90dG9tOiA2cHg7IH0KICAuc2MtZWRpdG9yIHsgZGlzcGxheTogZmxleDsgYm9yZGVyOiAxcHggc29saWQgdmFyKC0tYm9yZGVyLCAjM0EzQzNDKTsgYm9yZGVyLXJhZGl1czogdmFyKC0tY29ybmVyLWxvdywgNXB4KTsgYmFja2dyb3VuZDogdmFyKC0tYmFja2dyb3VuZC1zdW5rLCAjMUExQzFDKTsgb3ZlcmZsb3c6IGhpZGRlbjsgfQogIC5zYy1ndXR0ZXIgeyBmbGV4OiAwIDAgMzBweDsgYmFja2dyb3VuZDogcmdiYSgyNTUsMjU1LDI1NSwwLjAyKTsgYm9yZGVyLXJpZ2h0OiAxcHggc29saWQgdmFyKC0tYm9yZGVyLCAjM0EzQzNDKTsgcGFkZGluZzogOHB4IDRweDsgdGV4dC1hbGlnbjogY2VudGVyOyBvdmVyZmxvdzogaGlkZGVuOyBjb2xvcjogdmFyKC0tdGV4dC1kaW0sICM4ODg4ODgpOyBmb250OiAxMnB4LzE4cHggdmFyKC0tZm9udC1tb25vLCAnU0YgTW9ubycsIG1vbm9zcGFjZSk7IHVzZXItc2VsZWN0OiBub25lOyB9CiAgLnNjLWd1dHRlciBzcGFuIHsgZGlzcGxheTogYmxvY2s7IGxpbmUtaGVpZ2h0OiAxOHB4OyB9CiAgLnNjLXN1cmZhY2UgeyBwb3NpdGlvbjogcmVsYXRpdmU7IGZsZXg6IDE7IG1pbi1oZWlnaHQ6IDg4cHg7IH0KICAuc2MtdGEsIC5zYy1zeW4geyBtYXJnaW46IDA7IHBhZGRpbmc6IDhweDsgcG9zaXRpb246IGFic29sdXRlOyBpbnNldDogMDsgZm9udDogMTJweC8xOHB4IHZhcigtLWZvbnQtbW9ubywgJ1NGIE1vbm8nLCBtb25vc3BhY2UpOyB3aGl0ZS1zcGFjZTogcHJlOyB0YWItc2l6ZTogMjsgfQogIC5zYy10YSB7IGRpc3BsYXk6IGJsb2NrOyB3aWR0aDogMTAwJTsgaGVpZ2h0OiAxMDAlOyByZXNpemU6IG5vbmU7IG92ZXJmbG93OiBhdXRvOyBiYWNrZ3JvdW5kOiB0cmFuc3BhcmVudDsgY29sb3I6IHRyYW5zcGFyZW50OyAtd2Via2l0LXRleHQtZmlsbC1jb2xvcjogdHJhbnNwYXJlbnQ7IGNhcmV0LWNvbG9yOiB2YXIoLS10ZXh0LWJhc2UsICNBQUFCQUMpOyBib3JkZXI6IG5vbmU7IG91dGxpbmU6IG5vbmU7IH0KICAuc2MtdGE6OnNlbGVjdGlvbiB7IGJhY2tncm91bmQ6IHJnYmEoMjU1LDI1NSwyNTUsMC4xNSk7IH0KICAuc2Mtc3luIHsgcG9pbnRlci1ldmVudHM6IG5vbmU7IG92ZXJmbG93OiBoaWRkZW47IH0KICAubWQtaDEgeyBjb2xvcjogdmFyKC0tb3V0cHV0LCAjOTg2Qzk4KTsgZm9udC13ZWlnaHQ6IDcwMDsgfQogIC5tZC1oMiB7IGNvbG9yOiB2YXIoLS1pbnB1dCwgIzhBQjZCQik7IGZvbnQtd2VpZ2h0OiA2MDA7IH0KICAubWQtaDMgeyBjb2xvcjogdmFyKC0taW5wdXQsICM4QUI2QkIpOyBmb250LXdlaWdodDogNjAwOyB9CiAgLm1kLWJvbGQgeyBjb2xvcjogdmFyKC0tb3V0cHV0LCAjOTg2Qzk4KTsgZm9udC13ZWlnaHQ6IDcwMDsgfQogIC5tZC1pdGFsaWMgeyBmb250LXN0eWxlOiBpdGFsaWM7IGNvbG9yOiB2YXIoLS1pbnB1dCwgIzhBQjZCQik7IH0KICAubWQtY29kZSB7IGNvbG9yOiB2YXIoLS1obC1zdHIsICNjZTkxNzgpOyBiYWNrZ3JvdW5kOiByZ2JhKDI1NSwyNTUsMjU1LDAuMDUpOyB9CiAgLm1kLWxpbmsgeyBjb2xvcjogdmFyKC0taW5wdXQsICM4QUI2QkIpOyB9CiAgLm1kLWxpIHsgY29sb3I6IHZhcigtLW91dHB1dCwgIzk4NkM5OCk7IH0KICAubWQtcSB7IGNvbG9yOiB2YXIoLS1obC1jb20sIHZhcigtLXN1Y2Nlc3MpKTsgfQogIC5tZC1ociB7IGNvbG9yOiB2YXIoLS10ZXh0LWZhaW50LCAjNjY2NjY2KTsgfQogIC5tZC1tYXJrZXIgeyBjb2xvcjogdmFyKC0tdGV4dC1mYWludCwgIzY2NjY2Nik7IH0KPC9zdHlsZT4KCjxkaXYgY2xhc3M9InNjIj4KICA8ZGl2IGNsYXNzPSJzYy1sYWIiIGRhdGEtc2N2LXNsb3Q9ImxhYmVsIj5ub3RlPC9kaXY+CiAgPGRpdiBjbGFzcz0ic2MtZWRpdG9yIj4KICAgIDxkaXYgY2xhc3M9InNjLWd1dHRlciI+PC9kaXY+CiAgICA8ZGl2IGNsYXNzPSJzYy1zdXJmYWNlIj4KICAgICAgPGRpdiBjbGFzcz0ic2Mtc3luIj48ZGl2IGNsYXNzPSJzeW50YXgtaW5uZXIiPjwvZGl2PjwvZGl2PgogICAgICA8dGV4dGFyZWEgY2xhc3M9InNjLXRhIiBzcGVsbGNoZWNrPSJmYWxzZSIgd3JhcD0ib2ZmIiBkYXRhLXNjdi1zbG90PSJub3RlIj48L3RleHRhcmVhPgogICAgPC9kaXY+CiAgPC9kaXY+CjwvZGl2PgoKPHNjcmlwdD4KICBjb25zdCB0YSA9IHJvb3QucXVlcnlTZWxlY3RvcignLnNjLXRhJyksIGd1dHRlciA9IHJvb3QucXVlcnlTZWxlY3RvcignLnNjLWd1dHRlcicpLCBzeW4gPSByb290LnF1ZXJ5U2VsZWN0b3IoJy5zYy1zeW4nKSwgaW5uZXIgPSByb290LnF1ZXJ5U2VsZWN0b3IoJy5zeW50YXgtaW5uZXInKTsKICBjb25zdCBMSU5FX0ggPSAxODsKICBjb25zdCBlc2MgPSBzID0+IHMucmVwbGFjZSgvJi9nLCcmYW1wOycpLnJlcGxhY2UoLzwvZywnJmx0OycpLnJlcGxhY2UoLz4vZywnJmd0OycpOwogIGZ1bmN0aW9uIGJsb2NrUHJlZihsaW5lKSB7IC8vIGxlYWRpbmcgc3RydWN0dXJhbCBtYXJrZXIsIGtlcHQgdmlzaWJsZTsgcmVzdCBpcyBzdHlsZWQgdGV4dAogICAgY29uc3QgbSA9IGxpbmUubWF0Y2goL14oIHswLDN9KSgjezEsNn1ccyt8PlxzP3xbLSpdXHMrfCg/OlxkK1wuKVxzK3xgYGBccyp8LS0tKyQpLyk7CiAgICByZXR1cm4gbSA/IHsgbWFya2VyOiBtWzJdLCByZXN0OiBsaW5lLnNsaWNlKG1bMl0ubGVuZ3RoKSB9IDogeyBtYXJrZXI6ICcnLCByZXN0OiBsaW5lIH07CiAgfQogIGZ1bmN0aW9uIGlubGluZShzKSB7IC8vIE5FVkVSIHJlbW92ZXMgYSBsaXRlcmFsIGNoYXIgLSBkZWxpbWl0ZXJzIHN0YXksIGlubmVyIHRleHQgaXMgc3R5bGVkICh6ZXJvIGRpc3BsYWNlbWVudCkKICAgIGNvbnN0IG91dCA9IFtdOwogICAgY29uc3QgbWFyayA9IHQgPT4gYDxzcGFuIGNsYXNzPSJtZC1tYXJrZXIiPiR7ZXNjKHQpfTwvc3Bhbj5gOwogICAgbGV0IGkgPSAwOwogICAgd2hpbGUgKGkgPCBzLmxlbmd0aCkgewogICAgICBpZiAoc1tpXSA9PT0gJ2AnKSB7IGNvbnN0IGUgPSBzLmluZGV4T2YoJ2AnLCBpICsgMSk7IGlmIChlID09PSAtMSkgeyBvdXQucHVzaChlc2Mocy5zbGljZShpKSkpOyBicmVhazsgfSBvdXQucHVzaChtYXJrKCdgJyksIGA8c3BhbiBjbGFzcz0ibWQtY29kZSI+JHtlc2Mocy5zbGljZShpICsgMSwgZSkpfTwvc3Bhbj5gLCBtYXJrKCdgJykpOyBpID0gZSArIDE7IGNvbnRpbnVlOyB9CiAgICAgIGlmIChzW2ldID09PSAnWycpIHsgY29uc3QgbCA9IC9eXFsoW15cXV0rKVxdXCgoW14pXSspXCkvLmV4ZWMocy5zbGljZShpKSk7IGlmIChsKSB7IG91dC5wdXNoKG1hcmsoJ1snKSwgYDxzcGFuIGNsYXNzPSJtZC1saW5rIj4ke2VzYyhsWzFdKX08L3NwYW4+YCwgbWFyaygnXSgnICsgbFsyXSArICcpJykpOyBpICs9IGxbMF0ubGVuZ3RoOyBjb250aW51ZTsgfSB9CiAgICAgIGlmIChzW2ldID09PSAnKicgfHwgc1tpXSA9PT0gJ18nKSB7CiAgICAgICAgY29uc3QgdCA9IHNbaV07CiAgICAgICAgaWYgKHNbaSArIDFdID09PSB0KSB7IGNvbnN0IGUgPSBzLmluZGV4T2YodCArIHQsIGkgKyAyKTsgaWYgKGUgIT09IC0xKSB7IG91dC5wdXNoKG1hcmsodCArIHQpLCBgPHNwYW4gY2xhc3M9Im1kLWJvbGQiPiR7ZXNjKHMuc2xpY2UoaSArIDIsIGUpKX08L3NwYW4+YCwgbWFyayh0ICsgdCkpOyBpID0gZSArIDI7IGNvbnRpbnVlOyB9IH0KICAgICAgICBlbHNlIHsgY29uc3QgZSA9IHMuaW5kZXhPZih0LCBpICsgMSk7IGlmIChlICE9PSAtMSkgeyBvdXQucHVzaChtYXJrKHQpLCBgPHNwYW4gY2xhc3M9Im1kLWl0YWxpYyI+JHtlc2Mocy5zbGljZShpICsgMSwgZSkpfTwvc3Bhbj5gLCBtYXJrKHQpKTsgaSA9IGUgKyAxOyBjb250aW51ZTsgfSB9CiAgICAgIH0KICAgICAgb3V0LnB1c2goZXNjKHNbaV0pKTsgaSsrOwogICAgfQogICAgcmV0dXJuIG91dC5qb2luKCcnKTsKICB9CiAgZnVuY3Rpb24gaGlnaGxpZ2h0TGluZShsaW5lKSB7CiAgICBjb25zdCBiID0gYmxvY2tQcmVmKGxpbmUpOwogICAgaWYgKGIubWFya2VyID09PSAnLS0tJykgcmV0dXJuIGA8c3BhbiBjbGFzcz0ibWQtaHIiPiR7ZXNjKGxpbmUpfTwvc3Bhbj5gOwogICAgY29uc3QgaCA9IC9eKCN7MSw2fSlccysvLmV4ZWMoYi5tYXJrZXIpLCBxID0gL14+XHM/Ly50ZXN0KGIubWFya2VyKTsKICAgIGNvbnN0IGxlYWQgPSBiLm1hcmtlciA/IGA8c3BhbiBjbGFzcz0ibWQtbWFya2VyIj4ke2VzYyhiLm1hcmtlcil9PC9zcGFuPmAgOiAnJzsKICAgIGxldCByZXN0ID0gaW5saW5lKGIucmVzdCk7CiAgICBpZiAoaCkgcmVzdCA9IGA8c3BhbiBjbGFzcz0ibWQtaCR7TWF0aC5taW4oMywgaFsxXS5sZW5ndGgpfSI+JHtyZXN0fTwvc3Bhbj5gOwogICAgZWxzZSBpZiAocSkgcmVzdCA9IGA8c3BhbiBjbGFzcz0ibWQtcSI+JHtyZXN0fTwvc3Bhbj5gOwogICAgcmV0dXJuIGxlYWQgKyByZXN0OwogIH0KICBmdW5jdGlvbiByZW5kZXIoKSB7CiAgICBjb25zdCBsaW5lcyA9IHRhLnZhbHVlLnNwbGl0KCdcbicpOwogICAgd2hpbGUgKGxpbmVzLmxlbmd0aCA8IDQpIGxpbmVzLnB1c2goJycpOwogICAgZ3V0dGVyLmlubmVySFRNTCA9IGxpbmVzLm1hcCgoXywgaSkgPT4gYDxzcGFuPiR7U3RyaW5nKGkgKyAxKS5wYWRTdGFydCgyLCAnMCcpfTwvc3Bhbj5gKS5qb2luKCcnKTsKICAgIGlubmVyLnN0eWxlLmNzc1RleHQgPSAncG9zaXRpb246cmVsYXRpdmU7aGVpZ2h0OicgKyAobGluZXMubGVuZ3RoICogTElORV9IICsgMTYpICsgJ3B4JzsKICAgIGlubmVyLmlubmVySFRNTCA9IGxpbmVzLm1hcCgobGluZSwgaSkgPT4gYDxkaXYgc3R5bGU9InBvc2l0aW9uOmFic29sdXRlO3RvcDoke2kgKiBMSU5FX0h9cHg7bGVmdDowO3JpZ2h0OjA7aGVpZ2h0OiR7TElORV9IfXB4O3doaXRlLXNwYWNlOnByZSI+JHtoaWdobGlnaHRMaW5lKGxpbmUgfHwgJyAnKX08L2Rpdj5gKS5qb2luKCcnKTsKICAgIGlubmVyLnN0eWxlLnRyYW5zZm9ybSA9IGB0cmFuc2xhdGUoLSR7dGEuc2Nyb2xsTGVmdH1weCwtJHt0YS5zY3JvbGxUb3B9cHgpYDsKICAgIHRhLnN0eWxlLmhlaWdodCA9IE1hdGgubWF4KDQsIGxpbmVzLmxlbmd0aCkgKiBMSU5FX0ggKyAxNiArICdweCc7CiAgICBndXR0ZXIuc2Nyb2xsVG9wID0gdGEuc2Nyb2xsVG9wOwogIH0KICBmdW5jdGlvbiBzeW5jU2Nyb2xsKCkgeyBpbm5lci5zdHlsZS50cmFuc2Zvcm0gPSBgdHJhbnNsYXRlKC0ke3RhLnNjcm9sbExlZnR9cHgsLSR7dGEuc2Nyb2xsVG9wfXB4KWA7IGd1dHRlci5zY3JvbGxUb3AgPSB0YS5zY3JvbGxUb3A7IH0KICB0YS5hZGRFdmVudExpc3RlbmVyKCdpbnB1dCcsIHJlbmRlcik7CiAgdGEuYWRkRXZlbnRMaXN0ZW5lcignc2Nyb2xsJywgc3luY1Njcm9sbCk7CiAgdGEuYWRkRXZlbnRMaXN0ZW5lcigna2V5ZG93bicsIGUgPT4gewogICAgaWYgKGUua2V5ID09PSAnVGFiJykgeyBlLnByZXZlbnREZWZhdWx0KCk7IGRvY3VtZW50LmV4ZWNDb21tYW5kKCdpbnNlcnRUZXh0JywgZmFsc2UsICcgICcpOyByZW5kZXIoKTsgfQogICAgaWYgKGUua2V5ID09PSAnRW50ZXInICYmICFlLmN0cmxLZXkgJiYgIWUubWV0YUtleSkgeyBjb25zdCBzID0gdGEudmFsdWUuc2xpY2UoMCwgdGEuc2VsZWN0aW9uU3RhcnQpOyBjb25zdCBpbmQgPSAocy5zbGljZShzLmxhc3RJbmRleE9mKCdcbicpICsgMSkubWF0Y2goL15bIFx0XSovKSB8fCBbJyddKVswXTsgZS5wcmV2ZW50RGVmYXVsdCgpOyBkb2N1bWVudC5leGVjQ29tbWFuZCgnaW5zZXJ0VGV4dCcsIGZhbHNlLCAnXG4nICsgaW5kKTsgcmVuZGVyKCk7IH0KICB9KTsKICB0YS5hZGRFdmVudExpc3RlbmVyKCdwYXN0ZScsIGUgPT4geyBlLnByZXZlbnREZWZhdWx0KCk7IGRvY3VtZW50LmV4ZWNDb21tYW5kKCdpbnNlcnRUZXh0JywgZmFsc2UsIChlLmNsaXBib2FyZERhdGEgfHwgd2luZG93LmNsaXBib2FyZERhdGEpLmdldERhdGEoJ3RleHQvcGxhaW4nKSk7IHJlbmRlcigpOyB9KTsKICBmdW5jdGlvbiBib290KCkgeyByZW5kZXIoKTsgc3luY1Njcm9sbCgpOyB9CiAgYm9vdCgpOwogIHJlcXVlc3RBbmltYXRpb25GcmFtZShib290KTsKICBzZXRUaW1lb3V0KGJvb3QsIDApOwo8L3NjcmlwdD4=" data-scv-icon="">
+customElements.define('scv-script-markdown', class extends HTMLElement { constructor() { super();
+const _baked = !this.shadowRoot && this.querySelector('template[shadowrootmode], template.custom-shadow');
+if (_baked) { this.attachShadow({mode: 'open'}).innerHTML = _baked.innerHTML; _baked.remove(); }
+else if (!this.shadowRoot) this.attachShadow({mode: 'open'}).innerHTML = `<style>:host { display: block; }
+  .sc { width: 460px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); padding: 10px; box-sizing: border-box; font-family: var(--font-mono, 'SF Mono', ui-monospace, monospace); }
+  .sc-lab { color: var(--text-faint, #666666); font-size: 10px; text-transform: lowercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .sc-editor { display: flex; border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-low, 5px); background: var(--background-sunk, #1A1C1C); overflow: hidden; }
+  .sc-gutter { flex: 0 0 30px; background: rgba(255,255,255,0.02); border-right: 1px solid var(--border, #3A3C3C); padding: 8px 4px; text-align: center; overflow: hidden; color: var(--text-dim, #888888); font: 12px/18px var(--font-mono, 'SF Mono', monospace); user-select: none; }
+  .sc-gutter span { display: block; line-height: 18px; }
+  .sc-surface { position: relative; flex: 1; min-height: 88px; }
+  .sc-ta, .sc-syn { margin: 0; padding: 8px; position: absolute; inset: 0; font: 12px/18px var(--font-mono, 'SF Mono', monospace); white-space: pre; tab-size: 2; }
+  .sc-ta { display: block; width: 100%; height: 100%; resize: none; overflow: auto; background: transparent; color: transparent; -webkit-text-fill-color: transparent; caret-color: var(--text-base, #AAABAC); border: none; outline: none; }
+  .sc-ta::selection { background: rgba(255,255,255,0.15); }
+  .sc-syn { pointer-events: none; overflow: hidden; }
+  .md-h1 { color: var(--output, #986C98); font-weight: 700; }
+  .md-h2 { color: var(--input, #8AB6BB); font-weight: 600; }
+  .md-h3 { color: var(--input, #8AB6BB); font-weight: 600; }
+  .md-bold { color: var(--output, #986C98); font-weight: 700; }
+  .md-italic { font-style: italic; color: var(--input, #8AB6BB); }
+  .md-code { color: var(--hl-str, #ce9178); background: rgba(255,255,255,0.05); }
+  .md-link { color: var(--input, #8AB6BB); }
+  .md-li { color: var(--output, #986C98); }
+  .md-q { color: var(--hl-com, var(--success)); }
+  .md-hr { color: var(--text-faint, #666666); }
+  .md-marker { color: var(--text-faint, #666666); }</style><div class="sc">
+  <div class="sc-lab" data-scv-slot="label">note</div>
+  <div class="sc-editor">
+    <div class="sc-gutter"></div>
+    <div class="sc-surface">
+      <div class="sc-syn"><div class="syntax-inner"></div></div>
+      <textarea class="sc-ta" spellcheck="false" wrap="off" data-scv-slot="note"></textarea>
+    </div>
+  </div>
+</div>`;
+const root = this.shadowRoot, host = this, emit = v => this.dispatchEvent(new CustomEvent('scv-emit', { detail: v, bubbles: true, composed: true }));
+const ta = root.querySelector('.sc-ta'), gutter = root.querySelector('.sc-gutter'), syn = root.querySelector('.sc-syn'), inner = root.querySelector('.syntax-inner');
+  const LINE_H = 18;
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  function blockPref(line) { // leading structural marker, kept visible; rest is styled text
+    const m = line.match(/^( {0,3})(#{1,6}\s+|>\s?|[-*]\s+|(?:\d+\.)\s+|```\s*|---+$)/);
+    return m ? { marker: m[2], rest: line.slice(m[2].length) } : { marker: '', rest: line };
+  }
+  function inline(s) { // NEVER removes a literal char - delimiters stay, inner text is styled (zero displacement)
+    const out = [];
+    const mark = t => `<span class="md-marker">${esc(t)}</span>`;
+    let i = 0;
+    while (i < s.length) {
+      if (s[i] === '`') { const e = s.indexOf('`', i + 1); if (e === -1) { out.push(esc(s.slice(i))); break; } out.push(mark('`'), `<span class="md-code">${esc(s.slice(i + 1, e))}</span>`, mark('`')); i = e + 1; continue; }
+      if (s[i] === '[') { const l = /^\[([^\]]+)\]\(([^)]+)\)/.exec(s.slice(i)); if (l) { out.push(mark('['), `<span class="md-link">${esc(l[1])}</span>`, mark('](' + l[2] + ')')); i += l[0].length; continue; } }
+      if (s[i] === '*' || s[i] === '_') {
+        const t = s[i];
+        if (s[i + 1] === t) { const e = s.indexOf(t + t, i + 2); if (e !== -1) { out.push(mark(t + t), `<span class="md-bold">${esc(s.slice(i + 2, e))}</span>`, mark(t + t)); i = e + 2; continue; } }
+        else { const e = s.indexOf(t, i + 1); if (e !== -1) { out.push(mark(t), `<span class="md-italic">${esc(s.slice(i + 1, e))}</span>`, mark(t)); i = e + 1; continue; } }
+      }
+      out.push(esc(s[i])); i++;
+    }
+    return out.join('');
+  }
+  function highlightLine(line) {
+    const b = blockPref(line);
+    if (b.marker === '---') return `<span class="md-hr">${esc(line)}</span>`;
+    const h = /^(#{1,6})\s+/.exec(b.marker), q = /^>\s?/.test(b.marker);
+    const lead = b.marker ? `<span class="md-marker">${esc(b.marker)}</span>` : '';
+    let rest = inline(b.rest);
+    if (h) rest = `<span class="md-h${Math.min(3, h[1].length)}">${rest}</span>`;
+    else if (q) rest = `<span class="md-q">${rest}</span>`;
+    return lead + rest;
+  }
+  function render() {
+    const lines = ta.value.split('\n');
+    while (lines.length < 4) lines.push('');
+    gutter.innerHTML = lines.map((_, i) => `<span>${String(i + 1).padStart(2, '0')}</span>`).join('');
+    inner.style.cssText = 'position:relative;height:' + (lines.length * LINE_H + 16) + 'px';
+    inner.innerHTML = lines.map((line, i) => `<div style="position:absolute;top:${i * LINE_H}px;left:0;right:0;height:${LINE_H}px;white-space:pre">${highlightLine(line || ' ')}</div>`).join('');
+    inner.style.transform = `translate(-${ta.scrollLeft}px,-${ta.scrollTop}px)`;
+    ta.style.height = Math.max(4, lines.length) * LINE_H + 16 + 'px';
+    gutter.scrollTop = ta.scrollTop;
+  }
+  function syncScroll() { inner.style.transform = `translate(-${ta.scrollLeft}px,-${ta.scrollTop}px)`; gutter.scrollTop = ta.scrollTop; }
+  ta.addEventListener('input', render);
+  ta.addEventListener('scroll', syncScroll);
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Tab') { e.preventDefault(); document.execCommand('insertText', false, '  '); render(); }
+    if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) { const s = ta.value.slice(0, ta.selectionStart); const ind = (s.slice(s.lastIndexOf('\n') + 1).match(/^[ \t]*/) || [''])[0]; e.preventDefault(); document.execCommand('insertText', false, '\n' + ind); render(); }
+  });
+  ta.addEventListener('paste', e => { e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData || window.clipboardData).getData('text/plain')); render(); });
+  function boot() { render(); syncScroll(); }
+  boot();
+  requestAnimationFrame(boot);
+  setTimeout(boot, 0);
+}
+connectedCallback() { this.setAttribute('data-scv-emitter', ''); } });
+</script>
+</body></html>

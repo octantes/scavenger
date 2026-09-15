@@ -1,0 +1,118 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<html><head><meta charset="utf-8"><title>scv-store-audio - scav component</title><link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Ctext%20x%3D%228%22%20y%3D%2212%22%20font-size%3D%2211%22%20font-family%3D%22monospace%22%20fill%3D%22%23986c98%22%20text-anchor%3D%22middle%22%3E%26lt%3B%26gt%3B%3C%2Ftext%3E%3C%2Fsvg%3E"></head>
+<body style="margin:0;background:#1a1c1c">
+<scv-store-audio data-scv-component></scv-store-audio>
+<script data-scv-comp data-scv-tag="scv-store-audio" data-scv-source="PHN0eWxlPgogIDpob3N0IHsgZGlzcGxheTogYmxvY2s7IH0KICAuYXUgeyB3aWR0aDogMzAwcHg7IGJhY2tncm91bmQ6IHZhcigtLWJhY2tncm91bmQtcmFpc2VkLCAjMjUyNzI3KTsgYm9yZGVyOiAxcHggc29saWQgdmFyKC0tYm9yZGVyLCAjM0EzQzNDKTsgYm9yZGVyLXJhZGl1czogdmFyKC0tY29ybmVyLWhpZ2gsIDhweCk7IHBhZGRpbmc6IDhweCAxMHB4IDEwcHg7IGJveC1zaXppbmc6IGJvcmRlci1ib3g7IGZvbnQtZmFtaWx5OiB2YXIoLS1mb250LW1vbm8sICdTRiBNb25vJywgdWktbW9ub3NwYWNlLCBtb25vc3BhY2UpOyB9CiAgLmF1LWxhYiB7IGNvbG9yOiB2YXIoLS10ZXh0LWZhaW50LCAjNjY2NjY2KTsgZm9udC1zaXplOiAxMHB4OyB0ZXh0LXRyYW5zZm9ybTogbG93ZXJjYXNlOyBsZXR0ZXItc3BhY2luZzogMXB4OyBtYXJnaW4tYm90dG9tOiA2cHg7IH0KICAuYXUtcGFuZWwgeyBkaXNwbGF5OiBmbGV4OyBmbGV4LWRpcmVjdGlvbjogY29sdW1uOyBnYXA6IDRweDsgYmFja2dyb3VuZDogdmFyKC0tYmFja2dyb3VuZC1zdW5rLCAjMUExQzFDKTsgYm9yZGVyLXJhZGl1czogdmFyKC0tY29ybmVyLWxvdywgNXB4KTsgcGFkZGluZzogNnB4OyBib3gtc2l6aW5nOiBib3JkZXItYm94OyBtYXJnaW4tYm90dG9tOiA0cHg7IH0KICAuYXUtbmFtZSB7IGZvbnQtc2l6ZTogMTBweDsgY29sb3I6IHZhcigtLXRleHQtYmFzZSwgI0FBQUJBQyk7IHdoaXRlLXNwYWNlOiBub3dyYXA7IG92ZXJmbG93OiBoaWRkZW47IHRleHQtb3ZlcmZsb3c6IGVsbGlwc2lzOyB9CiAgLmF1LWlkeCB7IGZvbnQtc2l6ZTogOXB4OyBjb2xvcjogdmFyKC0tdGV4dC1mYWludCwgIzY2NjY2Nik7IHRleHQtYWxpZ246IGNlbnRlcjsgfQogIC5hdS1iYXIgeyBwb3NpdGlvbjogcmVsYXRpdmU7IGZsZXg6IG5vbmU7IGhlaWdodDogMTBweDsgYmFja2dyb3VuZDogdmFyKC0tYmFja2dyb3VuZC1yYWlzZWQsICMyNTI3MjcpOyBib3JkZXItcmFkaXVzOiB2YXIoLS1jb3JuZXItbG93LCA1cHgpOyBvdmVyZmxvdzogaGlkZGVuOyBjdXJzb3I6IHBvaW50ZXI7IH0KICAuYXUtZmlsbCB7IGhlaWdodDogMTAwJTsgd2lkdGg6IDAlOyBiYWNrZ3JvdW5kOiB2YXIoLS1pbnB1dCwgIzhBQjZCQik7IGJvcmRlci1yYWRpdXM6IGluaGVyaXQ7IHBvaW50ZXItZXZlbnRzOiBub25lOyB9CiAgLmF1LXRpbWUgeyBkaXNwbGF5OiBmbGV4OyBqdXN0aWZ5LWNvbnRlbnQ6IHNwYWNlLWJldHdlZW47IGZvbnQtc2l6ZTogOXB4OyBjb2xvcjogdmFyKC0tdGV4dC1kaW0sICM4ODg4ODgpOyB9CiAgLmF1LWN0cmwgeyBkaXNwbGF5OiBmbGV4OyBhbGlnbi1pdGVtczogc3RyZXRjaDsgZ2FwOiA0cHg7IH0KICAuYXUtYnRuIHsgZmxleDogMTsgbWluLXdpZHRoOiAwOyBoZWlnaHQ6IDI4cHg7IGJveC1zaXppbmc6IGJvcmRlci1ib3g7IGJhY2tncm91bmQ6IHZhcigtLWJhY2tncm91bmQtc3VuaywgIzFBMUMxQyk7IGJvcmRlcjogbm9uZTsgYm9yZGVyLXJhZGl1czogdmFyKC0tY29ybmVyLWxvdywgNXB4KTsgY29sb3I6IHZhcigtLXRleHQtYmFzZSwgI0FBQUJBQyk7IGN1cnNvcjogcG9pbnRlcjsgZGlzcGxheTogZmxleDsgYWxpZ24taXRlbXM6IGNlbnRlcjsganVzdGlmeS1jb250ZW50OiBjZW50ZXI7IH0KICAuYXUtYnRuOmhvdmVyIHsgY29sb3I6IHZhcigtLW91dHB1dCwgIzk4NkM5OCk7IH0KICAuYXUtYnRuOmFjdGl2ZSB7IHRyYW5zZm9ybTogdHJhbnNsYXRlWSgxcHgpOyBiYWNrZ3JvdW5kOiB2YXIoLS1iYWNrZ3JvdW5kLXJhaXNlZCwgIzI1MjcyNyk7IH0KICAuYXUtYnRuIHN2ZyB7IHdpZHRoOiAxNHB4OyBoZWlnaHQ6IDE0cHg7IGZpbGw6IGN1cnJlbnRDb2xvcjsgcG9pbnRlci1ldmVudHM6IG5vbmU7IGRpc3BsYXk6IGJsb2NrOyB9CiAgLmF1LWVuZ2luZSB7IGRpc3BsYXk6IG5vbmU7IH0KICAuYXUtZmlsZS1pbiB7IGRpc3BsYXk6IG5vbmU7IH0KICB0ZXh0YXJlYVtoaWRkZW5dIHsgZGlzcGxheTogbm9uZTsgfQo8L3N0eWxlPgoKPGRpdiBjbGFzcz0iYXUiPgogIDxkaXYgY2xhc3M9ImF1LWxhYiIgZGF0YS1zY3Ytc2xvdD0ibGFiZWwiPmF1ZGlvPC9kaXY+CiAgPGRpdiBjbGFzcz0iYXUtcGFuZWwiPgogICAgPGRpdiBjbGFzcz0iYXUtbmFtZSIgZGF0YS1hdT0ibmFtZSI+4oCUPC9kaXY+CiAgICA8ZGl2IGNsYXNzPSJhdS1iYXIiIGRhdGEtYXU9ImJhciI+PGRpdiBjbGFzcz0iYXUtZmlsbCIgZGF0YS1hdT0iZmlsbCI+PC9kaXY+PC9kaXY+CiAgICA8ZGl2IGNsYXNzPSJhdS10aW1lIj4KICAgICAgPHNwYW4gZGF0YS1hdT0iY3VyIj4wOjAwPC9zcGFuPgogICAgICA8c3BhbiBjbGFzcz0iYXUtaWR4IiBkYXRhLWF1PSJpZHgiPjwvc3Bhbj4KICAgICAgPHNwYW4gZGF0YS1hdT0iZHVyIj4wOjAwPC9zcGFuPgogICAgPC9kaXY+CiAgICA8YXVkaW8gY2xhc3M9ImF1LWVuZ2luZSIgZGF0YS1hdT0iZW5naW5lIj48L2F1ZGlvPgogIDwvZGl2PgogIDxkaXYgY2xhc3M9ImF1LWN0cmwiPgogICAgPGJ1dHRvbiB0eXBlPSJidXR0b24iIGNsYXNzPSJhdS1idG4iIGRhdGEtYXU9ImJhY2siIHRpdGxlPSJwcmV2aW91cyB0cmFjayI+CiAgICAgIDxzdmcgdmlld0JveD0iMCAwIDI0IDI0IiBhcmlhLWhpZGRlbj0idHJ1ZSI+PHBhdGggZD0iTTYgNmgydjEySDZ6bTEwLjUgMEw5IDEybDcuNSA2eiIvPjwvc3ZnPgogICAgPC9idXR0b24+CiAgICA8YnV0dG9uIHR5cGU9ImJ1dHRvbiIgY2xhc3M9ImF1LWJ0biIgZGF0YS1hdT0iYWRkIiB0aXRsZT0iYWRkIGF1ZGlvIj4KICAgICAgPHN2ZyB2aWV3Qm94PSIwIDAgMjQgMjQiIGFyaWEtaGlkZGVuPSJ0cnVlIj48cGF0aCBkPSJNMTAgNGg0djZoNnY0aC02djZoLTR2LTZINHYtNGg2eiIvPjwvc3ZnPgogICAgPC9idXR0b24+CiAgICA8YnV0dG9uIHR5cGU9ImJ1dHRvbiIgY2xhc3M9ImF1LWJ0biIgZGF0YS1hdT0icGxheSIgdGl0bGU9InBsYXkvcGF1c2UiPgogICAgICA8c3ZnIHZpZXdCb3g9IjAgMCAyNCAyNCIgYXJpYS1oaWRkZW49InRydWUiPjxwYXRoIGRhdGEtYXU9InBsYXlpY29uIiBkPSJNOCA1djE0bDExLTd6Ii8+PC9zdmc+CiAgICA8L2J1dHRvbj4KICAgIDxidXR0b24gdHlwZT0iYnV0dG9uIiBjbGFzcz0iYXUtYnRuIiBkYXRhLWF1PSJzdG9wIiB0aXRsZT0ic3RvcCI+CiAgICAgIDxzdmcgdmlld0JveD0iMCAwIDI0IDI0IiBhcmlhLWhpZGRlbj0idHJ1ZSI+PHJlY3QgeD0iNiIgeT0iNiIgd2lkdGg9IjEyIiBoZWlnaHQ9IjEyIi8+PC9zdmc+CiAgICA8L2J1dHRvbj4KICAgIDxidXR0b24gdHlwZT0iYnV0dG9uIiBjbGFzcz0iYXUtYnRuIiBkYXRhLWF1PSJmd2QiIHRpdGxlPSJuZXh0IHRyYWNrIj4KICAgICAgPHN2ZyB2aWV3Qm94PSIwIDAgMjQgMjQiIGFyaWEtaGlkZGVuPSJ0cnVlIj48cGF0aCBkPSJNMTYgNmgtMnYxMmgyek03LjUgNiAxNSAxMmwtNy41IDZ6Ii8+PC9zdmc+CiAgICA8L2J1dHRvbj4KICA8L2Rpdj4KICA8aW5wdXQgdHlwZT0iZmlsZSIgYWNjZXB0PSJhdWRpby8qIiBjbGFzcz0iYXUtZmlsZS1pbiIgZGF0YS1hdT0iZmlsZSI+CiAgPHRleHRhcmVhIGRhdGEtc2N2LXNsb3Q9ImF1ZGlvIiBoaWRkZW4+PC90ZXh0YXJlYT4KPC9kaXY+Cgo8c2NyaXB0PgogIGNvbnN0IGVuZyA9IHJvb3QucXVlcnlTZWxlY3RvcignW2RhdGEtYXU9ImVuZ2luZSJdJyksIGJhY2sgPSByb290LnF1ZXJ5U2VsZWN0b3IoJ1tkYXRhLWF1PSJiYWNrIl0nKSwKICAgICAgICBmd2QgPSByb290LnF1ZXJ5U2VsZWN0b3IoJ1tkYXRhLWF1PSJmd2QiXScpLCBwbGF5ID0gcm9vdC5xdWVyeVNlbGVjdG9yKCdbZGF0YS1hdT0icGxheSJdJyksCiAgICAgICAgc3RvcCA9IHJvb3QucXVlcnlTZWxlY3RvcignW2RhdGEtYXU9InN0b3AiXScpLCBhZGQgPSByb290LnF1ZXJ5U2VsZWN0b3IoJ1tkYXRhLWF1PSJhZGQiXScpLAogICAgICAgIHBsYXlJY29uID0gcm9vdC5xdWVyeVNlbGVjdG9yKCdbZGF0YS1hdT0icGxheWljb24iXScpLAogICAgICAgIGJhciA9IHJvb3QucXVlcnlTZWxlY3RvcignW2RhdGEtYXU9ImJhciJdJyksIGZpbGwgPSByb290LnF1ZXJ5U2VsZWN0b3IoJ1tkYXRhLWF1PSJmaWxsIl0nKSwKICAgICAgICBjdXJFbCA9IHJvb3QucXVlcnlTZWxlY3RvcignW2RhdGEtYXU9ImN1ciJdJyksIGR1ckVsID0gcm9vdC5xdWVyeVNlbGVjdG9yKCdbZGF0YS1hdT0iZHVyIl0nKSwKICAgICAgICBuYW1lRWwgPSByb290LnF1ZXJ5U2VsZWN0b3IoJ1tkYXRhLWF1PSJuYW1lIl0nKSwgaWR4RWwgPSByb290LnF1ZXJ5U2VsZWN0b3IoJ1tkYXRhLWF1PSJpZHgiXScpLAogICAgICAgIGZpbGVJbiA9IHJvb3QucXVlcnlTZWxlY3RvcignW2RhdGEtYXU9ImZpbGUiXScpLCBzbG90ID0gcm9vdC5xdWVyeVNlbGVjdG9yKCdbZGF0YS1zY3Ytc2xvdD0iYXVkaW8iXScpOwogIGxldCB0cmFja3MgPSBbXTsKICBsZXQgaWR4ID0gLTEsIHBsYXlpbmcgPSBmYWxzZTsKICBjb25zdCBOQU1FX09GID0gdSA9PiB7IGNvbnN0IG0gPSAvXmRhdGE6KFteOyxdKykvLmV4ZWModSk7IGNvbnN0IGV4dCA9IG0gJiYgbVsxXS5pbmNsdWRlcygnbXBlZycpID8gJ21wMycgOiBtICYmIG1bMV0uaW5jbHVkZXMoJ29nZycpID8gJ29nZycgOiBtICYmIG1bMV0uaW5jbHVkZXMoJ3dhdicpID8gJ3dhdicgOiAnYXVkaW8nOyByZXR1cm4gJ3RyYWNrICcgKyAoaWR4ICsgMSkgKyAnLicgKyBleHQ7IH07CiAgY29uc3QgdG9EYXRhVVJMID0gZmlsZSA9PiBuZXcgUHJvbWlzZSgocmVzLCByZWopID0+IHsgY29uc3QgciA9IG5ldyBGaWxlUmVhZGVyKCk7IHIub25sb2FkID0gKCkgPT4gcmVzKHsgdXJsOiByLnJlc3VsdCwgbmFtZTogZmlsZS5uYW1lIH0pOyByLm9uZXJyb3IgPSByZWo7IHIucmVhZEFzRGF0YVVSTChmaWxlKTsgfSk7IC8vIG5hdGl2ZSBwYXRoLCBzYW1lIGFzIHBhdGNoYmF5CiAgY29uc3QgZnQgPSBzID0+IHsgaWYgKCFpc0Zpbml0ZShzKSkgcmV0dXJuICcwOjAwJzsgY29uc3QgbSA9IE1hdGguZmxvb3IocyAvIDYwKSwgc3MgPSBNYXRoLmZsb29yKHMgJSA2MCk7IHJldHVybiBtICsgJzonICsgU3RyaW5nKHNzKS5wYWRTdGFydCgyLCAnMCcpOyB9OwogIGNvbnN0IHNldFBsYXlCdG4gPSAoKSA9PiB7IHBsYXlJY29uLnNldEF0dHJpYnV0ZSgnZCcsIHBsYXlpbmcgPyAnTTcgNXYxNGwxMS03ek03IDUnIDogJ004IDV2MTRsMTEtN3onKTsgcGxheS50aXRsZSA9IHBsYXlpbmcgPyAncGF1c2UnIDogJ3BsYXknOyB9OwogIGZ1bmN0aW9uIHBlcnNpc3QoKSB7IHNsb3QudmFsdWUgPSB0cmFja3MubWFwKHQgPT4gdC5uYW1lID8gdC5uYW1lICsgJ1xuJyArIHQudXJsIDogdC51cmwpLmpvaW4oJ1xuJyk7IH0KICBmdW5jdGlvbiBzaG93KCkgewogICAgaWYgKHRyYWNrcy5sZW5ndGggPT09IDApIHsgZW5nLnJlbW92ZUF0dHJpYnV0ZSgnc3JjJyk7IG5hbWVFbC50ZXh0Q29udGVudCA9ICfigJQnOyBpZHhFbC50ZXh0Q29udGVudCA9ICcnOyBjdXJFbC50ZXh0Q29udGVudCA9ICcwOjAwJzsgZHVyRWwudGV4dENvbnRlbnQgPSAnMDowMCc7IGZpbGwuc3R5bGUud2lkdGggPSAnMCUnOyByZXR1cm47IH0KICAgIGlmIChpZHggPj0gdHJhY2tzLmxlbmd0aCkgaWR4ID0gMDsgaWYgKGlkeCA8IDApIGlkeCA9IHRyYWNrcy5sZW5ndGggLSAxOwogICAgZW5nLnNldEF0dHJpYnV0ZSgnc3JjJywgdHJhY2tzW2lkeF0udXJsKTsgZW5nLmxvYWQoKTsKICAgIG5hbWVFbC50ZXh0Q29udGVudCA9IHRyYWNrc1tpZHhdLm5hbWUgfHwgTkFNRV9PRih0cmFja3NbaWR4XS51cmwpOwogICAgaWR4RWwudGV4dENvbnRlbnQgPSAoaWR4ICsgMSkgKyAnIC8gJyArIHRyYWNrcy5sZW5ndGg7CiAgfQogIGNvbnN0IGVtaXRDdXJyZW50ID0gKCkgPT4geyBpZiAodHJhY2tzLmxlbmd0aCAmJiBlbmcuZ2V0QXR0cmlidXRlKCdzcmMnKSkgZW5nLmRpc3BhdGNoRXZlbnQobmV3IEN1c3RvbUV2ZW50KCdzY3YtZW1pdCcsIHsgZGV0YWlsOiBlbmcuZ2V0QXR0cmlidXRlKCdzcmMnKSwgYnViYmxlczogdHJ1ZSwgY29tcG9zZWQ6IHRydWUgfSkpOyB9OwogIGNvbnN0IHNldFRyYWNrID0gaSA9PiB7IGlkeCA9IChpICsgdHJhY2tzLmxlbmd0aCkgJSB0cmFja3MubGVuZ3RoOyBzaG93KCk7IGlmIChwbGF5aW5nKSBlbmcucGxheSgpLmNhdGNoKCgpID0+IHt9KTsgfTsKICBmdW5jdGlvbiB0b2dnbGUoKSB7IGlmICghdHJhY2tzLmxlbmd0aCkgcmV0dXJuOyBpZiAoZW5nLnBhdXNlZCkgZW5nLnBsYXkoKS5jYXRjaCgoKSA9PiB7fSk7IGVsc2UgZW5nLnBhdXNlKCk7IH0KICBmdW5jdGlvbiBkb1N0b3AoKSB7IGVuZy5wYXVzZSgpOyB0cnkgeyBlbmcuY3VycmVudFRpbWUgPSAwOyB9IGNhdGNoIChlKSB7fSBwbGF5aW5nID0gZmFsc2U7IHNldFBsYXlCdG4oKTsgY3VyRWwudGV4dENvbnRlbnQgPSAnMDowMCc7IGZpbGwuc3R5bGUud2lkdGggPSAnMCUnOyB9CiAgYmFjay5hZGRFdmVudExpc3RlbmVyKCdjbGljaycsICgpID0+IHsgaWYgKHRyYWNrcy5sZW5ndGgpIHsgcGxheWluZyA9IGZhbHNlOyBzZXRQbGF5QnRuKCk7IHNldFRyYWNrKGlkeCAtIDEpOyB9IH0pOwogIGZ3ZC5hZGRFdmVudExpc3RlbmVyKCdjbGljaycsICgpID0+IHsgaWYgKHRyYWNrcy5sZW5ndGgpIHsgcGxheWluZyA9IGZhbHNlOyBzZXRQbGF5QnRuKCk7IHNldFRyYWNrKGlkeCArIDEpOyB9IH0pOwogIHBsYXkuYWRkRXZlbnRMaXN0ZW5lcignY2xpY2snLCAoKSA9PiB7IGlmICh0cmFja3MubGVuZ3RoKSB0b2dnbGUoKTsgfSk7CiAgc3RvcC5hZGRFdmVudExpc3RlbmVyKCdjbGljaycsIGRvU3RvcCk7CiAgYWRkLmFkZEV2ZW50TGlzdGVuZXIoJ2NsaWNrJywgKCkgPT4gZmlsZUluLmNsaWNrKCkpOwogIGVuZy5hZGRFdmVudExpc3RlbmVyKCdwbGF5JywgKCkgPT4geyBwbGF5aW5nID0gdHJ1ZTsgc2V0UGxheUJ0bigpOyBlbWl0Q3VycmVudCgpOyB9KTsKICBlbmcuYWRkRXZlbnRMaXN0ZW5lcigncGF1c2UnLCAoKSA9PiB7IHBsYXlpbmcgPSBmYWxzZTsgc2V0UGxheUJ0bigpOyB9KTsKICBlbmcuYWRkRXZlbnRMaXN0ZW5lcigndGltZXVwZGF0ZScsICgpID0+IHsgY3VyRWwudGV4dENvbnRlbnQgPSBmdChlbmcuY3VycmVudFRpbWUpOyBmaWxsLnN0eWxlLndpZHRoID0gKGVuZy5kdXJhdGlvbiA/IChlbmcuY3VycmVudFRpbWUgLyBlbmcuZHVyYXRpb24pICogMTAwIDogMCkgKyAnJSc7IH0pOwogIGVuZy5hZGRFdmVudExpc3RlbmVyKCdsb2FkZWRtZXRhZGF0YScsICgpID0+IHsgZHVyRWwudGV4dENvbnRlbnQgPSBmdChlbmcuZHVyYXRpb24pOyB9KTsKICBlbmcuYWRkRXZlbnRMaXN0ZW5lcignZW5kZWQnLCAoKSA9PiB7IGlmICh0cmFja3MubGVuZ3RoID4gMSkgeyBwbGF5aW5nID0gZmFsc2U7IHNldFBsYXlCdG4oKTsgc2V0VHJhY2soaWR4ICsgMSk7IH0gZWxzZSB7IHBsYXlpbmcgPSBmYWxzZTsgc2V0UGxheUJ0bigpOyB9IH0pOwogIGJhci5hZGRFdmVudExpc3RlbmVyKCdjbGljaycsIGUgPT4geyBpZiAoZW5nLmR1cmF0aW9uKSB7IGNvbnN0IHIgPSBiYXIuZ2V0Qm91bmRpbmdDbGllbnRSZWN0KCk7IGVuZy5jdXJyZW50VGltZSA9ICgoZS5jbGllbnRYIC0gci5sZWZ0KSAvIHIud2lkdGgpICogZW5nLmR1cmF0aW9uOyB9IH0pOwogIGZpbGVJbi5hZGRFdmVudExpc3RlbmVyKCdjaGFuZ2UnLCAoKSA9PiB7CiAgICBjb25zdCBmID0gZmlsZUluLmZpbGVzWzBdOwogICAgaWYgKGYgJiYgZi50eXBlLnN0YXJ0c1dpdGgoJ2F1ZGlvLycpKSB0b0RhdGFVUkwoZikudGhlbih0ID0+IHsgdHJhY2tzLnB1c2godCk7IGlkeCA9IHRyYWNrcy5sZW5ndGggLSAxOyBzaG93KCk7IHBlcnNpc3QoKTsgZW5nLnBsYXkoKS5jYXRjaCgoKSA9PiB7fSk7IH0pOwogICAgZmlsZUluLnZhbHVlID0gJyc7CiAgfSk7CiAgZnVuY3Rpb24gcmVuZGVyKCkgewogICAgY29uc3QgcGFydHMgPSBzbG90LnZhbHVlLnNwbGl0KCdcbicpLm1hcChzID0+IHMudHJpbSgpKS5maWx0ZXIoQm9vbGVhbik7CiAgICB0cmFja3MgPSBbXTsKICAgIGxldCBwZW5kaW5nID0gJyc7CiAgICBmb3IgKGNvbnN0IHAgb2YgcGFydHMpIHsKICAgICAgaWYgKHAuc3RhcnRzV2l0aCgnZGF0YTonKSkgeyB0cmFja3MucHVzaCh7IHVybDogcCwgbmFtZTogcGVuZGluZyB9KTsgcGVuZGluZyA9ICcnOyB9CiAgICAgIGVsc2UgcGVuZGluZyA9IHA7CiAgICB9CiAgICBpZiAodHJhY2tzLmxlbmd0aCkgaWR4ID0gTWF0aC5taW4oaWR4IDwgMCA/IDAgOiBpZHgsIHRyYWNrcy5sZW5ndGggLSAxKTsKICAgIHNob3coKTsKICB9CiAgICBmdW5jdGlvbiBib290KCkgeyByZW5kZXIoKTsgc2V0UGxheUJ0bigpOyB9CiAgYm9vdCgpOwogIHJlcXVlc3RBbmltYXRpb25GcmFtZShib290KTsKICBzZXRUaW1lb3V0KGJvb3QsIDApOwo8L3NjcmlwdD4=" data-scv-icon="">
+customElements.define('scv-store-audio', class extends HTMLElement { constructor() { super();
+const _baked = !this.shadowRoot && this.querySelector('template[shadowrootmode], template.custom-shadow');
+if (_baked) { this.attachShadow({mode: 'open'}).innerHTML = _baked.innerHTML; _baked.remove(); }
+else if (!this.shadowRoot) this.attachShadow({mode: 'open'}).innerHTML = `<style>:host { display: block; }
+  .au { width: 300px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); padding: 8px 10px 10px; box-sizing: border-box; font-family: var(--font-mono, 'SF Mono', ui-monospace, monospace); }
+  .au-lab { color: var(--text-faint, #666666); font-size: 10px; text-transform: lowercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .au-panel { display: flex; flex-direction: column; gap: 4px; background: var(--background-sunk, #1A1C1C); border-radius: var(--corner-low, 5px); padding: 6px; box-sizing: border-box; margin-bottom: 4px; }
+  .au-name { font-size: 10px; color: var(--text-base, #AAABAC); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .au-idx { font-size: 9px; color: var(--text-faint, #666666); text-align: center; }
+  .au-bar { position: relative; flex: none; height: 10px; background: var(--background-raised, #252727); border-radius: var(--corner-low, 5px); overflow: hidden; cursor: pointer; }
+  .au-fill { height: 100%; width: 0%; background: var(--input, #8AB6BB); border-radius: inherit; pointer-events: none; }
+  .au-time { display: flex; justify-content: space-between; font-size: 9px; color: var(--text-dim, #888888); }
+  .au-ctrl { display: flex; align-items: stretch; gap: 4px; }
+  .au-btn { flex: 1; min-width: 0; height: 28px; box-sizing: border-box; background: var(--background-sunk, #1A1C1C); border: none; border-radius: var(--corner-low, 5px); color: var(--text-base, #AAABAC); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .au-btn:hover { color: var(--output, #986C98); }
+  .au-btn:active { transform: translateY(1px); background: var(--background-raised, #252727); }
+  .au-btn svg { width: 14px; height: 14px; fill: currentColor; pointer-events: none; display: block; }
+  .au-engine { display: none; }
+  .au-file-in { display: none; }
+  textarea[hidden] { display: none; }</style><div class="au">
+  <div class="au-lab" data-scv-slot="label">audio</div>
+  <div class="au-panel">
+    <div class="au-name" data-au="name">—</div>
+    <div class="au-bar" data-au="bar"><div class="au-fill" data-au="fill"></div></div>
+    <div class="au-time">
+      <span data-au="cur">0:00</span>
+      <span class="au-idx" data-au="idx"></span>
+      <span data-au="dur">0:00</span>
+    </div>
+    <audio class="au-engine" data-au="engine"></audio>
+  </div>
+  <div class="au-ctrl">
+    <button type="button" class="au-btn" data-au="back" title="previous track">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h2v12H6zm10.5 0L9 12l7.5 6z"></path></svg>
+    </button>
+    <button type="button" class="au-btn" data-au="add" title="add audio">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4h4v6h6v4h-6v6h-4v-6H4v-4h6z"></path></svg>
+    </button>
+    <button type="button" class="au-btn" data-au="play" title="play/pause">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path data-au="playicon" d="M8 5v14l11-7z"></path></svg>
+    </button>
+    <button type="button" class="au-btn" data-au="stop" title="stop">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12"></rect></svg>
+    </button>
+    <button type="button" class="au-btn" data-au="fwd" title="next track">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 6h-2v12h2zM7.5 6 15 12l-7.5 6z"></path></svg>
+    </button>
+  </div>
+  <input type="file" accept="audio/*" class="au-file-in" data-au="file">
+  <textarea data-scv-slot="audio" hidden=""></textarea>
+</div>`;
+const root = this.shadowRoot, host = this, emit = v => this.dispatchEvent(new CustomEvent('scv-emit', { detail: v, bubbles: true, composed: true }));
+const eng = root.querySelector('[data-au="engine"]'), back = root.querySelector('[data-au="back"]'),
+        fwd = root.querySelector('[data-au="fwd"]'), play = root.querySelector('[data-au="play"]'),
+        stop = root.querySelector('[data-au="stop"]'), add = root.querySelector('[data-au="add"]'),
+        playIcon = root.querySelector('[data-au="playicon"]'),
+        bar = root.querySelector('[data-au="bar"]'), fill = root.querySelector('[data-au="fill"]'),
+        curEl = root.querySelector('[data-au="cur"]'), durEl = root.querySelector('[data-au="dur"]'),
+        nameEl = root.querySelector('[data-au="name"]'), idxEl = root.querySelector('[data-au="idx"]'),
+        fileIn = root.querySelector('[data-au="file"]'), slot = root.querySelector('[data-scv-slot="audio"]');
+  let tracks = [];
+  let idx = -1, playing = false;
+  const NAME_OF = u => { const m = /^data:([^;,]+)/.exec(u); const ext = m && m[1].includes('mpeg') ? 'mp3' : m && m[1].includes('ogg') ? 'ogg' : m && m[1].includes('wav') ? 'wav' : 'audio'; return 'track ' + (idx + 1) + '.' + ext; };
+  const toDataURL = file => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res({ url: r.result, name: file.name }); r.onerror = rej; r.readAsDataURL(file); }); // native path, same as patchbay
+  const ft = s => { if (!isFinite(s)) return '0:00'; const m = Math.floor(s / 60), ss = Math.floor(s % 60); return m + ':' + String(ss).padStart(2, '0'); };
+  const setPlayBtn = () => { playIcon.setAttribute('d', playing ? 'M7 5v14l11-7zM7 5' : 'M8 5v14l11-7z'); play.title = playing ? 'pause' : 'play'; };
+  function persist() { slot.value = tracks.map(t => t.name ? t.name + '\n' + t.url : t.url).join('\n'); }
+  function show() {
+    if (tracks.length === 0) { eng.removeAttribute('src'); nameEl.textContent = '—'; idxEl.textContent = ''; curEl.textContent = '0:00'; durEl.textContent = '0:00'; fill.style.width = '0%'; return; }
+    if (idx >= tracks.length) idx = 0; if (idx < 0) idx = tracks.length - 1;
+    eng.setAttribute('src', tracks[idx].url); eng.load();
+    nameEl.textContent = tracks[idx].name || NAME_OF(tracks[idx].url);
+    idxEl.textContent = (idx + 1) + ' / ' + tracks.length;
+  }
+  const emitCurrent = () => { if (tracks.length && eng.getAttribute('src')) eng.dispatchEvent(new CustomEvent('scv-emit', { detail: eng.getAttribute('src'), bubbles: true, composed: true })); };
+  const setTrack = i => { idx = (i + tracks.length) % tracks.length; show(); if (playing) eng.play().catch(() => {}); };
+  function toggle() { if (!tracks.length) return; if (eng.paused) eng.play().catch(() => {}); else eng.pause(); }
+  function doStop() { eng.pause(); try { eng.currentTime = 0; } catch (e) {} playing = false; setPlayBtn(); curEl.textContent = '0:00'; fill.style.width = '0%'; }
+  back.addEventListener('click', () => { if (tracks.length) { playing = false; setPlayBtn(); setTrack(idx - 1); } });
+  fwd.addEventListener('click', () => { if (tracks.length) { playing = false; setPlayBtn(); setTrack(idx + 1); } });
+  play.addEventListener('click', () => { if (tracks.length) toggle(); });
+  stop.addEventListener('click', doStop);
+  add.addEventListener('click', () => fileIn.click());
+  eng.addEventListener('play', () => { playing = true; setPlayBtn(); emitCurrent(); });
+  eng.addEventListener('pause', () => { playing = false; setPlayBtn(); });
+  eng.addEventListener('timeupdate', () => { curEl.textContent = ft(eng.currentTime); fill.style.width = (eng.duration ? (eng.currentTime / eng.duration) * 100 : 0) + '%'; });
+  eng.addEventListener('loadedmetadata', () => { durEl.textContent = ft(eng.duration); });
+  eng.addEventListener('ended', () => { if (tracks.length > 1) { playing = false; setPlayBtn(); setTrack(idx + 1); } else { playing = false; setPlayBtn(); } });
+  bar.addEventListener('click', e => { if (eng.duration) { const r = bar.getBoundingClientRect(); eng.currentTime = ((e.clientX - r.left) / r.width) * eng.duration; } });
+  fileIn.addEventListener('change', () => {
+    const f = fileIn.files[0];
+    if (f && f.type.startsWith('audio/')) toDataURL(f).then(t => { tracks.push(t); idx = tracks.length - 1; show(); persist(); eng.play().catch(() => {}); });
+    fileIn.value = '';
+  });
+  function render() {
+    const parts = slot.value.split('\n').map(s => s.trim()).filter(Boolean);
+    tracks = [];
+    let pending = '';
+    for (const p of parts) {
+      if (p.startsWith('data:')) { tracks.push({ url: p, name: pending }); pending = ''; }
+      else pending = p;
+    }
+    if (tracks.length) idx = Math.min(idx < 0 ? 0 : idx, tracks.length - 1);
+    show();
+  }
+    function boot() { render(); setPlayBtn(); }
+  boot();
+  requestAnimationFrame(boot);
+  setTimeout(boot, 0);
+}
+connectedCallback() { this.setAttribute('data-scv-emitter', ''); } });
+</script>
+</body></html>

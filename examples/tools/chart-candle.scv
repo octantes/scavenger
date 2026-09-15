@@ -1,0 +1,51 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<html><head><meta charset="utf-8"><title>scv-chart-candle - scav component</title><link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Ctext%20x%3D%228%22%20y%3D%2212%22%20font-size%3D%2211%22%20font-family%3D%22monospace%22%20fill%3D%22%23986c98%22%20text-anchor%3D%22middle%22%3E%26lt%3B%26gt%3B%3C%2Ftext%3E%3C%2Fsvg%3E"></head>
+<body style="margin:0;background:#1a1c1c">
+<scv-chart-candle data-scv-component></scv-chart-candle>
+<script data-scv-comp data-scv-tag="scv-chart-candle" data-scv-source="PHN0eWxlPgouY2MgeyBiYWNrZ3JvdW5kOiB2YXIoLS1iYWNrZ3JvdW5kLXN1bmssICMxQTFDMUMpOyBib3JkZXI6IDFweCBzb2xpZCB2YXIoLS1ib3JkZXIsICMzQTNDM0MpOyBib3JkZXItcmFkaXVzOiB2YXIoLS1jb3JuZXItaGlnaCwgOHB4KTsgcGFkZGluZzogMTRweCAxNnB4IDEwcHg7IGZvbnQ6IDExcHggdmFyKC0tZm9udC1tb25vLCAnU0YgTW9ubycsIG1vbm9zcGFjZSk7IGNvbG9yOiB2YXIoLS10ZXh0LWRpbSwgIzg4ODg4OCk7IHdpZHRoOiA0NDBweDsgYm94LXNpemluZzogYm9yZGVyLWJveDsgfQouY2MtaGVhZCB7IGRpc3BsYXk6IGZsZXg7IGp1c3RpZnktY29udGVudDogc3BhY2UtYmV0d2VlbjsgYWxpZ24taXRlbXM6IGJhc2VsaW5lOyBtYXJnaW4tYm90dG9tOiA4cHg7IH0KLmNjLXRpdGxlIHsgY29sb3I6IHZhcigtLXRleHQtYmFzZSwgI0FBQUJBQyk7IGZvbnQtd2VpZ2h0OiA2MDA7IGxldHRlci1zcGFjaW5nOiAxcHg7IH0KLmNjLWxhc3QgeyBmb250LXNpemU6IDE4cHg7IGNvbG9yOiB2YXIoLS1pbnB1dCwgIzhBQjZCQik7IH0Kc3ZnIHsgZGlzcGxheTogYmxvY2s7IHdpZHRoOiAxMDAlOyBoZWlnaHQ6IDE4MHB4OyB9Ci51cCB7IGZpbGw6IHZhcigtLXN1Y2Nlc3MsICM2RkFDNjcpOyBzdHJva2U6IHZhcigtLXN1Y2Nlc3MsICM2RkFDNjcpOyB9Ci5kbiB7IGZpbGw6IHZhcigtLWRhbmdlciwgIzk4NTk1NCk7IHN0cm9rZTogdmFyKC0tZGFuZ2VyLCAjOTg1OTU0KTsgfQo8L3N0eWxlPgoKPGRpdiBjbGFzcz0iY2MiPgogIDxkaXYgY2xhc3M9ImNjLWhlYWQiPjxzcGFuIGNsYXNzPSJjYy10aXRsZSIgZGF0YS1zY3Ytc2xvdD0idGl0bGUiPkJUQyAvIFVTRFQ8L3NwYW4+PHNwYW4gY2xhc3M9ImNjLWxhc3QiIGRhdGEtc2N2LXNsb3Q9Imxhc3QiPuKAlDwvc3Bhbj48L2Rpdj4KICA8c3ZnIHZpZXdCb3g9IjAgMCA0NDAgMTgwIiBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIj48L3N2Zz4KPC9kaXY+Cgo8c2NyaXB0Pgpjb25zdCBzdmcgPSByb290LnF1ZXJ5U2VsZWN0b3IoJ3N2ZycpLCBsYXN0ID0gcm9vdC5xdWVyeVNlbGVjdG9yKCdbZGF0YS1zY3Ytc2xvdD1sYXN0XScpOwpjb25zdCBTQU1QTEVTX1BFUiA9IDMsIE1BWCA9IDI2LCBOUyA9ICdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zyc7CmxldCBjYW5kbGVzID0gW10sIGN1ciA9IG51bGwsIG4gPSAwOwpmdW5jdGlvbiBkcmF3KCkgewogIHdoaWxlIChzdmcuZmlyc3RDaGlsZCkgc3ZnLnJlbW92ZUNoaWxkKHN2Zy5maXJzdENoaWxkKTsKICBjb25zdCBhbGwgPSBjdXIgPyBjYW5kbGVzLmNvbmNhdChbY3VyXSkgOiBjYW5kbGVzOwogIGlmICghYWxsLmxlbmd0aCkgcmV0dXJuOwogIGxldCBsbyA9IE1hdGgubWluKC4uLmFsbC5tYXAoYyA9PiBjLmwpKSwgaGkgPSBNYXRoLm1heCguLi5hbGwubWFwKGMgPT4gYy5oKSk7CiAgaWYgKGhpID09PSBsbykgeyBoaSArPSAxOyBsbyAtPSAxOyB9IGNvbnN0IHBhZCA9IChoaSAtIGxvKSAqIDAuMTI7IGxvIC09IHBhZDsgaGkgKz0gcGFkOwogIGNvbnN0IFcgPSA0NDAsIEggPSAxODAsIGN3ID0gVyAvIE1BWCwgYncgPSBjdyAqIDAuNiwgeSA9IHYgPT4gSCAtICgodiAtIGxvKSAvIChoaSAtIGxvKSkgKiBIOwogIGFsbC5mb3JFYWNoKChjLCBpKSA9PiB7CiAgICBjb25zdCB4ID0gaSAqIGN3ICsgY3cgLyAyLCBjbHMgPSBjLmMgPj0gYy5vID8gJ3VwJyA6ICdkbic7CiAgICBjb25zdCB3aWNrID0gZG9jdW1lbnQuY3JlYXRlRWxlbWVudE5TKE5TLCAnbGluZScpOwogICAgd2ljay5zZXRBdHRyaWJ1dGUoJ3gxJywgeCk7IHdpY2suc2V0QXR0cmlidXRlKCd4MicsIHgpOyB3aWNrLnNldEF0dHJpYnV0ZSgneTEnLCB5KGMuaCkpOyB3aWNrLnNldEF0dHJpYnV0ZSgneTInLCB5KGMubCkpOyB3aWNrLnNldEF0dHJpYnV0ZSgnY2xhc3MnLCBjbHMpOyB3aWNrLnNldEF0dHJpYnV0ZSgnc3Ryb2tlLXdpZHRoJywgJzEnKTsgc3ZnLmFwcGVuZENoaWxkKHdpY2spOwogICAgY29uc3QgYnQgPSB5KE1hdGgubWF4KGMubywgYy5jKSksIGJiID0geShNYXRoLm1pbihjLm8sIGMuYykpOwogICAgY29uc3QgYm9keSA9IGRvY3VtZW50LmNyZWF0ZUVsZW1lbnROUyhOUywgJ3JlY3QnKTsKICAgIGJvZHkuc2V0QXR0cmlidXRlKCd4JywgeCAtIGJ3IC8gMik7IGJvZHkuc2V0QXR0cmlidXRlKCd5JywgYnQpOyBib2R5LnNldEF0dHJpYnV0ZSgnd2lkdGgnLCBidyk7IGJvZHkuc2V0QXR0cmlidXRlKCdoZWlnaHQnLCBNYXRoLm1heCgxLCBiYiAtIGJ0KSk7IGJvZHkuc2V0QXR0cmlidXRlKCdjbGFzcycsIGNscyk7IHN2Zy5hcHBlbmRDaGlsZChib2R5KTsKICB9KTsKfQpob3N0LmFkZEV2ZW50TGlzdGVuZXIoJ3Njdi1yZWNlaXZlJywgZSA9PiB7CiAgY29uc3QgcCA9IHBhcnNlRmxvYXQoU3RyaW5nKGUuZGV0YWlsKS5yZXBsYWNlKC9bXjAtOS5dL2csICcnKSk7IGlmIChpc05hTihwKSkgcmV0dXJuOwogIGxhc3QudGV4dENvbnRlbnQgPSAnJCcgKyBwLnRvTG9jYWxlU3RyaW5nKCdlbi1VUycsIHsgbWluaW11bUZyYWN0aW9uRGlnaXRzOiAyLCBtYXhpbXVtRnJhY3Rpb25EaWdpdHM6IDIgfSk7CiAgaWYgKCFjdXIpIHsgY3VyID0geyBvOiBwLCBoOiBwLCBsOiBwLCBjOiBwIH07IG4gPSAxOyB9CiAgZWxzZSB7IGN1ci5oID0gTWF0aC5tYXgoY3VyLmgsIHApOyBjdXIubCA9IE1hdGgubWluKGN1ci5sLCBwKTsgY3VyLmMgPSBwOyBuKys7IH0KICBpZiAobiA+PSBTQU1QTEVTX1BFUikgeyBjYW5kbGVzLnB1c2goY3VyKTsgaWYgKGNhbmRsZXMubGVuZ3RoID4gTUFYKSBjYW5kbGVzLnNoaWZ0KCk7IGN1ciA9IG51bGw7IG4gPSAwOyB9CiAgZHJhdygpOwp9KTsKZHJhdygpOwo8L3NjcmlwdD4=" data-scv-icon="">
+customElements.define('scv-chart-candle', class extends HTMLElement { constructor() { super();
+const _baked = !this.shadowRoot && this.querySelector('template[shadowrootmode], template.custom-shadow');
+if (_baked) { this.attachShadow({mode: 'open'}).innerHTML = _baked.innerHTML; _baked.remove(); }
+else if (!this.shadowRoot) this.attachShadow({mode: 'open'}).innerHTML = `<style>.cc { background: var(--background-sunk, #1A1C1C); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); padding: 14px 16px 10px; font: 11px var(--font-mono, 'SF Mono', monospace); color: var(--text-dim, #888888); width: 440px; box-sizing: border-box; }
+.cc-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.cc-title { color: var(--text-base, #AAABAC); font-weight: 600; letter-spacing: 1px; }
+.cc-last { font-size: 18px; color: var(--input, #8AB6BB); }
+svg { display: block; width: 100%; height: 180px; }
+.up { fill: var(--success, #6FAC67); stroke: var(--success, #6FAC67); }
+.dn { fill: var(--danger, #985954); stroke: var(--danger, #985954); }</style><div class="cc">
+  <div class="cc-head"><span class="cc-title" data-scv-slot="title">BTC / USDT</span><span class="cc-last" data-scv-slot="last">—</span></div>
+  <svg viewBox="0 0 440 180" preserveAspectRatio="none"></svg>
+</div>`;
+const root = this.shadowRoot, host = this, emit = v => this.dispatchEvent(new CustomEvent('scv-emit', { detail: v, bubbles: true, composed: true }));
+const svg = root.querySelector('svg'), last = root.querySelector('[data-scv-slot=last]');
+const SAMPLES_PER = 3, MAX = 26, NS = 'http://www.w3.org/2000/svg';
+let candles = [], cur = null, n = 0;
+function draw() {
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  const all = cur ? candles.concat([cur]) : candles;
+  if (!all.length) return;
+  let lo = Math.min(...all.map(c => c.l)), hi = Math.max(...all.map(c => c.h));
+  if (hi === lo) { hi += 1; lo -= 1; } const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
+  const W = 440, H = 180, cw = W / MAX, bw = cw * 0.6, y = v => H - ((v - lo) / (hi - lo)) * H;
+  all.forEach((c, i) => {
+    const x = i * cw + cw / 2, cls = c.c >= c.o ? 'up' : 'dn';
+    const wick = document.createElementNS(NS, 'line');
+    wick.setAttribute('x1', x); wick.setAttribute('x2', x); wick.setAttribute('y1', y(c.h)); wick.setAttribute('y2', y(c.l)); wick.setAttribute('class', cls); wick.setAttribute('stroke-width', '1'); svg.appendChild(wick);
+    const bt = y(Math.max(c.o, c.c)), bb = y(Math.min(c.o, c.c));
+    const body = document.createElementNS(NS, 'rect');
+    body.setAttribute('x', x - bw / 2); body.setAttribute('y', bt); body.setAttribute('width', bw); body.setAttribute('height', Math.max(1, bb - bt)); body.setAttribute('class', cls); svg.appendChild(body);
+  });
+}
+host.addEventListener('scv-receive', e => {
+  const p = parseFloat(String(e.detail).replace(/[^0-9.]/g, '')); if (isNaN(p)) return;
+  last.textContent = '$' + p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (!cur) { cur = { o: p, h: p, l: p, c: p }; n = 1; }
+  else { cur.h = Math.max(cur.h, p); cur.l = Math.min(cur.l, p); cur.c = p; n++; }
+  if (n >= SAMPLES_PER) { candles.push(cur); if (candles.length > MAX) candles.shift(); cur = null; n = 0; }
+  draw();
+});
+draw();
+}
+connectedCallback() { this.setAttribute('data-scv-emitter', ''); } });
+</script>
+</body></html>

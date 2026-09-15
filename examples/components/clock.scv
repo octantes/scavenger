@@ -1,0 +1,18 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<html><head><meta charset="utf-8"><title>scv-clock - scav component</title><link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Ctext%20x%3D%228%22%20y%3D%2212%22%20font-size%3D%2211%22%20font-family%3D%22monospace%22%20fill%3D%22%23986c98%22%20text-anchor%3D%22middle%22%3E%26lt%3B%26gt%3B%3C%2Ftext%3E%3C%2Fsvg%3E"></head>
+<body style="margin:0;background:#1a1c1c">
+<scv-clock data-scv-component></scv-clock>
+<script data-scv-comp data-scv-tag="scv-clock" data-scv-source="PHN0eWxlPgouY2xvY2sgeyBmb250OiA2MDAgMzBweCB2YXIoLS1mb250LW1vbm8sICdTRiBNb25vJywgbW9ub3NwYWNlKTsgY29sb3I6IHZhcigtLWlucHV0LCAjOEFCNkJCKTsgbGV0dGVyLXNwYWNpbmc6IDJweDsgcGFkZGluZzogMTRweCAyMHB4OyBiYWNrZ3JvdW5kOiB2YXIoLS1iYWNrZ3JvdW5kLXJhaXNlZCwgIzI1MjcyNyk7IGJvcmRlcjogMXB4IHNvbGlkIHZhcigtLWJvcmRlciwgIzNBM0MzQyk7IGJvcmRlci1yYWRpdXM6IHZhcigtLWNvcm5lci1oaWdoLCA4cHgpOyB0ZXh0LWFsaWduOiBjZW50ZXI7IH0KLmRhdGUgeyBkaXNwbGF5OiBibG9jazsgZm9udC1zaXplOiB2YXIoLS1mcy1hLCAxMnB4KTsgY29sb3I6IHZhcigtLXRleHQtZGltLCAjODg4ODg4KTsgbGV0dGVyLXNwYWNpbmc6IDFweDsgbWFyZ2luLXRvcDogNHB4OyB9Cjwvc3R5bGU+Cgo8ZGl2IGNsYXNzPSJjbG9jayI+PHNwYW4gZGF0YS1zY3Ytc2xvdD0idGltZSI+LS06LS06LS08L3NwYW4+PHNwYW4gY2xhc3M9ImRhdGUiIGRhdGEtc2N2LXNsb3Q9ImRhdGUiPi0tLS08L3NwYW4+PC9kaXY+Cgo8c2NyaXB0Pgpjb25zdCB0ID0gcm9vdC5xdWVyeVNlbGVjdG9yKCdbZGF0YS1zY3Ytc2xvdD10aW1lXScpLCBkID0gcm9vdC5xdWVyeVNlbGVjdG9yKCdbZGF0YS1zY3Ytc2xvdD1kYXRlXScpOwpjb25zdCB0aWNrID0gKCkgPT4geyBjb25zdCBuID0gbmV3IERhdGUoKTsgdC50ZXh0Q29udGVudCA9IG4udG9Mb2NhbGVUaW1lU3RyaW5nKCk7IGQudGV4dENvbnRlbnQgPSBuLnRvTG9jYWxlRGF0ZVN0cmluZyh1bmRlZmluZWQsIHsgd2Vla2RheTogJ2xvbmcnLCBtb250aDogJ3Nob3J0JywgZGF5OiAnbnVtZXJpYycgfSk7IH07CnRpY2soKTsgc2V0SW50ZXJ2YWwodGljaywgMTAwMCk7Cjwvc2NyaXB0Pg==" data-scv-icon="">
+customElements.define('scv-clock', class extends HTMLElement { constructor() { super();
+const _baked = !this.shadowRoot && this.querySelector('template[shadowrootmode], template.custom-shadow');
+if (_baked) { this.attachShadow({mode: 'open'}).innerHTML = _baked.innerHTML; _baked.remove(); }
+else if (!this.shadowRoot) this.attachShadow({mode: 'open'}).innerHTML = `<style>.clock { font: 600 30px var(--font-mono, 'SF Mono', monospace); color: var(--input, #8AB6BB); letter-spacing: 2px; padding: 14px 20px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); text-align: center; }
+.date { display: block; font-size: var(--fs-a, 12px); color: var(--text-dim, #888888); letter-spacing: 1px; margin-top: 4px; }</style><div class="clock"><span data-scv-slot="time">--:--:--</span><span class="date" data-scv-slot="date">----</span></div>`;
+const root = this.shadowRoot, host = this, emit = v => this.dispatchEvent(new CustomEvent('scv-emit', { detail: v, bubbles: true, composed: true }));
+const t = root.querySelector('[data-scv-slot=time]'), d = root.querySelector('[data-scv-slot=date]');
+const tick = () => { const n = new Date(); t.textContent = n.toLocaleTimeString(); d.textContent = n.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }); };
+tick(); setInterval(tick, 1000);
+}
+connectedCallback() { this.setAttribute('data-scv-emitter', ''); } });
+</script>
+</body></html>

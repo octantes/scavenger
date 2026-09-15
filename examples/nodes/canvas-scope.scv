@@ -1,0 +1,32 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+
+<html lang="en">
+<head><meta charset="utf-8"><title>canvas-scope - scav node</title></head>
+<body>
+  <div>canvas-scope - drop into a patchbay</div>
+  <script data-scv-node>
+typeof defineNode === 'function' && defineNode({
+  name: "canvas-scope",
+  icon: "∿",
+  color: "#8ab6bb",
+  init(ctx) {
+    const c = document.createElement('canvas');
+    c.width = 200; c.height = 60; c.style.background = '#111';
+    ctx._c = c; ctx._v = [];
+    ctx.append(c, ctx.x + 44, ctx.y);
+  },
+  onReceive(value, ctx) {
+    ctx._v.push(Number(value) || 0);
+    if (ctx._v.length > 200) ctx._v.shift();
+    const g = ctx._c.getContext('2d');
+    g.clearRect(0, 0, 200, 60);
+    g.strokeStyle = '#8ab6bb'; g.beginPath();
+    ctx._v.forEach((v, i) => { const y = 60 - (((v % 60) + 60) % 60); i ? g.lineTo(i, y) : g.moveTo(i, y); });
+    g.stroke();
+    ctx.emit(value);
+  },
+  teardown(ctx) { if (ctx._c) ctx.remove(ctx._c); }
+})
+  </script>
+</body>
+</html>

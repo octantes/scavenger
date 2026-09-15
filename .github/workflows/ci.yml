@@ -1,0 +1,32 @@
+# the suite is the build - every push and PR to main runs all tiers, one aggregated exit code
+name: suite
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# a newer push to the same ref cancels the older run - no wasted minutes on stale commits
+concurrency:
+  group: suite-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # node >= 21 for the built-in global WebSocket the quest engine talks CDP over
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # browser tiers find Chromium via CHROME_PATH. use the runner's pre-installed google-chrome (a real binary) - Ubuntu's apt chromium is a snap whose confinement can't read /tmp, silently breaking the save/reopen tiers
+      - name: locate chrome
+        run: echo "CHROME_PATH=$(command -v google-chrome || command -v google-chrome-stable)" >> "$GITHUB_ENV"
+
+      # zero dependencies - nothing to install. the suite runs straight off node stdlib
+      - name: run the suite
+        run: node test/all.mjs

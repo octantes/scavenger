@@ -1,0 +1,25 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<html><head><meta charset="utf-8"><title>scv-counter - scav component</title><link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Ctext%20x%3D%228%22%20y%3D%2212%22%20font-size%3D%2211%22%20font-family%3D%22monospace%22%20fill%3D%22%23986c98%22%20text-anchor%3D%22middle%22%3E%26lt%3B%26gt%3B%3C%2Ftext%3E%3C%2Fsvg%3E"></head>
+<body style="margin:0;background:#1a1c1c">
+<scv-counter data-scv-component></scv-counter>
+<script data-scv-comp data-scv-tag="scv-counter" data-scv-source="PHN0eWxlPgogIC5jdCB7IGRpc3BsYXk6ZmxleDsgYWxpZ24taXRlbXM6Y2VudGVyOyBnYXA6MTBweDsgcGFkZGluZzoxMHB4IDEycHg7IGJhY2tncm91bmQ6IzI1MjcyNzsgYm9yZGVyLXJhZGl1czo1cHg7IGZvbnQ6MTRweCAnU0YgTW9ubycsdWktbW9ub3NwYWNlLG1vbm9zcGFjZTsgY29sb3I6I0FBQUJBQzsgfQogIC5jdCBidXR0b24geyB3aWR0aDoyNnB4OyBoZWlnaHQ6MjZweDsgYm9yZGVyOjA7IGJvcmRlci1yYWRpdXM6NXB4OyBiYWNrZ3JvdW5kOiBub25lOyBjb2xvcjojOTg2Qzk4OyBjdXJzb3I6cG9pbnRlcjsgZm9udDppbmhlcml0OyB9CiAgLmN0IC52YWwgeyBtaW4td2lkdGg6MzRweDsgdGV4dC1hbGlnbjpjZW50ZXI7IGNvbG9yOiM4QUI2QkI7IH0KPC9zdHlsZT4KCjxkaXYgY2xhc3M9ImN0Ij4KICA8YnV0dG9uIGRhdGEtb3A9Ii0iPi08L2J1dHRvbj4KICA8c3BhbiBjbGFzcz0idmFsIiBkYXRhLXNjdi1zbG90PSJjb3VudCI+MDwvc3Bhbj4KICA8YnV0dG9uIGRhdGEtb3A9IisiPis8L2J1dHRvbj4KPC9kaXY+Cgo8c2NyaXB0PgogIHJvb3QucXVlcnlTZWxlY3RvckFsbCgnYnV0dG9uJykuZm9yRWFjaChiID0+IGIuYWRkRXZlbnRMaXN0ZW5lcignY2xpY2snLCAoKSA9PiB7CiAgICBjb25zdCB2ID0gcm9vdC5xdWVyeVNlbGVjdG9yKCdbZGF0YS1zY3Ytc2xvdD1jb3VudF0nKTsKICAgIHYudGV4dENvbnRlbnQgPSArdi50ZXh0Q29udGVudCArIChiLmRhdGFzZXQub3AgPT09ICcrJyA/IDEgOiAtMSk7CiAgICBlbWl0KCt2LnRleHRDb250ZW50KTsKICB9KSk7Cjwvc2NyaXB0Pg==" data-scv-icon="">
+customElements.define('scv-counter', class extends HTMLElement { constructor() { super();
+const _baked = !this.shadowRoot && this.querySelector('template[shadowrootmode], template.custom-shadow');
+if (_baked) { this.attachShadow({mode: 'open'}).innerHTML = _baked.innerHTML; _baked.remove(); }
+else if (!this.shadowRoot) this.attachShadow({mode: 'open'}).innerHTML = `<style>.ct { display:flex; align-items:center; gap:10px; padding:10px 12px; background:#252727; border-radius:5px; font:14px 'SF Mono',ui-monospace,monospace; color:#AAABAC; }
+  .ct button { width:26px; height:26px; border:0; border-radius:5px; background: none; color:#986C98; cursor:pointer; font:inherit; }
+  .ct .val { min-width:34px; text-align:center; color:#8AB6BB; }</style><div class="ct">
+  <button data-op="-">-</button>
+  <span class="val" data-scv-slot="count">0</span>
+  <button data-op="+">+</button>
+</div>`;
+const root = this.shadowRoot, host = this, emit = v => this.dispatchEvent(new CustomEvent('scv-emit', { detail: v, bubbles: true, composed: true }));
+root.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    const v = root.querySelector('[data-scv-slot=count]');
+    v.textContent = +v.textContent + (b.dataset.op === '+' ? 1 : -1);
+    emit(+v.textContent);
+  }));
+}
+connectedCallback() { this.setAttribute('data-scv-emitter', ''); } });
+</script>
+</body></html>

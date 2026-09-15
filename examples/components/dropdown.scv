@@ -1,0 +1,67 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<html><head><meta charset="utf-8"><title>scv-dropdown - scav component</title><link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Ctext%20x%3D%228%22%20y%3D%2212%22%20font-size%3D%2211%22%20font-family%3D%22monospace%22%20fill%3D%22%23986c98%22%20text-anchor%3D%22middle%22%3E%26lt%3B%26gt%3B%3C%2Ftext%3E%3C%2Fsvg%3E"></head>
+<body style="margin:0;background:#1a1c1c">
+<scv-dropdown data-scv-component></scv-dropdown>
+<script data-scv-comp data-scv-tag="scv-dropdown" data-scv-source="PHN0eWxlPgogIDpob3N0IHsgZGlzcGxheTogYmxvY2s7IH0KICAuc2wgeyB3aWR0aDogMjQwcHg7IGJhY2tncm91bmQ6IHZhcigtLWJhY2tncm91bmQtcmFpc2VkLCAjMjUyNzI3KTsgYm9yZGVyOiAxcHggc29saWQgdmFyKC0tYm9yZGVyLCAjM0EzQzNDKTsgYm9yZGVyLXJhZGl1czogdmFyKC0tY29ybmVyLWxvdywgNXB4KTsgcGFkZGluZzogOHB4IDEwcHg7IGJveC1zaXppbmc6IGJvcmRlci1ib3g7IGZvbnQtZmFtaWx5OiB2YXIoLS1mb250LW1vbm8sICdTRiBNb25vJywgdWktbW9ub3NwYWNlLCBtb25vc3BhY2UpOyB9CiAgLnNsLWxhYiB7IGNvbG9yOiB2YXIoLS10ZXh0LWZhaW50LCAjNjY2NjY2KTsgZm9udC1zaXplOiAxMHB4OyB0ZXh0LXRyYW5zZm9ybTogbG93ZXJjYXNlOyBsZXR0ZXItc3BhY2luZzogMXB4OyBtYXJnaW4tYm90dG9tOiA2cHg7IH0KICAuc2wtcm93IHsgZGlzcGxheTogZmxleDsganVzdGlmeS1jb250ZW50OiBzcGFjZS1iZXR3ZWVuOyBhbGlnbi1pdGVtczogY2VudGVyOyBnYXA6IDhweDsgbWFyZ2luLWJvdHRvbTogNnB4OyB9CiAgLnNsLWluLCAuc2wtb3V0IHsgZGlzcGxheTogZmxleDsgYWxpZ24taXRlbXM6IGNlbnRlcjsgZ2FwOiA2cHg7IGZvbnQtc2l6ZTogOXB4OyBsZXR0ZXItc3BhY2luZzogMXB4OyB0ZXh0LXRyYW5zZm9ybTogbG93ZXJjYXNlOyBvcGFjaXR5OiAuODU7IH0KICAuc2wtaW4geyBjb2xvcjogdmFyKC0taW5wdXQsICM4QUI2QkIpOyB9CiAgLnNsLW91dCB7IGNvbG9yOiB2YXIoLS1vdXRwdXQsICM5ODZDOTgpOyB9CiAgLnNsLWluOjpiZWZvcmUsIC5zbC1vdXQ6OmJlZm9yZSB7IGNvbnRlbnQ6ICcnOyB3aWR0aDogNnB4OyBoZWlnaHQ6IDZweDsgYm9yZGVyLXJhZGl1czogNTAlOyB9CiAgLnNsLWluOjpiZWZvcmUgeyBiYWNrZ3JvdW5kOiB2YXIoLS1pbnB1dCwgIzhBQjZCQik7IH0KICAuc2wtb3V0OjpiZWZvcmUgeyBiYWNrZ3JvdW5kOiB2YXIoLS1vdXRwdXQsICM5ODZDOTgpOyB9CiAgLnNsLWluLXZhbCB7IGNvbG9yOiB2YXIoLS10ZXh0LWJhc2UsICNBQUFCQUMpOyB9CiAgLnNsLW9wdGlvbnMgeyB3aWR0aDogMTAwJTsgYm94LXNpemluZzogYm9yZGVyLWJveDsgYmFja2dyb3VuZDogdmFyKC0tYmFja2dyb3VuZC1zdW5rLCAjMUExQzFDKTsgYm9yZGVyOiAxcHggc29saWQgdmFyKC0tYm9yZGVyLCAjM0EzQzNDKTsgYm9yZGVyLXJhZGl1czogdmFyKC0tY29ybmVyLWxvdywgNXB4KTsgY29sb3I6IHZhcigtLXRleHQtZGltLCAjODg4ODg4KTsgZm9udDogMTBweCB2YXIoLS1mb250LW1vbm8sICdTRiBNb25vJywgbW9ub3NwYWNlKTsgcGFkZGluZzogNHB4IDZweDsgbWFyZ2luLWJvdHRvbTogNnB4OyBvdXRsaW5lOiBub25lOyB9CiAgLnNsLW9wdGlvbnM6Zm9jdXMgeyBjb2xvcjogdmFyKC0tdGV4dC1iYXNlLCAjQUFBQkFDKTsgYm9yZGVyLWNvbG9yOiB2YXIoLS1pbnB1dCwgIzhBQjZCQik7IH0KICBzZWxlY3QgeyB3aWR0aDogMTAwJTsgYm94LXNpemluZzogYm9yZGVyLWJveDsgYmFja2dyb3VuZDogdmFyKC0tYmFja2dyb3VuZC1zdW5rLCAjMUExQzFDKTsgYm9yZGVyOiAxcHggc29saWQgdmFyKC0tYm9yZGVyLCAjM0EzQzNDKTsgYm9yZGVyLXJhZGl1czogdmFyKC0tY29ybmVyLWxvdywgNXB4KTsgY29sb3I6IHZhcigtLXRleHQtYmFzZSwgI0FBQUJBQyk7IGZvbnQ6IDEycHggdmFyKC0tZm9udC1tb25vLCAnU0YgTW9ubycsIG1vbm9zcGFjZSk7IHBhZGRpbmc6IDVweCA2cHg7IG91dGxpbmU6IG5vbmU7IGN1cnNvcjogcG9pbnRlcjsgfQogIHNlbGVjdDpmb2N1cyB7IGJvcmRlci1jb2xvcjogdmFyKC0taW5wdXQsICM4QUI2QkIpOyB9CiAgb3B0aW9uIHsgYmFja2dyb3VuZDogdmFyKC0tYmFja2dyb3VuZC1zdW5rLCAjMUExQzFDKTsgY29sb3I6IHZhcigtLXRleHQtYmFzZSwgI0FBQUJBQyk7IH0KPC9zdHlsZT4KCjxkaXYgY2xhc3M9InNsIj4KICA8ZGl2IGNsYXNzPSJzbC1sYWIiIGRhdGEtc2N2LXNsb3Q9ImxhYmVsIj5zZWxlY3Q8L2Rpdj4KICA8ZGl2IGNsYXNzPSJzbC1yb3ciPgogICAgPGRpdiBjbGFzcz0ic2wtaW4iPmluOiA8c3BhbiBjbGFzcz0ic2wtaW4tdmFsIiBkYXRhLXNjdi1yZWNlaXZlcz0iIj7igJQ8L3NwYW4+PC9kaXY+CiAgICA8ZGl2IGNsYXNzPSJzbC1vdXQiIGRhdGEtc2N2LWVtaXRzPSIiPm91dDwvZGl2PgogIDwvZGl2PgogIDxpbnB1dCB0eXBlPSJ0ZXh0IiBjbGFzcz0ic2wtb3B0aW9ucyIgZGF0YS1zY3Ytc2xvdD0ib3B0aW9ucyIgcGxhY2Vob2xkZXI9ImEsIGIsIGMiIHNwZWxsY2hlY2s9ImZhbHNlIj4KICA8c2VsZWN0IGRhdGEtc2N2LXNsb3Q9InZhbHVlIiBkYXRhLXNjdi1yZWNlaXZlcz0iIj48L3NlbGVjdD4KPC9kaXY+Cgo8c2NyaXB0PgogIGNvbnN0IG9wdHMgPSByb290LnF1ZXJ5U2VsZWN0b3IoJy5zbC1vcHRpb25zJyksIHNlbCA9IHJvb3QucXVlcnlTZWxlY3Rvcignc2VsZWN0JyksCiAgICAgICAgaW5WYWwgPSByb290LnF1ZXJ5U2VsZWN0b3IoJy5zbC1pbi12YWwnKSwgb3V0UG9ydCA9IHJvb3QucXVlcnlTZWxlY3RvcignLnNsLW91dCcpOwogIGxldCBfbGFzdCA9ICcnOwogIGNvbnN0IGZtdCA9IHYgPT4gdiA9PT0gdW5kZWZpbmVkID8gJ3VuZGVmaW5lZCcgOiAodHlwZW9mIHYgPT09ICdvYmplY3QnID8gSlNPTi5zdHJpbmdpZnkodikgOiB2KTsKICBjb25zdCBMSVNUID0gWydhJywgJ2InLCAnYyddOwogIGZ1bmN0aW9uIHBhcnNlTGlzdCgpIHsKICAgIGNvbnN0IHJhdyA9IChvcHRzLnZhbHVlIHx8ICcnKS5zcGxpdCgnLCcpLm1hcChzID0+IHMudHJpbSgpKS5maWx0ZXIoQm9vbGVhbik7CiAgICByZXR1cm4gcmF3Lmxlbmd0aCA/IHJhdyA6IExJU1Quc2xpY2UoKTsKICB9CiAgZnVuY3Rpb24gcmVuZGVyKCkgewogICAgY29uc3QgY3VyID0gc2VsLnZhbHVlOwogICAgY29uc3QgaXRlbXMgPSBwYXJzZUxpc3QoKTsKICAgIHNlbC5pbm5lckhUTUwgPSBpdGVtcy5tYXAobyA9PiBgPG9wdGlvbiB2YWx1ZT0iJHtvLnJlcGxhY2UoLyIvZywgJyZxdW90OycpfSI+JHtvfTwvb3B0aW9uPmApLmpvaW4oJycpOwogICAgaWYgKGl0ZW1zLmluY2x1ZGVzKGN1cikpIHNlbC52YWx1ZSA9IGN1cjsKICAgIGVsc2UgaWYgKGl0ZW1zLmxlbmd0aCkgc2VsLnZhbHVlID0gaXRlbXNbMF07CiAgICBfbGFzdCA9IHNlbC52YWx1ZTsKICB9CiAgb3B0cy5hZGRFdmVudExpc3RlbmVyKCdpbnB1dCcsIHJlbmRlcik7CiAgc2VsLmFkZEV2ZW50TGlzdGVuZXIoJ2NoYW5nZScsICgpID0+IGVtaXQoX2xhc3QgPSBzZWwudmFsdWUpKTsKICBvdXRQb3J0LmFkZEV2ZW50TGlzdGVuZXIoJ2NsaWNrJywgKCkgPT4geyBpZiAoX2xhc3QgIT09IHVuZGVmaW5lZCAmJiBfbGFzdCAhPT0gJycpIGVtaXQoX2xhc3QpOyB9KTsKICBob3N0LmFkZEV2ZW50TGlzdGVuZXIoJ3Njdi1yZWNlaXZlJywgZSA9PiB7CiAgICBjb25zdCB2ID0gZS5kZXRhaWw7IGluVmFsLnRleHRDb250ZW50ID0gZm10KHYpOwogICAgY29uc3QgcyA9IFN0cmluZyh2KTsKICAgIGZvciAobGV0IGsgPSAwOyBrIDwgc2VsLm9wdGlvbnMubGVuZ3RoOyBrKyspIHsgaWYgKHNlbC5vcHRpb25zW2tdLnZhbHVlID09PSBzKSB7IHNlbC5zZWxlY3RlZEluZGV4ID0gazsgX2xhc3QgPSBzZWwudmFsdWU7IGJyZWFrOyB9IH0KICAgIGVtaXQocyk7CiAgfSk7CiAgZnVuY3Rpb24gYm9vdCgpIHsgcmVuZGVyKCk7IH0KICBib290KCk7CiAgcmVxdWVzdEFuaW1hdGlvbkZyYW1lKGJvb3QpOwogIHNldFRpbWVvdXQoYm9vdCwgMCk7Cjwvc2NyaXB0Pg==" data-scv-icon="">
+customElements.define('scv-dropdown', class extends HTMLElement { constructor() { super();
+const _baked = !this.shadowRoot && this.querySelector('template[shadowrootmode], template.custom-shadow');
+if (_baked) { this.attachShadow({mode: 'open'}).innerHTML = _baked.innerHTML; _baked.remove(); }
+else if (!this.shadowRoot) this.attachShadow({mode: 'open'}).innerHTML = `<style>:host { display: block; }
+  .sl { width: 240px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-low, 5px); padding: 8px 10px; box-sizing: border-box; font-family: var(--font-mono, 'SF Mono', ui-monospace, monospace); }
+  .sl-lab { color: var(--text-faint, #666666); font-size: 10px; text-transform: lowercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .sl-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .sl-in, .sl-out { display: flex; align-items: center; gap: 6px; font-size: 9px; letter-spacing: 1px; text-transform: lowercase; opacity: .85; }
+  .sl-in { color: var(--input, #8AB6BB); }
+  .sl-out { color: var(--output, #986C98); }
+  .sl-in::before, .sl-out::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
+  .sl-in::before { background: var(--input, #8AB6BB); }
+  .sl-out::before { background: var(--output, #986C98); }
+  .sl-in-val { color: var(--text-base, #AAABAC); }
+  .sl-options { width: 100%; box-sizing: border-box; background: var(--background-sunk, #1A1C1C); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-low, 5px); color: var(--text-dim, #888888); font: 10px var(--font-mono, 'SF Mono', monospace); padding: 4px 6px; margin-bottom: 6px; outline: none; }
+  .sl-options:focus { color: var(--text-base, #AAABAC); border-color: var(--input, #8AB6BB); }
+  select { width: 100%; box-sizing: border-box; background: var(--background-sunk, #1A1C1C); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-low, 5px); color: var(--text-base, #AAABAC); font: 12px var(--font-mono, 'SF Mono', monospace); padding: 5px 6px; outline: none; cursor: pointer; }
+  select:focus { border-color: var(--input, #8AB6BB); }
+  option { background: var(--background-sunk, #1A1C1C); color: var(--text-base, #AAABAC); }</style><div class="sl">
+  <div class="sl-lab" data-scv-slot="label">select</div>
+  <div class="sl-row">
+    <div class="sl-in">in: <span class="sl-in-val" data-scv-receives="">—</span></div>
+    <div class="sl-out" data-scv-emits="">out</div>
+  </div>
+  <input type="text" class="sl-options" data-scv-slot="options" placeholder="a, b, c" spellcheck="false">
+  <select data-scv-slot="value" data-scv-receives=""></select>
+</div>`;
+const root = this.shadowRoot, host = this, emit = v => this.dispatchEvent(new CustomEvent('scv-emit', { detail: v, bubbles: true, composed: true }));
+const opts = root.querySelector('.sl-options'), sel = root.querySelector('select'),
+        inVal = root.querySelector('.sl-in-val'), outPort = root.querySelector('.sl-out');
+  let _last = '';
+  const fmt = v => v === undefined ? 'undefined' : (typeof v === 'object' ? JSON.stringify(v) : v);
+  const LIST = ['a', 'b', 'c'];
+  function parseList() {
+    const raw = (opts.value || '').split(',').map(s => s.trim()).filter(Boolean);
+    return raw.length ? raw : LIST.slice();
+  }
+  function render() {
+    const cur = sel.value;
+    const items = parseList();
+    sel.innerHTML = items.map(o => `<option value="${o.replace(/"/g, '&quot;')}">${o}</option>`).join('');
+    if (items.includes(cur)) sel.value = cur;
+    else if (items.length) sel.value = items[0];
+    _last = sel.value;
+  }
+  opts.addEventListener('input', render);
+  sel.addEventListener('change', () => emit(_last = sel.value));
+  outPort.addEventListener('click', () => { if (_last !== undefined && _last !== '') emit(_last); });
+  host.addEventListener('scv-receive', e => {
+    const v = e.detail; inVal.textContent = fmt(v);
+    const s = String(v);
+    for (let k = 0; k < sel.options.length; k++) { if (sel.options[k].value === s) { sel.selectedIndex = k; _last = sel.value; break; } }
+    emit(s);
+  });
+  function boot() { render(); }
+  boot();
+  requestAnimationFrame(boot);
+  setTimeout(boot, 0);
+}
+connectedCallback() { this.setAttribute('data-scv-emitter', ''); } });
+</script>
+</body></html>

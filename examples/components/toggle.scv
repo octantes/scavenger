@@ -1,0 +1,22 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<html><head><meta charset="utf-8"><title>scv-toggle - scav component</title><link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Ctext%20x%3D%228%22%20y%3D%2212%22%20font-size%3D%2211%22%20font-family%3D%22monospace%22%20fill%3D%22%23986c98%22%20text-anchor%3D%22middle%22%3E%26lt%3B%26gt%3B%3C%2Ftext%3E%3C%2Fsvg%3E"></head>
+<body style="margin:0;background:#1a1c1c">
+<scv-toggle data-scv-component></scv-toggle>
+<script data-scv-comp data-scv-tag="scv-toggle" data-scv-source="PHN0eWxlPgogIC50ZyBsYWJlbCB7IGRpc3BsYXk6ZmxleDsgYWxpZ24taXRlbXM6Y2VudGVyOyBnYXA6OHB4OyBwYWRkaW5nOjEwcHggMTJweDsgYmFja2dyb3VuZDojMjUyNzI3OyBib3JkZXItcmFkaXVzOjVweDsgZm9udDoxNHB4ICdTRiBNb25vJyx1aS1tb25vc3BhY2UsbW9ub3NwYWNlOyBjb2xvcjojQUFBQkFDOyBjdXJzb3I6cG9pbnRlcjsgdXNlci1zZWxlY3Q6bm9uZTsgfQogIC50ZyBpbnB1dCB7IHBvc2l0aW9uOmFic29sdXRlOyBvcGFjaXR5OjA7IHBvaW50ZXItZXZlbnRzOm5vbmU7IH0KICAudGcgLnN3IHsgd2lkdGg6MzRweDsgaGVpZ2h0OjE4cHg7IGJvcmRlci1yYWRpdXM6OXB4OyBiYWNrZ3JvdW5kOiMzQTNDM0M7IHBvc2l0aW9uOnJlbGF0aXZlOyB0cmFuc2l0aW9uOmJhY2tncm91bmQgLjE1czsgfQogIC50ZyAuc3c6OmFmdGVyIHsgY29udGVudDonJzsgcG9zaXRpb246YWJzb2x1dGU7IHRvcDoycHg7IGxlZnQ6MnB4OyB3aWR0aDoxNHB4OyBoZWlnaHQ6MTRweDsgYm9yZGVyLXJhZGl1czo1MCU7IGJhY2tncm91bmQ6I0FBQUJBQzsgdHJhbnNpdGlvbjpsZWZ0IC4xNXM7IH0KICAudGcgaW5wdXQ6Y2hlY2tlZCArIC5zdyB7IGJhY2tncm91bmQ6IzhBQjZCQjsgfQogIC50ZyBpbnB1dDpjaGVja2VkICsgLnN3OjphZnRlciB7IGxlZnQ6MThweDsgYmFja2dyb3VuZDojMUExQzFDOyB9Cjwvc3R5bGU+Cgo8ZGl2IGNsYXNzPSJ0ZyI+CiAgPGxhYmVsPjxpbnB1dCB0eXBlPSJjaGVja2JveCIgZGF0YS1zY3Ytc2xvdD0ib24iPjxzcGFuIGNsYXNzPSJzdyI+PC9zcGFuPjwvbGFiZWw+CjwvZGl2PgoKPHNjcmlwdD4KICByb290LnF1ZXJ5U2VsZWN0b3IoJ2lucHV0JykuYWRkRXZlbnRMaXN0ZW5lcignY2hhbmdlJywgZSA9PiBlbWl0KGUudGFyZ2V0LmNoZWNrZWQpKTsKPC9zY3JpcHQ+" data-scv-icon="">
+customElements.define('scv-toggle', class extends HTMLElement { constructor() { super();
+const _baked = !this.shadowRoot && this.querySelector('template[shadowrootmode], template.custom-shadow');
+if (_baked) { this.attachShadow({mode: 'open'}).innerHTML = _baked.innerHTML; _baked.remove(); }
+else if (!this.shadowRoot) this.attachShadow({mode: 'open'}).innerHTML = `<style>.tg label { display:flex; align-items:center; gap:8px; padding:10px 12px; background:#252727; border-radius:5px; font:14px 'SF Mono',ui-monospace,monospace; color:#AAABAC; cursor:pointer; user-select:none; }
+  .tg input { position:absolute; opacity:0; pointer-events:none; }
+  .tg .sw { width:34px; height:18px; border-radius:9px; background:#3A3C3C; position:relative; transition:background .15s; }
+  .tg .sw::after { content:''; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:#AAABAC; transition:left .15s; }
+  .tg input:checked + .sw { background:#8AB6BB; }
+  .tg input:checked + .sw::after { left:18px; background:#1A1C1C; }</style><div class="tg">
+  <label><input type="checkbox" data-scv-slot="on"><span class="sw"></span></label>
+</div>`;
+const root = this.shadowRoot, host = this, emit = v => this.dispatchEvent(new CustomEvent('scv-emit', { detail: v, bubbles: true, composed: true }));
+root.querySelector('input').addEventListener('change', e => emit(e.target.checked));
+}
+connectedCallback() { this.setAttribute('data-scv-emitter', ''); } });
+</script>
+</body></html>

@@ -1,6 +1,6 @@
 # scav ~ substrate for a portable web
 
-<video src=".github/assets/loop.mp4" autoplay muted loop playsinline></video>
+<img src=".github/assets/loop.gif">
 
 ```
 Harvest anything from the web and wire it into something new
@@ -36,13 +36,13 @@ I strongly recommend downloading the HTML files and actually going through these
 1. Launch `patchbay.html` in your browser by double-clicking it or through `file://`
 2. Use the right-click menu or keybinds to spawn nodes, wire them and toggle between use and edit modes
 
-<video src=".github/assets/wiring.mp4" autoplay muted loop playsinline></video>
+<img src=".github/assets/wiring.gif">
 
 3. Create a bookmark from `bookmarklet.js` by pasting the code into the URL field. Ask an AI if it's safe if you want.
 4. Run it on a site that doesn't block it (or check [how to run it anywhere](#running-the-kernel-without-the-bookmarklet)) and **harvest something cool looking**
 5. If you used the normal harvest, the component is now in your clipboard! Paste it onto the patchbay (`Ctrl + V`)
 
-<video src=".github/assets/harvest.mp4" autoplay muted loop playsinline></video>
+<img src=".github/assets/harvest.gif">
 
 6. Wire nodes, chain multiple components, and play with them - **anything harvested is yours forever**, even offline!
 7. Your project **won't auto-save**, use `Ctrl + S` to keep editor, `Ctrl + P` (publish) removes it but keeps behavior
@@ -77,13 +77,13 @@ The target can be sel: for a DOM value, key: for a JSON key, or ls: for a localS
 An API example: btc, https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT, key:price
 ```
 
-<video src=".github/assets/quests.mp4" autoplay muted loop playsinline></video>
+<img src=".github/assets/quests.gif">
 
 That's the whole loop, though there is another, more interesting quest type. You can set it up by pressing the icon of a quest node until its label reads `quest component`. Then, you follow the same steps as in the input node, but instead of choosing the selector for a single piece of data, you can select a full component or layout, and paste that line into the node.
 
 After the node is set up, the quests engine will use the bookmarklet to harvest the live version of whatever you selected, and create a **new component that also live-updates**. You can **wire anything into it or through it, like you do with your own harvests**, because the updates are applied via *diff-morphing*, which only updates what really changed. The wires survive because the component is not being re-rendered on each poll.
 
-<video src=".github/assets/component.mp4" autoplay muted loop playsinline></video>
+<img src=".github/assets/component.gif">
 
 Live data will keep flowing until you close the terminal. When you do that, the quest nodes and components will keep working with their **last known value**. Also, quests will break if the page owner changes the layout of the page or makes a big update that touches the selectors. Keep that in mind.
 

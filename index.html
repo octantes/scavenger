@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>scav ~ substrate for a portable web</title>
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Inconsolata:wght@400;700&family=Space+Grotesk:wght@500;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Inconsolata:wght@400;700&family=Space+Grotesk:wght@500;700&display=swap"></noscript>
+<style>
+  :root {
+    --font-main:    'Outfit', sans-serif;
+    --font-grotesk: 'Space Grotesk', sans-serif;
+    --font-mono:    'Inconsolata', 'SF Mono', 'Consolas', monospace;
+    --font-mono-scav: 'SF Mono', 'Consolas', 'Menlo', 'DejaVu Sans Mono', monospace;
+
+    --lirio:             #986C98;
+    --lirio-a08:         #986C9815;
+    --lirio-a15:         #986C9825;
+    --lirio-a21:         #986C9835;
+    --lirio-a40:         #986C9865;
+    --cristal:           #8AB6BB;
+    --cristal-a15:       #8AB6BB25;
+    --cristal-a21:       #8AB6BB35;
+
+    --carbon:            #1B1C1C;
+    --carbon-a06:        #1B1C1C10;
+    --carbon-a15:        #1B1C1C25;
+    --humo:              #AAABAC;
+    --humo-a06:          #AAABAC10;
+    --humo-a15:          #AAABAC25;
+    --humo-a60:          #AAABAC99;
+
+    --background-sunk:   #1A1C1C;
+    --background-raised: #252727;
+    --background-grid:   rgba(255,255,255,0.06);
+    --text-base:         #AAABAC;
+    --text-dim:          #9A9B9C;
+    --text-faint:        #6E6E6E;
+    --border:            #3A3C3C;
+    --corner-low:        5px;
+    --corner-high:       8px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; min-height: 100%; overflow: hidden; }
+  body {
+    background: var(--background-sunk);
+    color: var(--text-base);
+    font-family: var(--font-main);
+    position: relative;
+  }
+  @media (min-width: 761px) and (min-height: 641px) {
+    body { display: flex; align-items: center; justify-content: center; height: 100vh; }
+  }
+  ::selection { background-color: var(--lirio); color: var(--background-sunk); }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-thumb { background-color: var(--lirio); border-radius: 0; }
+  ::-webkit-scrollbar-track { background: transparent; border-radius: 0; }
+  @supports not selector(::-webkit-scrollbar) { * { scrollbar-width: thin; scrollbar-color: var(--lirio) transparent; } }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image: radial-gradient(circle, var(--background-grid) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .portal-glow {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background: radial-gradient(ellipse 60% 55% at 50% 50%,
+      var(--lirio-a21) 0%, var(--lirio-a15) 30%, transparent 72%);
+  }
+  body::after {
+    content: '';
+    position: fixed; inset: 0; pointer-events: none; z-index: 1;
+    background: radial-gradient(140% 140% at 50% 50%, transparent 55%, rgba(0,0,0,0.4) 100%);
+  }
+  .noise {
+    position: fixed; inset: 0; z-index: 9999; pointer-events: none;
+    background-image: url('.github/assets/noise.webp');
+    opacity: .065;
+    image-rendering: pixelated;
+  }
+
+  .screen {
+    position: relative; z-index: 2;
+    width: 100%;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 6vh 4vw 2.2vh;
+    transform-origin: center center;
+    opacity: 0;
+  }
+  .screen.ready { opacity: 1; transition: opacity .15s ease; }
+  @media (max-width: 760px), (max-height: 640px) {
+    .screen { min-height: 100vh; }
+  }
+
+  .bento-wrap { flex: 1; width: 100%; display: flex; align-items: center; justify-content: center; min-height: 0; }
+
+  header { text-align: center; margin-bottom: 6vh; }
+  .word { font-family: var(--font-mono-scav); font-size: clamp(14px, 1.7vh, 18px); letter-spacing: 3px; font-weight: 700; }
+  .word .s, .word .av { color: var(--cristal); }
+  .word .br { color: var(--lirio); }
+  h1 {
+    font-family: var(--font-grotesk);
+    font-size: clamp(30px, 4.6vh, 50px);
+    font-weight: 700;
+    letter-spacing: .2px;
+    line-height: 1.08;
+    margin: 1.2vh 0 1.4vh;
+    background: linear-gradient(120deg, var(--cristal), var(--lirio));
+    background-clip: text; -webkit-background-clip: text; color: transparent;
+  }
+  .tag { color: var(--text-dim); font-size: clamp(15px, 1.9vh, 18px); max-width: 620px; margin: 0 auto; line-height: 1.5; }
+  .tag-narrow { display: none; }
+  @media (max-width: 760px) {
+    .tag-wide { display: none; }
+    .tag-narrow { display: block; }
+  }
+
+  .meta-text { font-size: 1rem; letter-spacing: 1px; font-family: var(--font-mono); }
+  .links { margin-top: 2vh; }
+  .bookmarklet-link {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .25rem;
+    padding: .6rem 1.4rem;
+    border: 1px solid var(--humo-a15);
+    border-radius: var(--corner-low);
+    background: var(--carbon-a15);
+    text-decoration: none !important;
+    cursor: grab;
+    transition: border-color .15s ease;
+  }
+  .bookmarklet-link:hover { border-color: var(--cristal); }
+  .bookmarklet-link .bm-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 1.2rem;
+    font-family: var(--font-main);
+    font-size: 1.15rem;
+    background: linear-gradient(120deg, var(--cristal), var(--lirio));
+    background-clip: text; -webkit-background-clip: text; color: transparent;
+  }
+  .bm-live { position: relative; width: 8px; height: 8px; flex: none; }
+
+  .bm-live::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 1.5px solid var(--lirio);
+    animation: bm-pulse 1.8s ease-out infinite;
+  }
+  .bm-live::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: 50%;
+    background: var(--cristal);
+  }
+  @keyframes bm-pulse {
+    0%   { transform: scale(1); opacity: 1; }
+    100% { transform: scale(2.6); opacity: 0; }
+  }
+  .bookmarklet-link .bm-sub { color: var(--humo-a60); }
+  .bm-sub-narrow { display: none; }
+  @media (max-width: 760px) {
+    .bm-sub-wide { display: none; }
+    .bm-sub-narrow { display: block; }
+  }
+  .links a { color: var(--text-faint); text-decoration: none; margin: 0 8px; transition: color .15s ease; }
+  .links a:hover { color: var(--cristal); }
+  .links span { color: var(--border); }
+
+  .gallery {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-flow: dense;
+    grid-auto-rows: auto;
+    align-content: start;
+    align-items: start;
+    gap: 18px;
+    width: 1100px;
+  }
+  @media (max-width: 760px) {
+    .gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-height: 640px), (max-width: 760px) {
+    html, body { height: auto; overflow-y: auto; overflow-x: hidden; }
+    .screen { height: auto; min-height: 100vh; }
+    .bento-wrap { flex: none; }
+  }
+
+  .node {
+    position: relative;
+    cursor: pointer;
+    display: flex; flex-direction: column;
+    background-color: var(--carbon-a15);
+    border: 1px solid var(--humo-a06);
+    border-radius: var(--corner-low);
+    text-decoration: none; color: inherit;
+    overflow: hidden;
+    transition: all .25s ease;
+  }
+  .node:hover {
+    transform: translateY(-2px);
+    border-color: var(--lirio);
+    box-shadow: 0 0 2rem -0.5rem var(--lirio-a21), 0 0 0.8rem -0.5rem var(--lirio-a08);
+  }
+  .node:hover .node-title { color: var(--cristal); }
+  .node:hover .card-cover img { transform: scale(1.05); }
+
+  .node.expanded { grid-column: span 2; grid-row: span 2; align-self: stretch; min-height: 520px; }
+
+  .gallery:has(.node.expanded) { grid-auto-flow: row; }
+
+  .gallery:has([data-i="0"].expanded) [data-i="0"] { grid-column: 1 / 3; grid-row: 1 / 3; }
+  .gallery:has([data-i="0"].expanded) [data-i="1"] { grid-column: 3; grid-row: 1; }
+  .gallery:has([data-i="0"].expanded) [data-i="3"] { grid-column: 3; grid-row: 2; }
+  .gallery:has([data-i="0"].expanded) [data-i="6"] { grid-row: 3; }
+  .gallery:has([data-i="0"].expanded) [data-i="4"] { grid-column: 1; grid-row: 4; }
+  .gallery:has([data-i="0"].expanded) [data-i="5"] { grid-column: 2; grid-row: 4; }
+  .gallery:has([data-i="0"].expanded) [data-i="2"] { grid-column: 3; grid-row: 4; }
+
+  .gallery:has([data-i="1"].expanded) [data-i="1"] { grid-column: 1 / 3; grid-row: 1 / 3; }
+  .gallery:has([data-i="1"].expanded) [data-i="0"] { grid-column: 3; grid-row: 1; }
+  .gallery:has([data-i="1"].expanded) [data-i="3"] { grid-column: 3; grid-row: 2; }
+  .gallery:has([data-i="1"].expanded) [data-i="6"] { grid-row: 3; }
+  .gallery:has([data-i="1"].expanded) [data-i="4"] { grid-column: 1; grid-row: 4; }
+  .gallery:has([data-i="1"].expanded) [data-i="5"] { grid-column: 2; grid-row: 4; }
+  .gallery:has([data-i="1"].expanded) [data-i="2"] { grid-column: 3; grid-row: 4; }
+
+  .gallery:has([data-i="3"].expanded) [data-i="3"] { grid-column: 2 / 4; grid-row: 1 / 3; }
+  .gallery:has([data-i="3"].expanded) [data-i="0"] { grid-column: 1; grid-row: 1; }
+  .gallery:has([data-i="3"].expanded) [data-i="1"] { grid-column: 1; grid-row: 2; }
+  .gallery:has([data-i="3"].expanded) [data-i="6"] { grid-row: 3; }
+  .gallery:has([data-i="3"].expanded) [data-i="4"] { grid-column: 1; grid-row: 4; }
+  .gallery:has([data-i="3"].expanded) [data-i="5"] { grid-column: 2; grid-row: 4; }
+  .gallery:has([data-i="3"].expanded) [data-i="2"] { grid-column: 3; grid-row: 4; }
+
+  .gallery:has([data-i="4"].expanded) [data-i="0"] { grid-column: 1; grid-row: 1; }
+  .gallery:has([data-i="4"].expanded) [data-i="1"] { grid-column: 2; grid-row: 1; }
+  .gallery:has([data-i="4"].expanded) [data-i="3"] { grid-column: 3; grid-row: 1; }
+  .gallery:has([data-i="4"].expanded) [data-i="6"] { grid-row: 2; }
+  .gallery:has([data-i="4"].expanded) [data-i="4"] { grid-column: 1 / 3; grid-row: 3 / 5; }
+  .gallery:has([data-i="4"].expanded) [data-i="5"] { grid-column: 3; grid-row: 3; }
+  .gallery:has([data-i="4"].expanded) [data-i="2"] { grid-column: 3; grid-row: 4; }
+
+  .gallery:has([data-i="5"].expanded) [data-i="0"] { grid-column: 1; grid-row: 1; }
+  .gallery:has([data-i="5"].expanded) [data-i="1"] { grid-column: 2; grid-row: 1; }
+  .gallery:has([data-i="5"].expanded) [data-i="3"] { grid-column: 3; grid-row: 1; }
+  .gallery:has([data-i="5"].expanded) [data-i="6"] { grid-row: 2; }
+  .gallery:has([data-i="5"].expanded) [data-i="5"] { grid-column: 1 / 3; grid-row: 3 / 5; }
+  .gallery:has([data-i="5"].expanded) [data-i="4"] { grid-column: 3; grid-row: 3; }
+  .gallery:has([data-i="5"].expanded) [data-i="2"] { grid-column: 3; grid-row: 4; }
+
+  .gallery:has([data-i="2"].expanded) [data-i="0"] { grid-column: 1; grid-row: 1; }
+  .gallery:has([data-i="2"].expanded) [data-i="1"] { grid-column: 2; grid-row: 1; }
+  .gallery:has([data-i="2"].expanded) [data-i="3"] { grid-column: 3; grid-row: 1; }
+  .gallery:has([data-i="2"].expanded) [data-i="6"] { grid-row: 2; }
+  .gallery:has([data-i="2"].expanded) [data-i="2"] { grid-column: 2 / 4; grid-row: 3 / 5; }
+  .gallery:has([data-i="2"].expanded) [data-i="4"] { grid-column: 1; grid-row: 3; }
+  .gallery:has([data-i="2"].expanded) [data-i="5"] { grid-column: 1; grid-row: 4; }
+  .node.expanded .card-cover { padding-top: 0; height: auto; flex: 1; min-height: 0; }
+  .node.expanded .node-info { flex: none; }
+  .node.expanded .node-title { font-size: 1.1rem; }
+
+  @media (max-width: 760px) {
+    .node.long { flex-direction: column !important; justify-content: center !important; text-align: center; padding: 1rem !important; }
+    .bookmarklet-link .bm-title { justify-content: center; }
+    .node.expanded { height: auto !important; min-height: 0 !important; align-self: start !important; }
+
+    .node.expanded .card-cover { padding-top: 56.25% !important; flex: none !important; height: auto !important; }
+
+    .gallery [data-i] { grid-column: 1 !important; grid-row: auto !important; }
+    .gallery [data-i].expanded, .gallery [data-i].long { grid-column: 1 / -1 !important; }
+
+    .gallery:has([data-i="0"].expanded) [data-i="1"] { grid-row: 2 !important; }
+    .gallery:has([data-i="0"].expanded) [data-i="3"] { grid-column: 2 !important; grid-row: 2 !important; }
+    .gallery:has([data-i="0"].expanded) [data-i="6"] { grid-row: 3 !important; }
+    .gallery:has([data-i="0"].expanded) [data-i="4"] { grid-row: 4 !important; }
+    .gallery:has([data-i="0"].expanded) [data-i="5"] { grid-column: 2 !important; grid-row: 4 !important; }
+    .gallery:has([data-i="0"].expanded) [data-i="2"] { grid-row: 5 !important; }
+
+    .gallery:has([data-i="1"].expanded) [data-i="0"] { grid-row: 2 !important; }
+    .gallery:has([data-i="1"].expanded) [data-i="3"] { grid-column: 2 !important; grid-row: 2 !important; }
+    .gallery:has([data-i="1"].expanded) [data-i="6"] { grid-row: 3 !important; }
+    .gallery:has([data-i="1"].expanded) [data-i="4"] { grid-row: 4 !important; }
+    .gallery:has([data-i="1"].expanded) [data-i="5"] { grid-column: 2 !important; grid-row: 4 !important; }
+    .gallery:has([data-i="1"].expanded) [data-i="2"] { grid-row: 5 !important; }
+
+    .gallery:has([data-i="3"].expanded) [data-i="0"] { grid-row: 2 !important; }
+    .gallery:has([data-i="3"].expanded) [data-i="1"] { grid-column: 2 !important; grid-row: 2 !important; }
+    .gallery:has([data-i="3"].expanded) [data-i="6"] { grid-row: 3 !important; }
+    .gallery:has([data-i="3"].expanded) [data-i="4"] { grid-row: 4 !important; }
+    .gallery:has([data-i="3"].expanded) [data-i="5"] { grid-column: 2 !important; grid-row: 4 !important; }
+    .gallery:has([data-i="3"].expanded) [data-i="2"] { grid-row: 5 !important; }
+
+    .gallery:has([data-i="4"].expanded) [data-i="1"] { grid-column: 2 !important; grid-row: 1 !important; }
+    .gallery:has([data-i="4"].expanded) [data-i="3"] { grid-row: 2 !important; }
+    .gallery:has([data-i="4"].expanded) [data-i="6"] { grid-row: 3 !important; }
+    .gallery:has([data-i="4"].expanded) [data-i="5"] { grid-row: 5 !important; }
+    .gallery:has([data-i="4"].expanded) [data-i="2"] { grid-column: 2 !important; grid-row: 5 !important; }
+
+    .gallery:has([data-i="5"].expanded) [data-i="1"] { grid-column: 2 !important; grid-row: 1 !important; }
+    .gallery:has([data-i="5"].expanded) [data-i="3"] { grid-row: 2 !important; }
+    .gallery:has([data-i="5"].expanded) [data-i="6"] { grid-row: 3 !important; }
+    .gallery:has([data-i="5"].expanded) [data-i="4"] { grid-row: 5 !important; }
+    .gallery:has([data-i="5"].expanded) [data-i="2"] { grid-column: 2 !important; grid-row: 5 !important; }
+
+    .gallery:has([data-i="2"].expanded) [data-i="1"] { grid-column: 2 !important; grid-row: 1 !important; }
+    .gallery:has([data-i="2"].expanded) [data-i="3"] { grid-row: 2 !important; }
+    .gallery:has([data-i="2"].expanded) [data-i="6"] { grid-row: 3 !important; }
+    .gallery:has([data-i="2"].expanded) [data-i="4"] { grid-row: 5 !important; }
+    .gallery:has([data-i="2"].expanded) [data-i="5"] { grid-column: 2 !important; grid-row: 5 !important; }
+  }
+
+  .node.long {
+    grid-column: span 3;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.2rem;
+    padding: 1.2rem 1.5rem;
+    cursor: grab;
+    border-color: var(--humo-a15);
+  }
+  .node.long:hover { border-color: var(--lirio); }
+
+  .node.active {
+    border-color: var(--cristal);
+    background-color: var(--carbon-a06);
+    box-shadow: 0 0 3.2rem -0.4rem var(--cristal-a21), 0 0 1rem -0.45rem var(--cristal-a15);
+  }
+  .node.active .node-title { color: var(--cristal); }
+
+  @media (max-width: 580px) { .node.expanded { grid-column: span 1; grid-row: span 1; } .node.expanded .node-title { font-size: 0.9rem; } .node.expanded .node-desc { display: none; } }
+
+  .card-cover { position: relative; width: 100%; padding-top: 56.25%; overflow: hidden; background-color: var(--carbon); border-bottom: 1px solid var(--humo-a06); border-top-left-radius: calc(var(--corner-low) - 1px); border-top-right-radius: calc(var(--corner-low) - 1px); flex: none; }
+  .card-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: all .5s ease; }
+  .card-cover .card-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--humo-a15); font-size: 2rem; }
+
+  .node-info { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 0.8rem; gap: 0; }
+  .node-title { margin: 0 0 0.3rem; font-family: var(--font-main); font-size: 0.9rem; font-weight: 400; color: var(--humo); line-height: 1.3; transition: color .15s ease, font-size .25s ease; }
+  .node-desc { display: none; -webkit-line-clamp: 2; -webkit-box-orient: vertical; margin: 0; overflow: hidden; color: var(--humo); font-family: var(--font-mono); font-style: italic; font-size: 1rem; line-height: 1.4; }
+  .node.expanded .node-desc { display: -webkit-box; }
+
+  footer { flex: none; margin-top: 4vh; color: var(--text-faint); text-align: center; }
+  footer .fseg { white-space: nowrap; }
+  footer a { color: var(--text-faint); }
+  footer a:hover { color: var(--cristal); }
+</style>
+</head>
+<body>
+<div class="portal-glow" aria-hidden="true"></div>
+<div class="noise" aria-hidden="true"></div>
+<div class="screen">
+
+  <header>
+    <div class="word"><span class="s">s</span><span class="br">&lt;</span><span class="av">av</span><span class="br">&gt;</span></div>
+    <h1>substrate for a portable web</h1>
+    <p class="tag tag-wide">harvest anything from the web and wire it into something new<br>export it as a single html file, use it anywhere</p>
+    <p class="tag tag-narrow">harvest anything from the web<br>wire it into something new<br>export it as a single html file<br>use it anywhere</p>
+    <div class="links meta-text">
+      <a href="https://github.com/octantes/scavenger">github</a><span>·</span>
+      <a href="https://github.com/octantes/scavenger#readme">readme</a><span>·</span>
+      <a href="https://github.com/octantes/scavenger#full-documentation">full docs</a>
+    </div>
+  </header>
+
+  <div class="bento-wrap">
+    <div class="gallery" id="gallery">
+
+      <a class="node expanded active" data-i="0" href="https://github.com/octantes/scavenger#quick-start---setting-up-a-patchbay-and-harvesting">
+        <div class="card-cover"><img src=".github/assets/loop.gif" data-gif=".github/assets/loop.gif" data-poster=".github/assets/loop-poster.png" loading="lazy" alt="scavenger main loop"></div>
+        <div class="node-info">
+          <h3 class="node-title">quick start</h3>
+          <div class="node-desc">five minutes gets you started - launch patchbay, harvest a component, wire it in</div>
+        </div>
+      </a>
+
+      <a class="node" data-i="1" href="patchbay.html">
+        <div class="card-cover"><img src=".github/assets/wiring-poster.png" data-gif=".github/assets/wiring.gif" data-poster=".github/assets/wiring-poster.png" loading="lazy" alt="wiring nodes in patchbay"></div>
+        <div class="node-info">
+          <h3 class="node-title">patchbay</h3>
+          <div class="node-desc">the runtime - place components, wire them, export as a single html file</div>
+        </div>
+      </a>
+
+      <a class="node" data-i="3" href="https://github.com/octantes/scavenger/blob/main/docs/kernel.md">
+        <div class="card-cover"><img src=".github/assets/harvest-poster.png" data-gif=".github/assets/harvest.gif" data-poster=".github/assets/harvest-poster.png" loading="lazy" alt="harvesting with the kernel bookmarklet"></div>
+        <div class="node-info">
+          <h3 class="node-title">kernel</h3>
+          <div class="node-desc">the bookmarklet script - run it on any site to harvest components and lift live data</div>
+        </div>
+      </a>
+
+      <a class="node" data-i="4" href="https://github.com/octantes/scavenger/blob/main/docs/quests.md">
+        <div class="card-cover"><img src=".github/assets/quests-poster.png" data-gif=".github/assets/quests.gif" data-poster=".github/assets/quests-poster.png" loading="lazy" alt="live quest data flowing into patchbay"></div>
+        <div class="node-info">
+          <h3 class="node-title">quests</h3>
+          <div class="node-desc">bridge to live external state - turns css selectors into wireable channels</div>
+        </div>
+      </a>
+
+      <a class="node" data-i="5" href="https://github.com/octantes/scavenger/tree/main/examples">
+        <div class="card-cover"><img src=".github/assets/component-poster.png" data-gif=".github/assets/component.gif" data-poster=".github/assets/component-poster.png" loading="lazy" alt="a harvested quest component live-updating"></div>
+        <div class="node-info">
+          <h3 class="node-title">examples</h3>
+          <div class="node-desc">a growing library of ready-made components, nodes and tools to drop straight in</div>
+        </div>
+      </a>
+
+      <a class="node" data-i="2" href="compiler.html">
+        <div class="card-cover"><img src=".github/assets/compiler-poster.png" loading="lazy" alt="the compiler's node authoring view"></div>
+        <div class="node-info">
+          <h3 class="node-title">compiler</h3>
+          <div class="node-desc">the authoring environment - build new nodes and components that extend patchbay</div>
+        </div>
+      </a>
+
+      <a class="node long bookmarklet-link" id="bookmarklet-link" data-i="6" href="bookmarklet.js" title="drag this to your bookmarks bar - it's the kernel, ready to run on any site">
+        <span class="bm-title"><span class="bm-live" aria-hidden="true"></span>test the kernel!</span>
+        <span class="bm-sub bm-sub-wide meta-text">to use it on any page - drag this to bookmarks</span>
+        <span class="bm-sub bm-sub-narrow meta-text">to use it on any page<br>drag this to bookmarks</span>
+      </a>
+
+    </div>
+  </div>
+
+  <footer class="meta-text">
+    <span class="fseg">zero dependencies</span> <span class="fseg"><span class="fdash">- </span>no build step</span> <span class="fseg"><span class="fdash">- </span>nothing phoning home</span> <span class="fseg"><span class="fdash">- </span><a href="https://github.com/octantes/scavenger/blob/main/LICENSE">Apache-2.0</a></span>
+  </footer>
+
+</div>
+<script>
+
+  const gallery = document.getElementById('gallery');
+  const cards = [...gallery.querySelectorAll('.node')];
+  const setCover = card => {
+    const img = card.querySelector('.card-cover img[data-gif]');
+    if (!img) return;
+    img.src = card.classList.contains('expanded') ? img.dataset.gif : img.dataset.poster;
+  };
+  gallery.addEventListener('click', e => {
+    const card = e.target.closest('.node');
+    if (!card || card.classList.contains('long')) return;
+    if (!card.classList.contains('expanded')) {
+      e.preventDefault();
+      cards.forEach(c => c.classList.remove('expanded', 'active'));
+      card.classList.add('expanded', 'active');
+      cards.forEach(setCover);
+      fitScreen();
+    }
+  });
+
+  const DRAG_TRANSPARENT_GIF = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+  let dragChip = null, onDragMove = null;
+  document.addEventListener('dragstart', e => {
+    const el = e.target.closest('a, img');
+    if (!el || !e.dataTransfer) return;
+    const empty = new Image();
+    empty.src = DRAG_TRANSPARENT_GIF;
+    e.dataTransfer.setDragImage(empty, 0, 0);
+
+    const label = el.tagName === 'IMG' ? (el.alt || 'image')
+      : (el.querySelector('.bm-title')?.textContent.trim() || el.textContent.trim().replace(/\s+/g, ' ').slice(0, 40));
+    dragChip = document.createElement('div');
+    dragChip.textContent = label;
+    Object.assign(dragChip.style, {
+      position: 'fixed', top: '0', left: '0', zIndex: '99999', pointerEvents: 'none',
+      padding: '.4rem .8rem', borderRadius: 'var(--corner-low)',
+      background: 'var(--carbon)', color: 'var(--cristal)',
+      boxShadow: 'inset 0 0 0 1px var(--lirio)',
+      font: '1rem/1.2 var(--font-mono)', whiteSpace: 'nowrap',
+    });
+    dragChip.style.transform = `translate(${e.clientX + 14}px, ${e.clientY + 14}px)`;
+    document.body.appendChild(dragChip);
+    onDragMove = ev => {
+      if (ev.clientX === 0 && ev.clientY === 0) return;
+      dragChip.style.transform = `translate(${ev.clientX + 14}px, ${ev.clientY + 14}px)`;
+    };
+    document.addEventListener('dragover', onDragMove);
+  });
+  document.addEventListener('dragend', () => {
+    if (onDragMove) { document.removeEventListener('dragover', onDragMove); onDragMove = null; }
+    if (dragChip) { dragChip.remove(); dragChip = null; }
+  });
+
+  const screenEl = document.querySelector('.screen');
+  function fitScreen() {
+    const isDesktop = window.matchMedia('(min-width: 761px) and (min-height: 641px)').matches;
+    screenEl.style.transformOrigin = isDesktop ? 'center center' : 'top center';
+    screenEl.style.transform = '';
+    const w = screenEl.scrollWidth, h = screenEl.scrollHeight;
+    const scale = isDesktop
+      ? Math.min(1, window.innerWidth / w, window.innerHeight / h)
+      : Math.min(1, window.innerWidth / w);
+    screenEl.style.transform = scale < 1 ? `scale(${scale})` : '';
+  }
+
+  fetch('bookmarklet.js').then(r => r.text()).then(src => {
+    if (src.startsWith('javascript:')) document.getElementById('bookmarklet-link').href = src;
+  }).catch(() => {});
+
+  const fsegs = [...document.querySelectorAll('footer .fseg')];
+  function updateFooterDashes() {
+    let prevTop = null;
+    fsegs.forEach(seg => {
+      const top = seg.getBoundingClientRect().top;
+      const dash = seg.querySelector('.fdash');
+      if (dash) dash.style.display = (prevTop !== null && top !== prevTop) ? 'none' : '';
+      prevTop = top;
+    });
+  }
+  window.addEventListener('resize', updateFooterDashes);
+
+  window.addEventListener('resize', fitScreen);
+  fitScreen();
+
+  const reveal = () => { fitScreen(); updateFooterDashes(); screenEl.classList.add('ready'); };
+  if (document.fonts?.ready) Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 800))]).then(reveal);
+  else setTimeout(reveal, 100);
+</script>
+</body>
+</html>

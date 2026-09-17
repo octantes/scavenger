@@ -30,3 +30,36 @@ jobs:
       # zero dependencies - nothing to install. the suite runs straight off node stdlib
       - name: run the suite
         run: node test/all.mjs
+
+  # bookmarklet.js is a generated artifact (kernel.js, comment-stripped + uri-encoded) - build.mjs already
+  # self-heals it locally and fails the suite if it was stale, but that fix never leaves the runner. this
+  # job actually commits the fresh copy back to main, same shape as octantes.ar's build-md.yml.
+  sync-bookmarklet:
+    needs: test
+    if: always() && github.event_name == 'push' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: rebuild bookmarklet.js from kernel.js
+        run: node test/rebuild-kernel.mjs
+
+      - name: commit & push if it drifted
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bookmarklet.js
+          if git diff --cached --quiet; then
+            echo "bookmarklet.js already in sync"
+          else
+            git commit -m "build: refresh bookmarklet.js from kernel.js"
+            git push origin HEAD:main
+          fi

@@ -7,7 +7,7 @@ import { join } from 'path';
 import { createServer } from 'http';
 import {
   QuestEngine, isPrivateAddr, isValidQuestUrl, questUrlIsSafe, resolvePublicIP,
-  isOwnerWrite, isLocalOrigin, pinnedGet, SCV_TOKEN, API_PORT, configure,
+  isOwnerWrite, isLocalOrigin, isReadAllowed, pinnedGet, SCV_TOKEN, API_PORT, configure,
 } from '../quests.mjs';
 
 let fails = 0;
@@ -85,6 +85,23 @@ ok(isLocalOrigin('http://[::1]:5000', 9876) === false, 'isLocalOrigin: local hos
 ok(isLocalOrigin('http://localhost:5000', 9876) === false, 'isLocalOrigin: same port-mismatch check applies to localhost form');
 ok(isLocalOrigin('::not a url', 9876) === false, 'isLocalOrigin: malformed origin > false (catch)');
 
+// read gate: no quest data for other sites - file://, same-origin, local dev, proxied publish, named origins pass
+ok(isReadAllowed(undefined) === true, 'read gate: no origin passes (curl, node, same-origin get, img)');
+ok(isReadAllowed('null') === true, 'read gate: null origin passes (file:// patchbay)');
+ok(isReadAllowed('https://evil.example') === false, 'read gate: other website refused');
+ok(isReadAllowed('http://localhost:5173') === true, 'read gate: localhost on any port passes');
+ok(isReadAllowed('http://127.0.0.1:3000') === true, 'read gate: 127.0.0.1 on any port passes');
+ok(isReadAllowed('http://[::1]:8080') === true, 'read gate: bracketed ipv6 loopback passes');
+ok(isReadAllowed('https://pub.example', ['pub.example']) === true, 'read gate: origin matching request host passes (publish behind proxy)');
+ok(isReadAllowed('https://pub.example:8443', ['pub.example']) === false, 'read gate: same hostname, other port refused');
+ok(isReadAllowed('chrome-extension://abcdef') === true, 'read gate: non-http origin passes');
+ok(isReadAllowed('::not a url') === false, 'read gate: malformed origin refused');
+configure({ allowOrigins: ['https://pub.example/'] });
+ok(isReadAllowed('https://pub.example') === true, 'read gate: --allow-origin origin passes, trailing slash normalized');
+ok(isReadAllowed('https://other.example') === false, 'read gate: --allow-origin admits only named origin');
+configure({ allowOrigins: [] });
+ok(isReadAllowed('https://pub.example') === false, 'read gate: cleared --allow-origin refuses again');
+
 // --trust-ip write path: configured non-loopback ip is trusted (but still not if proxied)
 configure({ trustIps: ['9.9.9.9'] });
 ok(isOwnerWrite(req('9.9.9.9')) === true, 'trusted-ip write path: --trust-ip address is allowed');
@@ -103,9 +120,25 @@ if (apiUp) try {
   const call = (method, path, { headers = {}, body } = {}) =>
     fetch(base + path, { method, headers: { 'content-type': 'application/json', ...headers }, body });
 
-  // reads are open
-  ok((await call('GET', '/quests')).status === 200, 'GET /quests is open (read-public)');
+  // reads without origin open - curl, node, same-origin get
+  ok((await call('GET', '/quests')).status === 200, 'GET /quests without origin open');
   ok((await call('GET', '/version')).status === 200, 'GET /version is open');
+
+  // refused read: no data, no cors header - every read route
+  for (const path of ['/quests', '/component/route_test.html', '/asset?url=' + encodeURIComponent('https://example.com/x.gif'), '/unfurl?url=' + encodeURIComponent('https://example.com/')]) {
+    const r = await call('GET', path, { headers: { origin: 'https://evil.example' } });
+    const body = await r.text();
+    ok(r.status === 403 && body === '' && !r.headers.get('access-control-allow-origin'), `GET ${path.split('?')[0]} from other website: 403, empty, no cors (${r.status}, ${body.length}b, acao ${r.headers.get('access-control-allow-origin')})`);
+  }
+  ok((await call('GET', '/version', { headers: { origin: 'https://evil.example' } })).status === 200, 'GET /version not gated - carries no quest data');
+  ok((await call('GET', '/quests', { headers: { origin: 'null' } })).status === 200, 'GET /quests from file:// patchbay (origin null) open');
+  ok((await call('GET', '/quests', { headers: { origin: 'http://localhost:5173' } })).status === 200, 'GET /quests from local dev server open');
+  const proxiedRead = await call('GET', '/quests', { headers: { origin: 'https://pub.example', 'x-forwarded-host': 'pub.example' } });
+  ok(proxiedRead.status === 200 && proxiedRead.headers.get('access-control-allow-origin') === '*', `GET /quests from publish behind own proxy open (${proxiedRead.status})`);
+  configure({ allowOrigins: ['https://pub.example'] });
+  const namedRead = await call('GET', '/quests', { headers: { origin: 'https://pub.example' } });
+  configure({ allowOrigins: [] });
+  ok(namedRead.status === 200 && Array.isArray(await namedRead.json()), `GET /quests from --allow-origin origin returns data (${namedRead.status})`);
 
   // get /component: serves harvested component file, rejects traversal + missing
   mkdirSync('component', { recursive: true });

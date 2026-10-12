@@ -48,6 +48,16 @@ const MAX_TICK_RATE       = 86400000;            // 24h cap on tick interval - >
 
 const ansi         = /\x1b\[[0-9;?]*[a-zA-Z]/g; // ansi escape sequence matcher - strips terminal formatting codes
 
+let _tuiOwnsTerminal = false; // tui draws whole screen - stray stderr would tear it
+const _debugLog = new Map();  // distinct message - swallowed failures, listed in tui
+function debug(msg, err) { // swallowed failure - first to stderr, every occurrence counted for tui
+  const hit = _debugLog.get(msg);
+  if (hit) { hit.count++; hit.last = Date.now(); hit.err = err; return; }
+  if (_debugLog.size >= 50) _debugLog.delete(_debugLog.keys().next().value); // oldest distinct message goes first
+  _debugLog.set(msg, { count: 1, last: Date.now(), err });
+  if (!_tuiOwnsTerminal) process.stderr.write(`[quests] ${msg}${err?.message ? ': ' + err.message : ''}\n`);
+}
+
 function flagValue(names) { // last-wins cli flag lookup supporting both `--flag value` and `--flag=value` forms
   let val = null;
   for (let i = 0; i < process.argv.length; i++) {
@@ -110,12 +120,16 @@ let TRUST_IPS = (flagValue(['--trust-ip']) || process.env.SCAV_TRUST_IP || '')
   .split(',').map(s => s.trim()).filter(Boolean);
 let BIND_HOST = TRUST_IPS.length ? '0.0.0.0' : '127.0.0.1';
 
+// publish served from different origin - named, everything else refused
+const parseOrigins = s => String(s || '').split(',').map(o => o.trim()).filter(Boolean).map(o => { try { return new URL(o).origin; } catch (e) { debug('--allow-origin entry unparseable, ignored', e); return null; } }).filter(o => o && o !== 'null');
+let ALLOW_ORIGINS = parseOrigins(flagValue(['--allow-origin']) || process.env.SCAV_ALLOW_ORIGIN);
+
 async function findChrome() { // locate chromium binary - checks all os well-known paths
   if (process.env.CHROME_PATH) {
     try { await stat(process.env.CHROME_PATH); return process.env.CHROME_PATH; }
     catch { throw new Error(`CHROME_PATH not found: ${process.env.CHROME_PATH}`); }
   }
-  const firstExisting = async (paths) => { for (const p of paths) { try { await stat(p); return p; } catch {} } return null; };
+  const firstExisting = async (paths) => { for (const p of paths) { try { await stat(p); return p; } catch (e) { debug('chromium candidate path missing', e); } } return null; };
 
   if (process.platform === 'darwin') {
     const found = await firstExisting([
@@ -153,7 +167,7 @@ async function findChrome() { // locate chromium binary - checks all os well-kno
       proc.stdout.on('data', d => out += d.toString());
       await new Promise((resolve, reject) => { proc.on('close', code => code === 0 ? resolve() : reject()); proc.on('error', reject); });
       return out.trim();
-    } catch {}
+    } catch (e) { debug('chromium lookup command failed', e); }
   }
   throw new Error('chromium not found - install it or set CHROME_PATH');
 }
@@ -221,6 +235,16 @@ function isLocalOrigin(origin, port) { // report whether http origin header refe
     const originPort = u.port || (u.protocol === 'https:' ? '443' : '80');
     return local && originPort === String(port);
   } catch { return false; }
+}
+
+function isReadAllowed(origin, hosts = []) { // quests can carry scrapes from logged-in pages - other websites must not read them
+  if (!origin || origin === 'null') return true; // same-origin get sends no origin, file:// sends null, curl/node send none
+  let u; try { u = new URL(origin); } catch { return false; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return true;
+  const hostname = u.hostname.replace(/^\[|\]$/g, '');
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return true;
+  if (hosts.includes(u.host)) return true; // publish reading own quests through reverse proxy
+  return ALLOW_ORIGINS.includes(u.origin);
 }
 
 let ALLOW_LOCAL = false; // relaxed only by --run --allow-local so tests can hit local dev server - loopback write gate is separate
@@ -345,7 +369,7 @@ function isOwnerWrite(req) { // owner only write guard - write accepted only on 
 }
 
 async function readQuests() { // load quest list from disk - returns [] on any read/parse error
-  try { const q = JSON.parse(await readFile(QUESTS_FILE, 'utf-8')); return Array.isArray(q) ? q : []; } catch { return []; }
+  try { const q = JSON.parse(await readFile(QUESTS_FILE, 'utf-8')); return Array.isArray(q) ? q : []; } catch (e) { if (e.code !== 'ENOENT') debug('quests.json unreadable, served empty', e); return []; }
 }
 
 let _questQueue = Promise.resolve();
@@ -356,14 +380,14 @@ const HISTORY_QUEUE_MAX = 200; // best-effort log - past this, drop rather than 
 function appendHistory(file, line) {
   if (_historyPending >= HISTORY_QUEUE_MAX) return;
   _historyPending++;
-  _historyQueue = _historyQueue.then(() => appendFile(file, line).catch(() => {})).finally(() => { _historyPending--; });
+  _historyQueue = _historyQueue.then(() => appendFile(file, line).catch(e => debug('history append failed, change not logged', e))).finally(() => { _historyPending--; });
 }
 
 let _tmpSeq = 0; // temp file + atomic rename on posix to prevent mid write crash leaving file truncated, never partial result
 async function atomicWrite(file, data) { // write data to file atomically via a unique temp + rename
   const tmp = `${file}.${process.pid}.${_tmpSeq++}.tmp`; // unique temp per call - write overlap safety
   try { await writeFile(tmp, data); }
-  catch (e) { await unlink(tmp).catch(() => {}); throw e; } // stray partial tmp on a failed write must not linger
+  catch (e) { await unlink(tmp).catch(e2 => debug('partial tmp cleanup failed', e2)); throw e; } // stray partial tmp on a failed write must not linger
   try {
     await rename(tmp, file); // atomic on posix
   } catch (e) { // windows rename can't replace existing file, locking target, so unlink then rename and retry
@@ -374,12 +398,12 @@ async function atomicWrite(file, data) { // write data to file atomically via a 
         catch (e2) {
           if (attempt < 3) continue;
           // out of retries: original is still intact - copy tmp's bytes over it instead of unlinking first and risking a lost write
-          try { await copyFile(tmp, file); await unlink(tmp).catch(() => {}); break; }
-          catch { await unlink(tmp).catch(() => {}); throw e2; }
+          try { await copyFile(tmp, file); await unlink(tmp).catch(e3 => debug('partial tmp cleanup failed', e3)); break; }
+          catch { await unlink(tmp).catch(e3 => debug('partial tmp cleanup failed', e3)); throw e2; }
         }
       }
     }
-    else { await unlink(tmp).catch(() => {}); throw e; }
+    else { await unlink(tmp).catch(e2 => debug('partial tmp cleanup failed', e2)); throw e; }
   }
 }
 
@@ -487,7 +511,7 @@ function unfurl(html, base) { // extract title/description/og:image from page fo
   };
   const clean = s => String(s).replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&#0?39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
   let image = clean(metaOf('og:image') || metaOf('twitter:image'));
-  if (image && !/^https?:/i.test(image)) { try { image = new URL(image, base).href; } catch { image = ''; } }
+  if (image && !/^https?:/i.test(image)) { try { image = new URL(image, base).href; } catch (e) { debug('unfurl image url unparseable, dropped', e); image = ''; } }
   return {
     title: clean(metaOf('og:title') || metaOf('twitter:title') || (String(html).match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '').slice(0, 120),
     description: clean(metaOf('og:description') || metaOf('description') || '').slice(0, 300),
@@ -497,7 +521,7 @@ function unfurl(html, base) { // extract title/description/og:image from page fo
 
 function readJsonBody(req, send, maxBytes, onBody) { // stream request body under byte cap, then parse json for onBody
   const chunks = []; let bytes = 0, tooBig = false;
-  req.on('error', () => { chunks.length = 0; }); // client abort/truncate mid-body - must never surface as an uncaughtException
+  req.on('error', e => { debug('api client aborted mid-body', e); chunks.length = 0; }); // client abort/truncate mid-body - must never surface as an uncaughtException
   req.on('aborted', () => { chunks.length = 0; }); // same - body stream died before 'end'
   req.on('data', c => {
     if (tooBig) return; // over cap: discard further chunks (memory-safe) - let body drain to term
@@ -510,7 +534,7 @@ function readJsonBody(req, send, maxBytes, onBody) { // stream request body unde
     try {
       const input = JSON.parse(Buffer.concat(chunks).toString('utf8').replace(/^\uFEFF/, ''));
       await onBody(input);
-    } catch (err) { try { send(400, { error: err.message }); } catch {} } // bad json returns 400 - already-sent guard for a late throw
+    } catch (err) { try { send(400, { error: err.message }); } catch (e) { debug('late 400 reply failed', e); } } // bad json returns 400 - already-sent guard for a late throw
   });
 }
 
@@ -604,7 +628,7 @@ class QuestEngine {
     this._retryN = 0;             // reset crash-recovery backoff
 
     this.ws.onmessage = e => {
-      let msg; try { msg = JSON.parse(e.data); } catch { return; }
+      let msg; try { msg = JSON.parse(e.data); } catch (err) { debug('non-json cdp frame ignored', err); return; }
       if (msg.id && this.pending[msg.id]) {
         clearTimeout(this.pending[msg.id].timer);
         this.pending[msg.id].resolve(msg);
@@ -624,7 +648,7 @@ class QuestEngine {
     try { // sites that sniff ua refuse to load for headless - present a normal chrome ua, stripping headless
       const ua = (await this._send('Runtime.evaluate', { expression: 'navigator.userAgent', returnByValue: true }))?.result?.result?.value || '';
       this._ua = ua.includes('Headless') ? ua.replace(/HeadlessChrome/g, 'Chrome').replace(/\s*Headless/g, '') : null;
-    } catch { this._ua = null; }
+    } catch (e) { debug('chromium ua probe failed, keeping headless ua', e); this._ua = null; }
     await this._applyUAOverride(this);
   }
 
@@ -633,7 +657,7 @@ class QuestEngine {
     try {
       await this._send('Network.enable', {}, page);
       await this._send('Network.setUserAgentOverride', { userAgent: this._ua }, page);
-    } catch {}
+    } catch (e) { debug('ua override failed', e); }
   }
 
   async _relaunchChrome() { // tear down chrome + ws, pick new user-data-dir per _profileMode and re-launch (proxy stays up)
@@ -654,7 +678,7 @@ class QuestEngine {
     const oldDir = this._userDir;
     this._userDir = await this._resolveUserDir();
     if (oldDir && oldDir.startsWith(tmpdir())) { // clean up old temp/snapshot dir
-      try { rmSync(oldDir, { recursive: true, force: true }); } catch {}
+      try { rmSync(oldDir, { recursive: true, force: true }); } catch (e) { debug('old profile dir cleanup failed', e); }
     }
 
     try {
@@ -666,7 +690,7 @@ class QuestEngine {
         this._notice = this._notice || 'profile launch failed - using a temporary profile';
         this._userDir = await this._freshProfileDir();
         if (failedDir && failedDir.startsWith(tmpdir())) { // snapshot dir holds cookies and local state key - never strand nor touch live profile
-          try { rmSync(failedDir, { recursive: true, force: true }); } catch {}
+          try { rmSync(failedDir, { recursive: true, force: true }); } catch (e) { debug('failed profile dir cleanup failed', e); }
         }
         await this._launchChrome(this._userDir);
       } else {
@@ -685,14 +709,16 @@ class QuestEngine {
         if (this._profileLockFree(profileDir)) return profileDir;
         // live chrome holds profile (sharing corrupts it), so fall back to temp dir and point user at snapshot mode
         this._notice = 'profile in use by another Chrome - close it, or cycle to snapshot';
-      } catch {
+      } catch (e) {
+        debug('live profile lookup failed', e);
         this._notice = 'no live profile to use - using a temporary profile';
       }
       return this._freshProfileDir();
     }
     if (this._profileMode === 'snapshot') {
       try { return await this._snapshotProfile(); }
-      catch {
+      catch (e) {
+        debug('cookie snapshot failed', e);
         this._notice = 'no cookies to snapshot - using a temporary profile';
         return this._freshProfileDir();
       }
@@ -714,21 +740,21 @@ class QuestEngine {
           await mkdir(dirname(to), { recursive: true });
           await copyFile(join(src, rel), to);
           for (const ext of ['-wal', '-shm', '-journal']) {
-            try { await copyFile(join(src, rel + ext), to + ext); } catch {}
+            try { await copyFile(join(src, rel + ext), to + ext); } catch (e) { if (e.code !== 'ENOENT') debug('snapshot sidecar copy failed', e); }
           }
           got = true;
-        } catch {}
+        } catch (e) { if (e.code !== 'ENOENT') debug('snapshot file copy failed', e); }
       }
 
       // not cookies session state - localstorage + indexed recursive copy - best effort
       for (const rel of ['Default/Local Storage', 'Default/Session Storage', 'Default/IndexedDB']) {
-        try { await cp(join(src, rel), join(dir, rel), { recursive: true }); got = true; } catch {}
+        try { await cp(join(src, rel), join(dir, rel), { recursive: true }); got = true; } catch (e) { if (e.code !== 'ENOENT') debug('snapshot dir copy failed', e); }
       }
 
       if (!got) throw new Error('no session state found to snapshot');
       return dir;
     } catch (err) { // failed snapshot must not orphan temp dir - it holds a full session copy (cookies + encryption key)
-      try { rmSync(dir, { recursive: true, force: true }); } catch {}
+      try { rmSync(dir, { recursive: true, force: true }); } catch (e) { debug('failed snapshot dir cleanup failed - session copy left on disk', e); }
       throw err;
     }
   }
@@ -743,7 +769,7 @@ class QuestEngine {
       catch (e) { if (e.code === 'EPERM') return false; }      // exists but not ours: in use
     } else return false; // symlink-form lock without a parseable pid - assume a live profile holds it
     for (const f of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
-      try { rmSync(join(dir, f), { force: true }); } catch {}
+      try { rmSync(join(dir, f), { force: true }); } catch (e) { debug('stale profile lock removal failed', e); }
     }
     return true;
   }
@@ -764,7 +790,7 @@ class QuestEngine {
     this.onRender?.();
     clearTimeout(this._retryTimer);
     this._retryTimer = setTimeout(() => {
-      this._launchChrome(this._userDir).then(() => this._setCrashHandler()).catch(() => this._scheduleEngineRetry());
+      this._launchChrome(this._userDir).then(() => this._setCrashHandler()).catch(e => { debug('chromium relaunch failed', e); this._scheduleEngineRetry(); });
     }, delay);
   }
 
@@ -804,11 +830,16 @@ class QuestEngine {
         return send(200, { version: SCV_QUESTS_VERSION });
       }
 
+      if (req.method === 'GET' && /^\/(quests|component|asset|unfurl)(\/|\?|$)/.test(req.url)) { // refused read gets no data and no cors header
+        const hosts = [req.headers['host'], ...String(req.headers['x-forwarded-host'] || '').split(',')].map(h => (h || '').trim()).filter(Boolean);
+        if (!isReadAllowed(origin, hosts)) { res.writeHead(403); return res.end(); }
+      }
+
       if (req.method === 'GET' && (req.url === '/unfurl' || req.url.startsWith('/unfurl?'))) { // page metadata for patchbay link cards
         let u; try { u = new URL(req.url, 'http://x').searchParams.get('url'); } catch { u = null; }
         if (!u || !isValidQuestUrl(u)) return send(400, { error: 'invalid url' });
         let html = '';
-        try { html = await pinnedGet(u, 512 * 1024, 6000, 3, true); } catch {} // truncating: og tags sit in <head>, so 2mb article must not fail whole
+        try { html = await pinnedGet(u, 512 * 1024, 6000, 3, true); } catch (e) { debug('unfurl fetch failed, empty card', e); } // truncating: og tags sit in <head>, so 2mb article must not fail whole
         return send(200, html ? unfurl(html, u) : {});
       }
 
@@ -959,7 +990,7 @@ class QuestEngine {
       const cleanup = () => { page.ws.removeEventListener('message', handler); clearTimeout(timer); };
       const timer = setTimeout(() => { cleanup(); reject(new Error(`timeout: ${eventName}`)); }, timeout);
       const handler = e => {
-        let msg; try { msg = JSON.parse(e.data); } catch { return; }
+        let msg; try { msg = JSON.parse(e.data); } catch (err) { debug('non-json cdp frame ignored', err); return; }
         if (msg.method === eventName && (!matches || matches(msg.params))) { cleanup(); resolve(msg.params); }
       };
       page.ws.addEventListener('message', handler);
@@ -1111,7 +1142,7 @@ class QuestEngine {
   }
 
   _browserHeaders(url) { // browser ua + origin referer - hotlink/bot filters 403 bare server fetch, dropping fonts and thumbnails
-    let ref; try { ref = new URL(url).origin + '/'; } catch {}
+    let ref; try { ref = new URL(url).origin + '/'; } catch (e) { debug('page url unparseable, no referer', e); }
     return { 'User-Agent': this._ua || BROWSER_UA, 'Accept': '*/*', ...(ref && { 'Referer': ref }) };
   }
 
@@ -1119,13 +1150,13 @@ class QuestEngine {
     const m = html.match(/^<!-- SCV-RF (\{[\s\S]*?\}) -->\n?/);
     if (!m) return html;
     html = html.slice(m[0].length); // strip marker whether or not recovery yields anything
-    let spec; try { spec = JSON.parse(m[1]); } catch { return html; }
+    let spec; try { spec = JSON.parse(m[1]); } catch (e) { debug('font recovery spec unparseable, fonts left as is', e); return html; }
     const wanted = new Set((spec.f || []).map(x => String(x).toLowerCase())); // only families component actually renders
     const hdr = this._browserHeaders(pageUrl);
     const faces = [];
     for (const sheetUrl of (Array.isArray(spec.s) ? spec.s : []).slice(0, 8)) { // cap fanout
       if (!isValidQuestUrl(sheetUrl)) continue;
-      let css; try { css = await pinnedGet(sheetUrl, 2 * 1024 * 1024, 8000, 3, true, false, hdr); } catch { continue; }
+      let css; try { css = await pinnedGet(sheetUrl, 2 * 1024 * 1024, 8000, 3, true, false, hdr); } catch (e) { debug('font sheet fetch failed', e); continue; }
       for (const face of css.match(/@font-face\s*\{[^}]*\}/gi) || []) {
         const fam = (face.match(/font-family\s*:\s*([^;}]+)/i) || [])[1];
         if (!fam) continue;
@@ -1144,9 +1175,9 @@ class QuestEngine {
     const urls = [...face.matchAll(/url\((['"]?)([^)'"]+)\1\)/gi)].map(x => x[2]).filter(u => !/^(data:|#)/i.test(u));
     const map = new Map();
     for (const u of urls) {
-      let abs; try { abs = new URL(u, base).href; } catch { continue; }
+      let abs; try { abs = new URL(u, base).href; } catch (e) { debug('font url unparseable, skipped', e); continue; }
       if (!isValidQuestUrl(abs)) continue;
-      try { const a = await pinnedGet(abs, MAX_ASSET_BYTES, 8000, 3, false, true, hdr); map.set(u, `data:${a.contentType};base64,${a.buffer.toString('base64')}`); } catch {}
+      try { const a = await pinnedGet(abs, MAX_ASSET_BYTES, 8000, 3, false, true, hdr); map.set(u, `data:${a.contentType};base64,${a.buffer.toString('base64')}`); } catch (e) { debug('font file fetch failed', e); }
     }
     return face.replace(/url\((['"]?)([^)'"]+)\1\)/gi, (mm, q, u) => map.has(u) ? `url(${q}${map.get(u)}${q})` : mm);
   }
@@ -1246,7 +1277,7 @@ class QuestEngine {
       const ts = this._questStates.get(target);
       if (ts) { ts.lastValue = value; ts.changed = false; }
       else this._questStates.set(target, { status: 'success', lastValue: value, prevValue: null, lastRun: Date.now(), lastChange: null, changed: false });
-    } catch {}
+    } catch (e) { debug('onchange alert write failed', e); }
   }
 
   async captureScreenshot(q) { // diagnostic capture - load quest url on fresh throwaway tab - settle and write png, returns saved path
@@ -1288,7 +1319,7 @@ class QuestEngine {
         page.ws.onerror = () => { clearTimeout(to); reject(new Error('pool ws error')); };
       });
       page.ws.onmessage = e => {
-        let msg; try { msg = JSON.parse(e.data); } catch { return; } // a non-json frame must never crash engine
+        let msg; try { msg = JSON.parse(e.data); } catch (err) { debug('non-json cdp frame ignored', err); return; } // a non-json frame must never crash engine
         if (msg.id && page.pending[msg.id]) {
           clearTimeout(page.pending[msg.id].timer);
           page.pending[msg.id].resolve(msg);
@@ -1305,7 +1336,7 @@ class QuestEngine {
       await this._send('Page.setLifecycleEventsEnabled', { enabled: true }, page); // frame/loader-correlated load events for _navigate
       await this._applyUAOverride(page); // pool tabs present same de-headlessed ua
     } catch (err) {
-      try { page.ws.close(); } catch {}
+      try { page.ws.close(); } catch (e) { debug('pool tab socket close failed', e); }
       throw err;
     }
     return page;
@@ -1315,18 +1346,18 @@ class QuestEngine {
     const want = Math.max(1, n) - 1; // extras beyond primary 'this'
     while (this._extraPages.length < want) {
       try { this._extraPages.push(await this._addPoolPage()); }
-      catch { break; }
+      catch (e) { debug('pool tab open failed, fewer parallel scrapes', e); break; }
     }
   }
 
   _closePool() { // close and drop every extra pool page - called on relaunch and teardown so stale tabs don't linger
-    for (const p of this._extraPages) { try { p.ws?.close(); } catch {} }
+    for (const p of this._extraPages) { try { p.ws?.close(); } catch (e) { debug('pool tab socket close failed', e); } }
     this._extraPages = [];
   }
 
   _closePage(p) { // close one pool page's actual browser tab, then drop debugger socket - best effort
-    if (p.targetId) this._send('Target.closeTarget', { targetId: p.targetId }, this).catch(() => {});
-    try { p.ws?.close(); } catch {}
+    if (p.targetId) this._send('Target.closeTarget', { targetId: p.targetId }, this).catch(e => debug('pool tab close failed', e));
+    try { p.ws?.close(); } catch (e) { debug('pool tab socket close failed', e); }
   }
 
   _setConcurrency(n) { // set parallel scrape count - raising it lets tick() grow pool lazily - lowering closes surplus tabs
@@ -1343,7 +1374,8 @@ class QuestEngine {
     try {
       quests = JSON.parse(await readFile(QUESTS_FILE, 'utf-8'));
       if (!Array.isArray(quests)) throw new Error('not an array');
-    } catch {
+    } catch (e) {
+      if (e.code !== 'ENOENT') debug('quests.json unreadable, tick skipped', e);
       return;
     }
 
@@ -1412,14 +1444,14 @@ class QuestEngine {
           timeout: PAGE_TIMEOUT,
         }, upRes => {
           res.writeHead(upRes.statusCode, upRes.headers);
-          upRes.on('error', () => { try { res.destroy(); } catch {} }); // upstream reset mid-body - never an unhandled 'error' crash
+          upRes.on('error', e => { debug('egress upstream reset mid-body', e); try { res.destroy(); } catch (e2) { debug('egress client socket close failed', e2); } }); // upstream reset mid-body - never an unhandled 'error' crash
           upRes.pipe(res);
         });
         up.on('timeout', () => up.destroy(new Error('upstream timeout')));
-        up.on('error', () => { try { res.writeHead(502); } catch {} res.end(); });
-        req.on('error', () => { try { up.destroy(); } catch {} }); // client abort mid-body - stop piping upstream, don't die
+        up.on('error', e => { debug('egress upstream request failed', e); try { res.writeHead(502); } catch (e2) { debug('egress 502 reply failed', e2); } res.end(); });
+        req.on('error', e => { debug('egress client aborted mid-body', e); try { up.destroy(); } catch (e2) { debug('egress upstream socket close failed', e2); } }); // client abort mid-body - stop piping upstream, don't die
         req.pipe(up);
-      }).catch(() => { try { res.writeHead(403); } catch {} res.end(); });
+      }).catch(e => { debug('egress refused host', e); try { res.writeHead(403); } catch (e2) { debug('egress 403 reply failed', e2); } res.end(); });
     });
     proxy.on('connect', (req, clientSocket, head) => {
       const i = req.url.lastIndexOf(':');
@@ -1431,11 +1463,11 @@ class QuestEngine {
           upstream.pipe(clientSocket); clientSocket.pipe(upstream);
         });
         upstream.on('timeout', () => upstream.destroy());
-        upstream.on('error', () => clientSocket.destroy());
-        clientSocket.on('error', () => upstream.destroy());
-      }).catch(() => { try { clientSocket.write('HTTP/1.1 403 Forbidden\r\n\r\n'); } catch {} clientSocket.destroy(); });
+        upstream.on('error', e => { debug('egress tunnel upstream reset', e); clientSocket.destroy(); });
+        clientSocket.on('error', e => { debug('egress tunnel client reset', e); upstream.destroy(); });
+      }).catch(e => { debug('egress refused tunnel host', e); try { clientSocket.write('HTTP/1.1 403 Forbidden\r\n\r\n'); } catch (e2) { debug('egress tunnel 403 reply failed', e2); } clientSocket.destroy(); });
     });
-    proxy.on('clientError', (e, sock) => { try { sock.destroy(); } catch {} });
+    proxy.on('clientError', (e, sock) => { debug('egress malformed client request', e); try { sock.destroy(); } catch (e2) { debug('egress client socket close failed', e2); } });
     this._proxy = proxy;
     return new Promise((resolve, reject) => {
       proxy.once('error', reject); // a listen failure must reject - not an unhandled 'error' crash
@@ -1461,7 +1493,7 @@ class QuestEngine {
     this.ws?.close();
     this._killChromeSync();
     if (this._userDir && this._userDir.startsWith(tmpdir())) { // remove our own temp/snapshot dir - never live profile
-      try { rmSync(this._userDir, { recursive: true, force: true }); } catch {}
+      try { rmSync(this._userDir, { recursive: true, force: true }); } catch (e) { debug('temp profile cleanup failed', e); }
     }
   }
 }
@@ -1517,6 +1549,7 @@ class QuestTUI {
       console.log(`[quests] scv-token: ${SCV_TOKEN}   (for cross-origin writes, e.g. the kernel live-emit tool)`);
       return;
     }
+    _tuiOwnsTerminal = true;
     process.stdin.setRawMode(true);
     process.stdin.resume();
     process.stdin.on('data', chunk => this._keyHandler(chunk));
@@ -1528,7 +1561,8 @@ class QuestTUI {
 
   stop() { // stop tui - clear render timer, restore cooked mode + show cursor
     if (this._renderTimer) { clearInterval(this._renderTimer); this._renderTimer = null; }
-    try { process.stdin.setRawMode(false); } catch {}
+    _tuiOwnsTerminal = false;
+    try { process.stdin.setRawMode(false); } catch (e) { debug('terminal raw mode release failed', e); }
     process.stdin.pause();
     if (this._tui) process.stdout.write('\x1b[?1006l\x1b[?1000l'); // release mouse tracking
     process.stdout.write(T.show);
@@ -1536,7 +1570,7 @@ class QuestTUI {
 
   _quit() { // quit tui - let in-flight write finish first - same as sig handlers, so adding quest and quitting doesn't drop save
     (async () => {
-      try { await Promise.race([_questQueue, new Promise(r => setTimeout(r, 2000))]); } catch {} // never let a stalled write block quit
+      try { await Promise.race([_questQueue, new Promise(r => setTimeout(r, 2000))]); } catch (e) { debug('pending write failed at quit', e); } // never let a stalled write block quit
       this.stop(); this.e.destroy(); process.exit(0);
     })();
   }
@@ -1963,15 +1997,20 @@ class QuestTUI {
       }
       case 'error': { // every active error, one row each - chcol + errcol - opens from anywhere
         const errs = (this._questsCache || []).filter(x => x.result?.error);
-        if (!errs.length) return T.eol + '  ' + PAL.muted + 'no active errors' + T.reset
+        const engineLog = [..._debugLog.entries()].sort((a, b) => b[1].last - a[1].last).slice(0, 8); // newest swallowed failures under quest errors
+        if (!errs.length && !engineLog.length) return T.eol + '  ' + PAL.muted + 'no active errors' + T.reset
           + '\n' + T.eol + '  ' + PAL.muted + 'e or esc to dismiss' + T.reset + '\n';
-        const chW = Math.min(20, errs.reduce((m, x) => Math.max(m, (x.channel || '?').length), 0));
+        const chW = Math.max(6, Math.min(20, errs.reduce((m, x) => Math.max(m, (x.channel || '?').length), 0)));
         const errW = Math.max(10, cols - chW - 5);
         const shown = errs.slice(0, 12);
         let out = shown.map(x =>
           T.eol + '  ' + PAL.danger + sTrunc(x.channel || '?', chW).padEnd(chW) + T.reset
           + '  ' + PAL.text + sTrunc(x.result.error, errW) + T.reset + '\n').join('');
         if (errs.length > shown.length) out += T.eol + '  ' + PAL.muted + '… +' + (errs.length - shown.length) + ' more' + T.reset + '\n';
+        out += engineLog.map(([msg, d]) => {
+          const line = (d.count > 1 ? '×' + d.count + ' ' : '') + msg + (d.err?.message ? ': ' + d.err.message : ''); // count first - long error text truncates tail
+          return T.eol + '  ' + PAL.muted + 'engine'.padEnd(chW) + T.reset + '  ' + PAL.muted + sTrunc(line, errW) + T.reset + '\n';
+        }).join('');
         return out + '\n' + T.eol + '  ' + PAL.muted + 'e or esc to dismiss' + T.reset + '\n';
       }
       case 'confirm': { // delete/add/update confirm on row
@@ -2445,7 +2484,7 @@ class QuestTUI {
     const q = this._view()[this._cursor];
     if (!q || !q.url) return this._tuiRender();
     if (this._questStates.get(q.channel)?.status === 'scraping') return; // already in flight - don't overlap
-    this.e.scrapeOne(q).then(() => this._tuiRender()).catch(() => {});
+    this.e.scrapeOne(q).then(() => this._tuiRender()).catch(e => debug('manual scrape failed', e));
   }
 
   _screenshot() { // save png of what headless renders for selected quest's url - captured on throwaway tab
@@ -2505,7 +2544,7 @@ async function runTests(file) { // run a --run spec file: scrape each quest live
     await engine._launchChrome(engine._userDir);
   } catch (e) {
     console.error('[quests] engine bring-up failed:', e.message);
-    try { engine.destroy(); } catch {}
+    try { engine.destroy(); } catch (e) { debug('engine teardown failed', e); }
     process.exit(2);
   }
 
@@ -2521,7 +2560,7 @@ async function runTests(file) { // run a --run spec file: scrape each quest live
     else { failed++; console.log(`  ✗ ${name} - ${detail}`); }
   }
   console.log(`\n${passed} passed, ${failed} failed`);
-  try { engine.destroy(); } catch {}
+  try { engine.destroy(); } catch (e) { debug('engine teardown failed', e); }
   process.exit(failed ? 1 : 0);
 }
 
@@ -2529,7 +2568,7 @@ async function runTests(file) { // run a --run spec file: scrape each quest live
 
 let     isMain = false;
 try   { isMain = !!process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); }
-catch { isMain = import.meta.url === pathToFileURL(process.argv[1] || '').href; }
+catch (e) { debug('entry realpath failed, comparing urls', e); isMain = import.meta.url === pathToFileURL(process.argv[1] || '').href; }
 
 if (isMain) {
   const runIdx = process.argv.indexOf('--run');
@@ -2538,12 +2577,12 @@ if (isMain) {
   const engine = new QuestEngine();
   const tui = new QuestTUI(engine);
   engine.onRender = () => tui._tuiRender(); // engine state changes > repaint (no-op until start())
-  const teardown = () => { try { tui.stop(); } catch {} try { engine.destroy(); } catch {} };
+  const teardown = () => { try { tui.stop(); } catch (e) { debug('tui teardown failed', e); } try { engine.destroy(); } catch (e) { debug('engine teardown failed', e); } };
   // let any in-flight write finish (its rename land) before we tear down and exit
   process.on('SIGINT', async () => { await Promise.race([_questQueue, new Promise(r => setTimeout(r, 2000))]); teardown(); process.exit(0); }); // never let a stalled write block the exit
   process.on('SIGTERM', async () => { await Promise.race([_questQueue, new Promise(r => setTimeout(r, 2000))]); teardown(); process.exit(0); });
   // last-resort sync safety: exit fires on every termination sig handlers miss, only sync runs here, ensures chromium isn't orphaned
-  process.on('exit', () => { try { engine._killChromeSync(); } catch {} });
+  process.on('exit', () => { try { engine._killChromeSync(); } catch (e) { debug('chromium kill at exit failed', e); } });
 
   try {
     await engine.init();
@@ -2571,7 +2610,7 @@ if (isMain) {
 export { QuestEngine, QuestTUI, parseTarget, parseQuestLine, sanitizeSteps, checkExpect, unfurl, findChrome };
 
 // security model internals, exported for security test tier (ssrf guards + write-gate)
-export { isLocalOrigin, isPrivateAddr, isValidQuestUrl, questUrlIsSafe, resolvePublicIP, isOwnerWrite, pinnedGet, SCV_TOKEN, API_PORT };
+export { isLocalOrigin, isReadAllowed, isPrivateAddr, isValidQuestUrl, questUrlIsSafe, resolvePublicIP, isOwnerWrite, pinnedGet, SCV_TOKEN, API_PORT };
 
 // usage: configure({ output: 'feed.json' }); const e = new QuestEngine(); await e.init(); setInterval(() => e.tick(), 5000);
 export function configure({ // programmatic config to embed engine (same knobs as cli flags/env) - test suite drives this too
@@ -2579,11 +2618,13 @@ export function configure({ // programmatic config to embed engine (same knobs a
   history,       // equivalent to --history (change-log)
   trustIps,      // equivalent to --trust-ip
   allowLocal,    // equivalent to --allow-local
+  allowOrigins,  // equivalent to --allow-origin
   scrapeDeadline // test-only: shrink wall-clock scrape cap so a deadline test doesn't wait out the real 60s
 } = {}) {
   if (output         !== undefined) OUTPUT_FILE     = output;
   if (history        !== undefined) HISTORY_FILE    = history;
   if (allowLocal     !== undefined) ALLOW_LOCAL     = !!allowLocal;
+  if (allowOrigins   !== undefined) ALLOW_ORIGINS   = parseOrigins(Array.isArray(allowOrigins) ? allowOrigins.join(',') : allowOrigins);
   if (trustIps       !== undefined) TRUST_IPS       = Array.isArray(trustIps) ? trustIps : String(trustIps || '').split(',').map(s => s.trim()).filter(Boolean);
   if (scrapeDeadline !== undefined) SCRAPE_DEADLINE = scrapeDeadline;
 }

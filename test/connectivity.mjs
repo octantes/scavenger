@@ -16,8 +16,10 @@ const kernelSrc = readFileSync(join(here, '..', 'kernel.js'), 'utf8');
 
 // static server: patchbay + small harvest fixture
 const fixture = `<!doctype html><title>fix</title><div id="widget" class="w" style="width:120px;padding:10px;background:#222;color:#eee">Live 42<span id="val">42</span></div>`;
+let publishDoc = ''; // latest captured publish, served at /publish
 const web = createServer((req, res) => {
   if (req.url.startsWith('/patchbay')) { res.setHeader('content-type', 'text/html'); res.end(patchbayHtml); }
+  else if (req.url.startsWith('/publish')) { res.setHeader('content-type', 'text/html'); res.end(publishDoc); }
   else { res.setHeader('content-type', 'text/html'); res.end(fixture); }
 });
 await new Promise(r => web.listen(0, '127.0.0.1', r));
@@ -33,7 +35,7 @@ customElements.define('scv-cvtest', class extends HTMLElement {
 constructor() {
 super();
 if (this.shadowRoot) return;
-this.attachShadow({mode: 'open'}).innerHTML = ${BT}<style>:host{display:block;width:60px;height:30px;background:#345}</style><div id="cv">v<span class="val">${n}</span></div><button class="wireme">go</button>${BT};
+this.attachShadow({mode: 'open'}).innerHTML = ${BT}<style>:host{display:block;width:60px;height:30px;background:#345}</style><div id="cv">v<span class="val">${n}</span></div><button class="wireme">go</button>${n === 4 ? '<scv-logic data-type="variable"></scv-logic>' : ''}${BT};
 }
 });
 }
@@ -64,6 +66,16 @@ const questApi = `http://127.0.0.1:${quests.address().port}`;
 const { pageWsUrl, cleanup } = await launchChrome();
 const { ws, send, waitEvent } = await connect(pageWsUrl);
 await send('Page.enable');
+await send('Runtime.enable');
+const pageErrors = []; // uncaught page exceptions, any url - publish boot must throw none
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.method === 'Runtime.exceptionThrown') pageErrors.push(m.params.exceptionDetails?.exception?.description || m.params.exceptionDetails?.text); });
+const capturePublish = () => js(`(async () => {
+  let blob = null; const oc = URL.createObjectURL, orv = URL.revokeObjectURL;
+  URL.createObjectURL = b => { blob = b; return 'blob:x'; }; URL.revokeObjectURL = () => {};
+  await exportPublish();
+  URL.createObjectURL = oc; URL.revokeObjectURL = orv;
+  return blob ? await blob.text() : null;
+})()`, true);
 const js = async (expr, aw = false) => (await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: aw }))?.result?.result?.value;
 const load = async url => { await send('Page.navigate', { url }); await waitEvent('Page.loadEventFired'); await delay(400); };
 const done = () => { try { ws.close(); } catch {} cleanup(); web.close(); quests.close(); };
@@ -190,12 +202,52 @@ try {
     })()`, true);
     ok(adopted && adopted.after === adopted.before && adopted.bound,
       `on reload node adopts exported component by channel, no duplicate spawn (${JSON.stringify(adopted)})`);
+    const publishWithLive = await capturePublish() || ''; // publish carrying exported live copy - checked after editor steps below
     // component is normal component: corner delete removes it (node keeps polling and respawns on next ref)
     const del = await js(`(async () => { const d = document.querySelector('.comp-wrapper .comp-del'); if (!d) return { noDel: true };
       d.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }));
       await new Promise(r => setTimeout(r, 150));
       return { wrappers: document.querySelectorAll('.comp-wrapper').length, nodeThere: !!document.body.contains(window.__qnode) }; })()`, true);
     ok(del && del.wrappers === 0 && del.nodeThere, `deleting spawned component removes it and leaves node (${JSON.stringify(del)})`);
+    const publishNoLive = await capturePublish() || ''; // same patch, component deleted - publish must mount its own
+
+    // publish has no studio - live quest component must still update there
+    compVer = 3;
+    store.set(compReg.channel, { channel: compReg.channel, url: 'http://shop.example/page', result: { value: 'component/' + compReg.channel + '.html#v3', timestamp: Date.now() } });
+    const livePub = async doc => {
+      publishDoc = doc; pageErrors.length = 0;
+      await load(`http://127.0.0.1:${webPort}/publish?quest-api=${encodeURIComponent(questApi)}`);
+      const r = await js(`(async () => {
+        for (let t = 0; t < 50; t++) {
+          const el = document.querySelector('.comp-wrapper [data-scv-id^="live_"]'), val = el?.shadowRoot?.querySelector('.val');
+          if (val && val.textContent === '3') { const w = el.closest('.comp-wrapper');
+            return { wrappers: document.querySelectorAll('.comp-wrapper').length, left: w.style.left, inCanvas: !!w.closest('#canvas-container'), bound: w.dataset.scvQuestChannel || null }; }
+          await new Promise(r => setTimeout(r, 100));
+        }
+        return { timeout: true, val: document.querySelector('.comp-wrapper [data-scv-id^="live_"]')?.shadowRoot?.querySelector('.val')?.textContent ?? null };
+      })()`, true);
+      return { ...r, errors: pageErrors.slice(0, 2) };
+    };
+    const pubAdopt = await livePub(publishWithLive);
+    ok(pubAdopt.wrappers === 1 && pubAdopt.left === '777px' && !pubAdopt.errors.length,
+      `publish: quest node adopts exported live component and morphs it to new layout in place (${JSON.stringify(pubAdopt)})`);
+    compVer = 4; // nested node in fresh markup - morph bails, publish remounts over already-defined tag
+    store.set(compReg.channel, { channel: compReg.channel, url: 'http://shop.example/page', result: { value: 'component/' + compReg.channel + '.html#v4', timestamp: Date.now() } });
+    const remount = await js(`(async () => {
+      for (let t = 0; t < 50; t++) {
+        const el = document.querySelector('.comp-wrapper [data-scv-id^="live_"]'), val = el?.shadowRoot?.querySelector('.val');
+        if (val && val.textContent === '4') { const w = el.closest('.comp-wrapper');
+          return { wrappers: document.querySelectorAll('.comp-wrapper').length, left: w.style.left, top: w.style.top, nested: !!el.shadowRoot.querySelector('scv-logic') }; }
+        await new Promise(r => setTimeout(r, 100));
+      }
+      return { timeout: true };
+    })()`, true);
+    ok(remount.wrappers === 1 && remount.left === '777px' && remount.top === '333px' && remount.nested && !pageErrors.length,
+      `publish: structural change remounts in place over defined tag - fresh shadow wins, position kept (${JSON.stringify(remount)}, errors ${pageErrors.slice(0, 2).join(' | ')})`);
+    compVer = 3;
+    const pubFresh = await livePub(publishNoLive);
+    ok(pubFresh.wrappers === 1 && pubFresh.inCanvas && pubFresh.bound === compReg.channel && !pubFresh.errors.length,
+      `publish: quest node with no exported copy mounts live component itself, inside canvas, bound to channel (${JSON.stringify(pubFresh)})`);
   }
 
   // write-until-lands: node set up before server is reachable retries until write lands - no mode change or re-edit

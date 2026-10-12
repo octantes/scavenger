@@ -787,6 +787,8 @@ function defineScavLogic({ // define scv-logic custom element with each type beh
   routeSend              = () => {},
   applyActionToReceivers = () => {},
   questWrite             = () => {},
+  mountComponent         = null,     // studio passes renderComponent - publish falls back to mount below
+  onComponentMorph       = () => {},
 } = {}) {
 
   if (!window.customElements || customElements.get('scv-logic')) return;
@@ -805,6 +807,24 @@ function defineScavLogic({ // define scv-logic custom element with each type beh
   };
 
   const quests = createScavQuestClient({ questWrite }); // quest protocol client - questWrite is the only granted write capability
+
+  const _canvasOf = () => document.getElementById('zoom-layer') || document.getElementById('canvas-container'); // resolved at call time - editor or publish
+  mountComponent ??= ({ tag, scvId, script, shadowHTML, x, y, zIndex }) => { // lean mount: no chrome, undo or cables + quest component in publish
+    const target = _canvasOf(); if (!target) return null;
+    const stale = !!customElements.get(tag); // constructor builds prior version's markup - fresh shadow must override it
+    if (!stale) { const s = document.createElement('script'); s.setAttribute('data-scv-def', ''); s.setAttribute('data-scv-tag', tag); s.textContent = script; document.body.appendChild(s); }
+    const wrapper = document.createElement('div');
+    wrapper.className = 'comp-wrapper';
+    wrapper.style.left = x + 'px'; wrapper.style.top = y + 'px';
+    if (zIndex) wrapper.style.zIndex = zIndex;
+    const el = document.createElement(tag);
+    el.dataset.scvId = scvId;
+    if (stale && el.shadowRoot && shadowHTML != null) el.shadowRoot.innerHTML = shadowHTML;
+    wrapper.appendChild(el);
+    target.appendChild(wrapper);
+    if (/@container/.test(script || '')) { const w = el.getBoundingClientRect().width; if (w > 0) el.style.width = w + 'px'; el.style.containerType = 'inline-size'; } // same freeze studio does - @container rules need host as container
+    return wrapper;
+  };
 
   const _questChannelStillNeeded = (channel, exceptNode) => // guards against severing a quest scrape that other nodes display
     [...document.querySelectorAll('scv-logic')].some(node =>
@@ -1179,7 +1199,7 @@ function defineScavLogic({ // define scv-logic custom element with each type beh
         const x = prev ? px(prev, 'left') : px(this, 'left'); // keep place across structural remount; first spawn sits beside node
         const y = prev ? px(prev, 'top') : px(this, 'top') + 40;
         unmountLive();
-        const w = renderComponent({ tag, scvId: 'live_' + uid(6), script, shadowHTML: extractShadowMarkup(script), x, y, zIndex: 1 });
+        const w = mountComponent({ tag, scvId: 'live_' + uid(6), script, shadowHTML: extractShadowMarkup(script), x, y, zIndex: 1 });
         if (!w) return;
         w.dataset.scvQuestChannel = this._questChannel; // boot re-binds + export bakes last state, so it reloads in place and offline
         this._liveWrapper = w;
@@ -1190,10 +1210,10 @@ function defineScavLogic({ // define scv-logic custom element with each type beh
         if (!compEl || !def) return;
         const script = boxScopeCss(def.textContent); // exact shadow live element was built from - morph diffs against it, mountFresh rebuilds from it
         const live = this._liveWrapper?.querySelector('[data-scv-id]');
-        if (live?.shadowRoot) { const m = extractShadowMarkup(script); if (m && morphLiveShadow(live, m)) { scheduleRenderCables(); return; } }
+        if (live?.shadowRoot) { const m = extractShadowMarkup(script); if (m && morphLiveShadow(live, m)) { onComponentMorph(); return; } }
         mountFresh(compEl.tagName.toLowerCase(), script);
       };
-      this._adoptLive = () => { this._liveWrapper = [...zoomLayer.querySelectorAll('.comp-wrapper')].find(w => w.dataset.scvQuestChannel === this._questChannel) || null; }; // boot: bind to exported component instead of spawning duplicate
+      this._adoptLive = () => { this._liveWrapper = [...(_canvasOf()?.querySelectorAll('.comp-wrapper') || [])].find(w => w.dataset.scvQuestChannel === this._questChannel) || null; }; // boot: bind to exported component instead of spawning duplicate
       const showComponent = ref => { // path#hash ref - fetch component file and render; dedup on hash so unchanged poll is no-op
         const s = String(ref || '');
         if (!s || s === this._liveRef) return;
@@ -1633,6 +1653,8 @@ defineScavLogic({ // grant runtime its editor capabilities - publish calls same 
   onUnregister: () => scheduleRenderCables(),
   // width animation done - node's cached center/dims stale, drop them and re-derive cables
   onResize: node => { clearCachesIn(node); renderCables(); },
+  mountComponent: comp => renderComponent(comp),
+  onComponentMorph: () => scheduleRenderCables(),
   questWrite: (method, url, body) => { // quest write (editor + publish alike) - server enforces loopback only
     const opts = { method };
     if (body !== undefined) { opts.headers = { 'Content-Type': 'application/json' }; opts.body = JSON.stringify(body); }
@@ -4302,6 +4324,13 @@ function buildStandaloneRuntime() { // published runtime: factories .toString()-
   const uid = ${uid.toString()};
   const px = ${px.toString()};
   ${calcInputWidth.toString()} // shared helper: defineScavLogic sizes its input with it
+  const boxScopeCss = ${boxScopeCss.toString()};
+  const WIRED_SEL = ${JSON.stringify(WIRED_SEL)};
+  const _scvWiredDeep = ${_scvWiredDeep.toString()};
+  ${extractShadowMarkup.toString()}
+  ${morphLiveShadow.toString()}
+  ${morphChildren.toString()}
+  ${morphAttrs.toString()}
   ${createScavRouter.toString()}
   ${createScavClock.toString()}
   ${createScavQuestClient.toString()}

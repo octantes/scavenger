@@ -1017,6 +1017,21 @@ try {
   ok(micro && micro.teardownCalled === 1, 'start() returning function has it run as teardown on stop');
   ok(micro && micro.toggle, 'kernel.toggle flips active via start/stop');
 
+  // swallowed failures log at console.debug - first occurrence only, cold path every time
+  await js(`(window.$kernel && window.$kernel.destroy(), true)`);
+  await send('Runtime.evaluate', { expression: kernelSrc });
+  const dbg = await js(`(() => {
+    const seen = [], orig = console.debug;
+    console.debug = (m, e) => { seen.push({ m: String(m), err: e instanceof Error }); };
+    window.$kernel.showView('t', '{not json'); window.$kernel.showView('t', '{still not json');
+    window.$kernel._destroyHooks.push(() => { throw new Error('boom'); });
+    window.$kernel.destroy();
+    console.debug = orig;
+    return seen;
+  })()`);
+  ok(dbg && dbg.filter(d => d.m === '[scav] view payload not json, shown raw').length === 1, `hot path: repeated failure logged once (${JSON.stringify(dbg)})`);
+  ok(dbg && dbg.some(d => d.m === '[scav] destroy hook failed' && d.err), `cold path: failure logged with its error (${JSON.stringify(dbg)})`);
+
   // clean teardown: destroy() must leave nothing - no scv-* dom, no injected stylesheet, no $kernel, listeners released
   const teardown = await js(`(() => {
     window.$kernel && window.$kernel.destroy(); // clear any prior

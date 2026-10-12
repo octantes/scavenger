@@ -1,6 +1,6 @@
 // tui harness - no browser: drives QuestTUI._paint across modes + _keyHandler across keymap, fake stdout
 
-import { QuestEngine, QuestTUI } from '../quests.mjs';
+import { QuestEngine, QuestTUI, configure } from '../quests.mjs';
 import { chdir } from 'process';
 import { mkdtempSync, writeFileSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -148,6 +148,30 @@ process.stdout.rows = 10; tui._mode = 'normal'; tui._cursor = 0;
 const overflow = paint('overflow', null);
 ok(/more ↓/.test(overflow), 'viewport overflow shows "more ↓" indicator when quests exceed height');
 process.stdout.rows = 30;
+
+// swallowed failures: headless prints first to stderr, repeats only counted, tui error view
+const realErr = process.stderr.write.bind(process.stderr);
+let errOut = ''; process.stderr.write = s => { errOut += s; return true; };
+writeFileSync('quests.json', '{not json');
+await engine.tick(); await engine.tick();
+process.stderr.write = realErr;
+ok((errOut.match(/quests\.json unreadable, tick skipped/g) || []).length === 1, `headless: swallowed failure printed once to stderr, repeat not reprinted (${JSON.stringify(errOut)})`);
+const pdbg = paint('error + engine log', () => { tui._mode = 'error'; });
+ok(/engine\s+×2 quests\.json unreadable, tick skipped/.test(pdbg), `error view lists engine failure with repeat count (${pdbg.split("\n").find(l => /engine\s+\S/.test(l) && !l.includes("quests -"))})`);
+// tui owns terminal: fresh failure never reaches stderr, would tear screen
+const tty = { i: process.stdin.isTTY, o: process.stdout.isTTY, raw: process.stdin.setRawMode };
+process.stdin.isTTY = true; process.stdout.isTTY = true; process.stdin.setRawMode = () => {};
+tui.start();
+errOut = ''; process.stderr.write = s => { errOut += s; return true; };
+configure({ history: process.cwd() }); // directory as history file - append fails with fresh message
+engine._setQuestStatus('hist', 'success', { value: 'changed', timestamp: Date.now() });
+await new Promise(r => setTimeout(r, 100)); // history append is fire-and-forget
+configure({ history: null });
+process.stderr.write = realErr;
+tui.stop();
+process.stdin.isTTY = tty.i; process.stdout.isTTY = tty.o; process.stdin.setRawMode = tty.raw;
+ok(errOut === '', `tui running: swallowed failure kept off stderr (${JSON.stringify(errOut)})`);
+ok(/engine\s+history append failed/.test(paint('error + engine log after tui', () => { tui._mode = 'error'; })), 'failure under tui listed in error view');
 
 process.stdout.write = realWrite;
 console.log(fails ? `tui: FAIL (${fails})` : 'tui: PASS');

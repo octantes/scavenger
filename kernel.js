@@ -187,6 +187,12 @@
   sysStyle.textContent = EXT_UI_CSS;
   document.head.appendChild(sysStyle);
 
+  const _debugSeen = new Set();
+  const debug = (msg, err, once) => { // swallowed failure - console.debug stays only for verbose
+    if (once) { if (_debugSeen.has(msg)) return; _debugSeen.add(msg); } // hot path or per-el loop: first occurrence only
+    console.debug('[scav] ' + msg, err);
+  };
+
   // EVENT BUS
 
   class Bus { // minimal event bus - routes events to priority-ordered subscribers
@@ -279,7 +285,7 @@
       if (kernel._shiftHandler) document.removeEventListener('keydown', kernel._shiftHandler, true);
       globalEvents.forEach(ev => document.removeEventListener(ev, boundHandlers[ev], true));
       // destroy hooks before clearRegistry - if tool leaves something running past stop(), registers hook for destroy()
-      (kernel._destroyHooks ?? []).forEach(fn => { try { fn(); } catch {} });
+      (kernel._destroyHooks ?? []).forEach(fn => { try { fn(); } catch (e) { debug('destroy hook failed', e); } });
       Object.keys(registry).forEach(id => kernel.stop(id));
       utils.clearRegistry();
       delete window.$kernel;
@@ -320,7 +326,7 @@
         try { // force document to initialise now (chrome/safari can defer navigation leaving contentDocument null when read)
           const d = utils._iframe.contentDocument;
           if (d) { d.open(); d.write('<!doctype html><html><head></head><body></body></html>'); d.close(); }
-        } catch {}
+        } catch (e) { debug('probe iframe init failed', e); }
       }
       return utils._iframe;
     },
@@ -430,7 +436,7 @@
       if (url.startsWith('data:')) return url;
       if (utils.b64Cache.has(url)) return utils.b64Cache.get(url);
       let href;
-      try { href = new URL(url, document.baseURI).href; } catch { return url; }
+      try { href = new URL(url, document.baseURI).href; } catch (e) { debug('asset url unparseable, kept as is', e, true); return url; }
       const p = fetch(href)
         .then(r => { // 404 page is html not asset - inlining bloats artifact and renders nothing
           if (!r.ok) throw new Error(r.status);
@@ -442,7 +448,8 @@
           rd.onloadend = () => rs(rd.result);
           rd.readAsDataURL(b);
         }))
-        .catch(() => {
+        .catch(e => {
+          debug('asset fetch failed, kept remote url', e, true);
           utils.b64Cache.delete(url);
           return url;
         });
@@ -453,7 +460,8 @@
       try {
         await navigator.clipboard.writeText(text);
         return true;
-      } catch {
+      } catch (e) {
+        debug('clipboard api refused, trying execCommand', e);
         try {
           const ta = document.createElement('textarea');
           ta.value = text;
@@ -467,7 +475,7 @@
           const ok = document.execCommand('copy');
           ta.remove();
           if (ok) return true;
-        } catch {}
+        } catch (e) { debug('execCommand copy failed, prompting', e); }
         prompt('ctrl + c:', text);
         return false;
       }
@@ -500,7 +508,7 @@
         const x = (n.getAttributeNS && n.getAttributeNS(XLINK, 'href')) || n.getAttribute('xlink:href');
         if (x && /^\s*javascript:/i.test(x)) {
           n.dataset.origHref = x;
-          try { n.setAttributeNS(XLINK, 'xlink:href', INERT); } catch {}
+          try { n.setAttributeNS(XLINK, 'xlink:href', INERT); } catch (e) { debug('xlink href neutralize failed', e, true); }
           n.setAttribute('xlink:href', INERT); // whichever form serialised, overwrite it too
         }
       });
@@ -516,7 +524,7 @@
       el.querySelectorAll('image, feImage, feimage').forEach(im => {
         if (REMOTE(im.getAttribute('href'))) im.removeAttribute('href');
         const xh = (im.getAttributeNS && im.getAttributeNS(XLINK, 'href')) || im.getAttribute('xlink:href');
-        if (REMOTE(xh)) { try { im.removeAttributeNS(XLINK, 'href'); } catch {} im.removeAttribute('xlink:href'); }
+        if (REMOTE(xh)) { try { im.removeAttributeNS(XLINK, 'href'); } catch (e) { debug('xlink href removal failed', e, true); } im.removeAttribute('xlink:href'); }
       });
       // input[type=image] and <track> fetch by src, and the deprecated background= attr by url - all beacons
       el.querySelectorAll('input[type=image][src], track[src]').forEach(n => { if (REMOTE(n.getAttribute('src'))) n.removeAttribute('src'); });
@@ -528,7 +536,7 @@
         const st = (n.getAttribute('style') || '').replace(/\s+/g, '').toLowerCase();
         let hidden = w <= 4 || h <= 4 || /display:none|visibility:hidden|(^|;)width:0|(^|;)height:0/.test(st);
         if (!hidden && n.isConnected) { try { const r = n.getBoundingClientRect(), cs = getComputedStyle(n);
-          hidden = r.width <= 4 || r.height <= 4 || cs.display === 'none' || cs.visibility === 'hidden'; } catch {} }
+          hidden = r.width <= 4 || r.height <= 4 || cs.display === 'none' || cs.visibility === 'hidden'; } catch (e) { debug('embed visibility probe failed', e, true); } }
         if (hidden) n.remove();
       });
       el.querySelectorAll('form').forEach(f => {
@@ -642,7 +650,7 @@
           const stack = document.elementsFromPoint(cx, cy) || [];
           const self = stack.findIndex(n => n === el || el.contains(n)); // everything before us in stack paints above - overlay is not backdrop
           for (const n of stack.slice(self < 0 ? 0 : self)) if (n !== el && !el.contains(n)) painters.push(n);
-        } catch {}
+        } catch (e) { debug('backdrop stack probe failed', e); }
         for (let a = el.parentElement; a; a = a.parentElement) if (!painters.includes(a)) painters.push(a);
 
         const layers = []; // every translucent sheet down to first solid one
@@ -684,7 +692,7 @@
               for (let i = layers.length - 1; i >= 0; i--) acc = over(layers[i], acc);
               back = `rgb(${Math.round(acc.r)}, ${Math.round(acc.g)}, ${Math.round(acc.b)})`;
             }
-          } catch {}
+          } catch (e) { debug('backdrop color resolve failed', e); }
         }
         if (back) hostCss += `background-color: ${back};\n`;
       }
@@ -699,7 +707,7 @@
       const addSlant = v => usedSlants.add(/italic|oblique/i.test(v || '') ? 'italic' : 'normal');
       addFonts(rootSt.getPropertyValue('font-family')); addSlant(rootSt.getPropertyValue('font-style'));
       origSet.forEach(o => { const c = window.getComputedStyle(o); addFonts(c.fontFamily); addSlant(c.fontStyle);
-        for (const p of ['::before', '::after']) { try { const pc = window.getComputedStyle(o, p); addFonts(pc.fontFamily); if (pc.content !== 'none') addSlant(pc.fontStyle); } catch {} } });
+        for (const p of ['::before', '::after']) { try { const pc = window.getComputedStyle(o, p); addFonts(pc.fontFamily); if (pc.content !== 'none') addSlant(pc.fontStyle); } catch (e) { debug('pseudo font probe failed', e, true); } } });
       // unicode-range subsets kept - component receives routed values, so text is not fixed at harvest
       const faceUsed = r => usedFonts.has(fontName(r.style.getPropertyValue('font-family')))
         && usedSlants.has(/italic|oblique/i.test(r.style.getPropertyValue('font-style') || '') ? 'italic' : 'normal');
@@ -708,7 +716,7 @@
       const SKIP_GROUP = /Container|StartingStyle/; // condition-bound on state we can't reproduce flat - computed styles cover them
       // url() relative to sheet that wrote it, not to page - webfont one directory up 404s and face silently errors
       const absUrls = (t, base) => !base ? t : t.replace(/url\((['"]?)(.*?)\1\)/g, (m, q, u) =>
-        (!u || /^(data:|#|[a-z]+:)/i.test(u)) ? m : `url(${q}${(() => { try { return new URL(u, base).href; } catch { return u; } })()}${q})`);
+        (!u || /^(data:|#|[a-z]+:)/i.test(u)) ? m : `url(${q}${(() => { try { return new URL(u, base).href; } catch (e) { debug('css url unparseable, kept as is', e, true); return u; } })()}${q})`);
 
       const collectRules = (rules, media, base) => {
         for (let rule of rules) {
@@ -717,7 +725,7 @@
           if (rule.type === 7) { cssText += absUrls(rule.cssText, base) + '\n'; continue; } // @keyframes rides along whole
           if (rule.type === 4) { collectRules(rule.cssRules, rule.conditionText || media, base); continue; }
           if (rule.type === 12) { // @supports - only descend when it actually applies here, else we'd flatten dead rules
-            let on = true; try { on = CSS.supports(rule.conditionText); } catch {}
+            let on = true; try { on = CSS.supports(rule.conditionText); } catch (e) { debug('@supports condition unreadable, kept', e, true); }
             if (on) collectRules(rule.cssRules, media, base);
             continue;
           }
@@ -732,7 +740,7 @@
         for (let sheet of [...document.styleSheets, ...(document.adoptedStyleSheets || [])]) {
           if (sheet.ownerNode?.id?.startsWith('scv-')) continue; // our injected styles are never page content
           try { sheet.cssRules; sheets.push(sheet); }
-          catch { if (sheet.href) sheets.push(sheet.href); }
+          catch (e) { debug('cross-origin sheet unreadable, refetching', e, true); if (sheet.href) sheets.push(sheet.href); }
         }
       } catch (e) { console.warn('styleSheets access denied', e); }
       const readable = await _realm.Promise.all(sheets.map(async s => {
@@ -741,13 +749,13 @@
           const ss = new CSSStyleSheet();
           ss.replaceSync(await (await fetch(s)).text());
           return { sheet: ss, base: s };
-        } catch { return { blocked: s }; } // csp can forbid fetch even where browser loaded sheet
+        } catch (e) { debug('sheet refetch blocked', e, true); return { blocked: s }; } // csp can forbid fetch even where browser loaded sheet
       }));
       const blockedSheets = [];
       for (let r of readable) {
         if (!r) continue;
         if (r.blocked) { if (typeof r.blocked === 'string') blockedSheets.push(r.blocked); continue; } // can't read cross-origin css headless - record it so quest server refetches
-        try { collectRules(r.sheet.cssRules, null, r.base); } catch {}
+        try { collectRules(r.sheet.cssRules, null, r.base); } catch (e) { debug('refetched sheet rules unreadable', e, true); }
       }
 
       for (let { media, rule, base } of allRules) {
@@ -794,7 +802,7 @@
             if (el.matches(cleanSel)) processMatch(el);
             const desc = el.querySelectorAll(cleanSel);
             for (let d = 0; d < desc.length; d++) processMatch(desc[d]);
-          } catch {}
+          } catch (e) { debug('rule selector match failed', e, true); }
         }
       }
 
@@ -804,7 +812,7 @@
         const ifr = utils.getIframe();
         idoc = ifr.contentDocument;
         iwin = ifr.contentWindow;
-      } catch {}
+      } catch (e) { debug('probe iframe unavailable', e); }
 
       const dummyCache = new Map();
       let probeHost = null; // probe must sit in context copy lands in - loose in iframe would match by luck and bake nothing
@@ -813,7 +821,7 @@
           probeHost = idoc.createElement('div');
           probeHost.style.cssText = HOST_INHERITED.map(p => `${p}:${rootSt.getPropertyValue(p)}`).join(';');
           idoc.body.appendChild(probeHost);
-        } catch {}
+        } catch (e) { debug('probe host setup failed', e); }
       }
       const rootRect = el.getBoundingClientRect();
 
@@ -826,9 +834,9 @@
         const key = `${orig.namespaceURI}|${orig.tagName}|${[...orig.attributes].map(a => `${a.name}=${a.value}`).sort().join('|')}`;
         if (idoc && !dummyCache.has(key)) {
           let d = null;
-          try { d = idoc.importNode(orig.cloneNode(false), false); } catch {}
+          try { d = idoc.importNode(orig.cloneNode(false), false); } catch (e) { debug('baseline probe node import failed', e, true); }
           if (d) {
-            PROBE_STRIP.forEach(a => { try { d.removeAttribute(a); } catch {} });
+            PROBE_STRIP.forEach(a => { try { d.removeAttribute(a); } catch (e) { debug('probe attr strip failed', e, true); } });
             (probeHost || idoc.body).appendChild(d); dummyCache.set(key, d); // keep node - pseudo baselines need it
           }
         }
@@ -925,12 +933,12 @@
         // pseudo-elements computed pass
         const pseudoBake = {};
         for (const pe of ['::before', '::after', '::placeholder', '::marker']) {
-          let pSt = null; try { pSt = window.getComputedStyle(orig, pe); } catch {}
+          let pSt = null; try { pSt = window.getComputedStyle(orig, pe); } catch (e) { debug('pseudo style read failed', e, true); }
           if (!pSt) continue;
           if (pe === '::placeholder') { if (!('placeholder' in orig) || !orig.placeholder) continue; }
           else if (pe === '::marker') { if (oSt.display !== 'list-item') continue; }
           else { const c = pSt.getPropertyValue('content'); if (!c || c === 'none' || c === 'normal') continue; }
-          let dPs = null; try { dPs = dNode ? iwin.getComputedStyle(dNode, pe) : null; } catch {}
+          let dPs = null; try { dPs = dNode ? iwin.getComputedStyle(dNode, pe) : null; } catch (e) { debug('baseline pseudo style read failed', e, true); }
           let pd = '';
           for (const p of pSt) {
             if (p.startsWith('--')) continue;
@@ -963,9 +971,9 @@
         let owner = u.parentElement;
         while (owner && owner.tagName.toLowerCase() !== 'svg') owner = owner.parentElement;
         if (!owner) return;
-        let sel; try { sel = `[id="${CSS.escape(id)}"]`; } catch { return; }
+        let sel; try { sel = `[id="${CSS.escape(id)}"]`; } catch (e) { debug('svg ref id unescapable, skipped', e, true); return; }
         if (owner.querySelector(sel) || cl.querySelector(sel)) return; // already inside component
-        let src = null; try { src = document.getElementById(id); } catch {}
+        let src = null; try { src = document.getElementById(id); } catch (e) { debug('svg ref lookup failed', e, true); }
         if (!src || el.contains(src)) return;
         // into <defs> at end - referenced <g> would paint itself twice, prepending renumbers every sibling
         let defs = owner.querySelector(':scope > defs[data-scv-sprite]');
@@ -981,7 +989,7 @@
       [cl, ...cl.querySelectorAll('canvas')].filter(n => n.tagName === 'CANVAS').forEach(cn => {
         const live = ao[ac.indexOf(cn)]; // clone never carries drawn pixels - pull bitmap from paired live node
         if (!live || live.tagName !== 'CANVAS') return;
-        let dataUrl; try { dataUrl = live.toDataURL('image/png'); } catch { return; } // tainted (cross-origin draw) - leave canvas empty
+        let dataUrl; try { dataUrl = live.toDataURL('image/png'); } catch (e) { debug('canvas tainted, left empty', e, true); return; } // tainted (cross-origin draw) - leave canvas empty
         const img = document.createElement('img');
         for (const a of cn.attributes) img.setAttribute(a.name, a.value);
         img.setAttribute('src', dataUrl);
@@ -995,7 +1003,7 @@
         // srcset to absolute too - browser leaves it unresolved, so relative candidate would slip past server proxy and 404
         [cl, ...cl.querySelectorAll('img[srcset], source[srcset]')].forEach(n => {
           const v = n.getAttribute?.('srcset'); if (!v || v.includes('data:')) return;
-          n.setAttribute('srcset', v.split(',').map(c => { const p = c.trim().split(/\s+/); if (p[0] && !/^data:/.test(p[0])) { try { p[0] = new URL(p[0], document.baseURI).href; } catch {} } return p.join(' '); }).join(', '));
+          n.setAttribute('srcset', v.split(',').map(c => { const p = c.trim().split(/\s+/); if (p[0] && !/^data:/.test(p[0])) { try { p[0] = new URL(p[0], document.baseURI).href; } catch (e) { debug('srcset url unparseable, kept as is', e, true); } } return p.join(' '); }).join(', '));
         });
         // fonts inline even here - browser is on page, so fetch reaches session/referer-gated faces server proxy can't, matching normal harvest fidelity
         const fUrls = [...new Set(_realm.Array.from(fontCss.matchAll(urlRe), m => m[2]).filter(u => !u.startsWith('data:') && !u.startsWith('#')))];
@@ -1061,7 +1069,7 @@
         if (t !== 'IFRAME') continue;
         let hidden = false;
         try { const r = o.getBoundingClientRect(), cs = window.getComputedStyle(o);
-          hidden = r.width <= 4 || r.height <= 4 || cs.display === 'none' || cs.visibility === 'hidden'; } catch {}
+          hidden = r.width <= 4 || r.height <= 4 || cs.display === 'none' || cs.visibility === 'hidden'; } catch (e) { debug('iframe visibility probe failed', e, true); }
         if (hidden) ac[i].remove();
       }
 
@@ -1311,7 +1319,7 @@
       try {
         await utils.copy(await utils.harvest(tgt));
         utils.notify.finish('component harvested to clipboard!', true);
-      } catch { utils.notify.finish('failed.', false); }
+      } catch (e) { debug('harvest failed', e); utils.notify.finish('failed.', false); }
     }),
     stop: () => hoverEngine.stop()
   });
@@ -1326,7 +1334,7 @@
       try {
         await utils.copy(`${window.location.href}, ${utils.getSelector(tgt)}`);
         utils.notify.finish('quest selected!', true);
-      } catch { utils.notify.finish('failed.', false); }
+      } catch (e) { debug('quest selector copy failed', e); utils.notify.finish('failed.', false); }
     }),
     stop: () => hoverEngine.stop()
   });
@@ -1502,12 +1510,12 @@
         return;
       }
       if (w.badge) w.badge.classList.toggle('scv-bad', !r.ok); // transient error - keep trying
-    }).catch(() => { if (w.badge) w.badge.classList.add('scv-bad'); });
+    }).catch(e => { debug('live-emit post failed', e, true); if (w.badge) w.badge.classList.add('scv-bad'); });
   }
 
   function qeStop(w, keepBadge) { // disconnect watcher and remove badge
     w.stopped = true;
-    try { w.observer.disconnect(); } catch {}
+    try { w.observer.disconnect(); } catch (e) { debug('live-emit observer disconnect failed', e); }
     _ct(w._t); // drop debounce pending from mutation in last 300ms, else it emits after stop
     window.removeEventListener('scroll', w.reposition, true);
     window.removeEventListener('resize', w.reposition);
@@ -1808,7 +1816,7 @@
     start: () => {
       const dump = store => { try { const o = {}; for (let i = 0; i < store.length; i++) { const k = store.key(i); o[k] = store.getItem(k); } return o; } catch (e) { return `(${e.message})`; } };
       const cookies = {};
-      document.cookie.split('; ').filter(Boolean).forEach(c => { const i = c.indexOf('='); const k = i === -1 ? c : c.slice(0, i); try { cookies[k] = i === -1 ? '' : decodeURIComponent(c.slice(i + 1)); } catch {} });
+      document.cookie.split('; ').filter(Boolean).forEach(c => { const i = c.indexOf('='); const k = i === -1 ? c : c.slice(0, i); try { cookies[k] = i === -1 ? '' : decodeURIComponent(c.slice(i + 1)); } catch (e) { debug('cookie value undecodable, skipped', e, true); } });
       return JSON.stringify({ localStorage: dump(localStorage), sessionStorage: dump(sessionStorage), cookies }, null, 2);
     }
   });
@@ -1828,7 +1836,7 @@
       if (Object.keys(meta).length) out.meta = meta;
       const ld = [];
       document.querySelectorAll('script[type="application/ld+json"]').forEach(s => {
-        try { ld.push(JSON.parse(s.textContent)); } catch {}
+        try { ld.push(JSON.parse(s.textContent)); } catch (e) { debug('page ld+json unparseable, skipped', e, true); }
       });
       if (ld.length) out['ld+json'] = ld;
       return JSON.stringify(out, null, 2);
@@ -1955,7 +1963,8 @@
         if (vt[0]) vt[0].onended = () => {
           if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
         };
-      } catch {
+      } catch (e) {
+        debug('screen record setup failed', e);
         if (stream) stream.getTracks().forEach(t => t.stop()); // mid-setup throw (eg Safari's MediaRecorder) must not leak share stream
         if (wrap) wrap.style.display = orig;
         kernel.stop('screen-record');
@@ -2001,7 +2010,7 @@
       root.addEventListener('mouseover', e => {
         const r = e.target.closest('.scv-tree-row');
         if (r) {
-          let el = null; try { el = document.querySelector(r.dataset.ref); } catch {} // gone / invalid selector
+          let el = null; try { el = document.querySelector(r.dataset.ref); } catch (e) { debug('tree row selector invalid', e, true); } // gone / invalid selector
           if (el) hoverEngine.highlight(el, true, `${Math.round(el.offsetWidth)}x${Math.round(el.offsetHeight)}`);
         }
       });
@@ -2110,7 +2119,7 @@
       new EyeDropper().open().then(async (r) => {
         await utils.copy(r.sRGBHex);
         utils.notify.finish(`${r.sRGBHex} extracted!`, true); // stays minimized until dismissed
-      }).catch(() => summon()); // esc-cancel - bring palette back
+      }).catch(e => { debug('eyedropper cancelled', e); summon(); }); // esc-cancel - bring palette back
     }
   });
 
@@ -2152,7 +2161,7 @@
       window.setInterval = _origSI;
       utils.unmount('scv-freeze-style');
       const q = frozenRAF; frozenRAF = [];
-      q.forEach(cb => { try { _raf(cb); } catch {} });
+      q.forEach(cb => { try { _raf(cb); } catch (e) { debug('frozen frame replay failed', e, true); } });
     };
     kernel.register({
       id: 'freeze',
@@ -2396,7 +2405,7 @@
 
     function payloadNode(text) { // shape dump by what it is - falls back to raw text when neither
       const t = text.trim();
-      if (/^[[{]/.test(t)) { let p = null; try { p = JSON.parse(t); } catch {} if (p && typeof p === 'object') return kvNode(p); }
+      if (/^[[{]/.test(t)) { let p = null; try { p = JSON.parse(t); } catch (e) { debug('view payload not json, shown raw', e, true); } if (p && typeof p === 'object') return kvNode(p); }
       const lines = text.split('\n');
       if (lines.length === 1) { // lines get same row command gets
         const row = document.createElement('div'); row.className = 'scv-v-empty'; row.textContent = text;

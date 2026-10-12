@@ -1,5 +1,5 @@
 // bench - opt-in: large patchbay, records numbers to beat
-// node test/bench.mjs [--save] (--save writes test/bench-baseline.json)
+// node test/bench.mjs [--save] [--next] (--save writes test/bench-baseline.json, --next measures patchbay-next save and publish)
 
 import { launchChrome, connect } from './_cdp.mjs';
 import { createServer } from 'http';
@@ -12,6 +12,7 @@ import { randomBytes } from 'crypto';
 const here = dirname(fileURLToPath(import.meta.url));
 const kernelSrc = readFileSync(join(here, '..', 'kernel.js'), 'utf8');
 const patchbayHtml = readFileSync(join(here, '..', 'patchbay.html'), 'utf8');
+const NEXT = process.argv.includes('--next');
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
 const COMPS = 40, INSTANCES = 10, WIRED = 2, FULL = 3, FULL_CARDS = 400, PASTED = 10, NODES = 200, CHAIN = 20;
@@ -32,7 +33,7 @@ const full = k => `<!doctype html><title>f${k}</title><style>.grid{display:grid;
 
 const srv = createServer((req, res) => {
   const u = req.url;
-  if (u.startsWith('/patchbay')) { res.setHeader('content-type', 'text/html'); return res.end(patchbayHtml); }
+  if (u.startsWith('/patchbay')) { res.setHeader('content-type', 'text/html'); return res.end(NEXT ? readFileSync(join(here, '..', 'patchbay-next.html')) : patchbayHtml); }
   let m = u.match(/^\/site\/(\d+)/); if (m) { res.setHeader('content-type', 'text/html'); return res.end(site(+m[1])); }
   m = u.match(/^\/full\/(\d+)/); if (m) { res.setHeader('content-type', 'text/html'); return res.end(full(+m[1])); }
   m = u.match(/^\/img\/(\w+)\.png/);
@@ -97,6 +98,8 @@ try {
   if (payloads.some(p => !p) || fulls.some(p => !p)) throw new Error('harvest timed out');
   results.fixture.harvestKB = Math.round([...payloads, ...fulls].reduce((s, p) => s + p.length, 0) / 1024);
   const pastedImg = 'data:image/png;base64,' + png(300, 300).toString('base64');
+
+  if (NEXT) { await benchNext(payloads, fulls, pastedImg); throw null; }
 
   await load(`${base}/patchbay`);
   await js(`window.__payloads = ${JSON.stringify(payloads)}; window.__fulls = ${JSON.stringify(fulls)}; window.__img = ${JSON.stringify(pastedImg)}; true`);
@@ -187,7 +190,45 @@ try {
 
   if (process.argv.includes('--save')) { writeFileSync(join(here, 'bench-baseline.json'), JSON.stringify({ recorded: new Date().toISOString().slice(0, 10), ...results }, null, 2) + '\n'); console.log('saved test/bench-baseline.json'); }
 } catch (e) {
-  console.log('bench failed:', e.message);
-  process.exitCode = 1;
+  if (e !== null) { console.log('bench failed:', e.message); process.exitCode = 1; }
 }
 done();
+
+async function benchNext(payloads, fulls, pastedImg) { // same fixture through next runtime - drag and clock wait for studio
+  await load(`${base}/patchbay`);
+  await js(`window.__payloads = ${JSON.stringify(payloads)}; window.__fulls = ${JSON.stringify(fulls)}; window.__img = ${JSON.stringify(pastedImg)}; true`);
+  results.fixture.built = await js(`(async () => {
+    const pb = document.querySelector('scv-patchbay'), kit = customElements.get('scv-patchbay').kit;
+    pb.mode = 'edit';
+    let x = 0, y = 0;
+    const at = () => { const p = { x: 40 + x * 380, y: 40 + y * 260 }; if (++x === 12) { x = 0; y++; } return p; };
+    const mount = text => { const d = new DOMParser().parseFromString(text, 'text/html'); const c = d.querySelector('[data-scv-component]'), s = d.querySelector('script[data-scv-def]'); return kit.mountHarvest(pb, { tag: c.localName, script: kit.boxScopeCss(s.textContent), ...at() }); };
+    const node = (type, nx, ny, attrs = {}) => { const n = document.createElement('scv-logic'); n.dataset.type = type; n.style.left = nx + 'px'; n.style.top = ny + 'px'; for (const k in attrs) n.setAttribute(k, attrs[k]); pb.append(n); return n; };
+    let made = 0, ch = 0;
+    for (const p of window.__payloads) for (let n = 0; n < ${INSTANCES}; n++) {
+      const it = mount(p);
+      if (n < ${WIRED}) { const t = it.firstElementChild.shadowRoot?.querySelector('button, .n'); if (t) { const c = 'w' + ch++; t.setAttribute('data-scv-receives', c); node('accumulator', kit.px(it, 'left') - 60, kit.px(it, 'top'), { 'data-scv-emits': c }); made++; } }
+    }
+    for (const f of window.__fulls) mount(f);
+    const bytes = Uint8Array.from(atob(window.__img.split(',')[1]), c => c.charCodeAt(0));
+    const ref = await kit.asset.put(new Blob([bytes], { type: 'image/png' }));
+    for (let i = 0; i < ${PASTED}; i++) { const it = document.createElement('scv-item'); const p = at(); it.style.left = p.x + 'px'; it.style.top = p.y + 'px'; it.innerHTML = '<img data-scv-id="img' + i + '" data-scv-src="' + ref + '">'; pb.append(it); }
+    let prev = node('clock', 40, 3400, { value: '1000', 'data-scv-emits': 'k0' }); made++;
+    for (let i = 0; i < ${CHAIN}; i++) { node('mutator', 120 + i * 90, 3400, { value: 'v + 1', 'data-scv-receives': 'k' + i, 'data-scv-emits': 'k' + (i + 1) }); made++; }
+    const types = ['accumulator', 'variable', 'gate', 'comparator', 'mutator', 'sample', 'action', 'delay'];
+    while (made < ${NODES}) { node(types[made % types.length], 40 + (made % 25) * 70, 3600 + Math.floor(made / 25) * 60); made++; }
+    await new Promise(r => setTimeout(r, 500));
+    return { items: pb.querySelectorAll('scv-item').length, nodes: pb.querySelectorAll('scv-logic').length };
+  })()`, true);
+  console.log('fixture', JSON.stringify(results.fixture));
+  const pid = await rendererPid();
+  const grab = kind => () => js(`(async () => { const b = await document.querySelector('scv-patchbay').save('${kind}'); return { fileMB: +(b.size / 1048576).toFixed(1) }; })()`, true);
+  results.save = await peakDuring(pid, grab('quine'));
+  console.log('save   ', JSON.stringify(results.save));
+  results.publish = await peakDuring(pid, grab('publish'));
+  console.log('publish', JSON.stringify(results.publish));
+  const live = await metrics();
+  console.log('live   ', JSON.stringify({ heapMB: +(live.JSHeapUsedSize / 1048576).toFixed(1), rssMB: +(kb(pid, 'VmRSS') / 1024).toFixed(1) }));
+  const old = JSON.parse(readFileSync(join(here, 'bench-baseline.json'), 'utf8'));
+  console.log('baseline', JSON.stringify({ save: old.save, publish: old.publish }));
+}

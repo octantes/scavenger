@@ -660,6 +660,14 @@ try {
     return [t.innerHTML === live, { got: t.innerHTML, live }];
   });
 
+  await run('same-length edit keeps its shadow', async () => {
+    const pb = T.pb(); T.harvestDef('scv-sl1', '<p>hello</p>');
+    const host = T.item(pb, document.createElement('scv-sl1'));
+    host.shadowRoot.querySelector('p').textContent = 'jello';
+    const html = await (await pb.save('publish')).text();
+    return [html.includes('<p>jello</p>'), html.match(/<scv-sl1>.*?<\/scv-sl1>/)?.[0]];
+  });
+
   await run('text that reads like blob src survives save', async () => {
     const pb = T.pb(); T.item(pb, T.el('<pre data-scv-id="code">img src="blob:abc" stays</pre>'));
     const html = await (await pb.save('publish')).text();

@@ -1324,16 +1324,22 @@ const _defs = () => { // tag > harvest def script
   });
   return m;
 };
-const _normal = new WeakMap(); // def > markup as parser normalizes it
-const _defMarkup = (tag, defs) => {
+const _hashText = s => { let a = 0x811c9dc5, b = 0x01000193; for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); a = Math.imul(a ^ c, 16777619); b = Math.imul(b ^ c, 2246822507); } return (a >>> 0) * 4294967296 + (b >>> 0); }; // two fnv-1a lanes, no byte copy
+const _normal = new WeakMap(); // def > { len, hash } of normalized markup
+const _defPrint = async (tag, defs) => {
   const c = kit.comps.get(tag), key = c ? c.frag : defs.get(tag);
   if (!key) return null;
-  if (_normal.has(key)) return _normal.get(key);
-  const t = document.createElement('template');
-  if (c) t.content.append(c.frag.cloneNode(true));
-  else { const m = kit.extractShadowMarkup(key.textContent); if (m == null) { _normal.set(key, null); return null; } t.innerHTML = m; }
-  _normal.set(key, t.innerHTML);
-  return t.innerHTML;
+  if (!_normal.has(key)) {
+    const t = document.createElement('template'), m = c ? null : kit.extractShadowMarkup(key.textContent);
+    if (c) t.content.append(c.frag.cloneNode(true)); else if (m != null) t.innerHTML = m;
+    _normal.set(key, c || m != null ? { len: t.innerHTML.length, hash: _hashText(t.innerHTML) } : null);
+  }
+  return _normal.get(key);
+};
+const _asDef = async (n, defs) => {
+  if (n.shadowRoot.querySelector(kit.WIRING_SEL)) return false;
+  const p = await _defPrint(n.localName, defs), html = p && n.shadowRoot.innerHTML;
+  return !!p && html.length === p.len && _hashText(html) === p.hash;
 };
 
 const _remote = new Map(); // url > ref, once per session
@@ -1351,16 +1357,17 @@ const internRemote = async roots => { // servers without cors stay remote links
 const _item = async (el, defs, used) => { // component shadows only where they differ from def
   if (el.localName === 'scv-logic') { used.nodes.add(el.dataset.type); return startTag(el) + '</scv-logic>'; }
   const roots = [el], shadows = [];
-  const walk = r => r.querySelectorAll('*').forEach(n => {
-    if (n.localName.includes('-')) used.tags.add(n.localName);
-    if (n.localName === 'scv-logic') { used.nodes.add(n.dataset.type); return; }
-    if (!n.shadowRoot) return;
-    freeze(n.shadowRoot); roots.push(n.shadowRoot);
-    const def = n.shadowRoot.querySelector(kit.WIRING_SEL) ? null : _defMarkup(n.localName, defs);
-    if (def != null && n.shadowRoot.innerHTML === def) return; // def rebuilds it
-    shadows.push(n.shadowRoot); walk(n.shadowRoot);
-  });
-  freeze(el); walk(el);
+  const walk = async r => {
+    for (const n of r.querySelectorAll('*')) {
+      if (n.localName.includes('-')) used.tags.add(n.localName);
+      if (n.localName === 'scv-logic') { used.nodes.add(n.dataset.type); continue; }
+      if (!n.shadowRoot) continue;
+      freeze(n.shadowRoot); roots.push(n.shadowRoot);
+      if (await _asDef(n, defs)) continue; // def rebuilds it
+      shadows.push(n.shadowRoot); await walk(n.shadowRoot);
+    }
+  };
+  freeze(el); await walk(el);
   await internRemote(roots);
   const html = (startTag(el) + el.getHTML({ shadowRoots: shadows }) + `</${el.localName}>`)
     .replace(/<[a-z][^<>]*>/gi, tag => tag.replace(/\s(?:src|href|poster)="blob:[^"]*"/g, '')); // blob url dies with page - boot rebuilds from data-scv-src
@@ -1387,11 +1394,11 @@ const save = async (pb, kind = 'quine') => {
     document.querySelector('link[rel="icon"]')?.outerHTML || '', '\n', outer('scv-runtime-css'), '\n', outer('scv-runtime'), '\n</head>\n<body>\n', startTag(pb), '\n'];
   for (const el of pb.children) if (!el.hasAttribute('data-scv-appended')) parts.push(await _item(el, defs, used), '\n');
   parts.push('</scv-patchbay>\n');
-  for (const h of used.refs) parts.push(await kit.asset.element(h)); // referenced assets only
+  for (const h of used.refs) parts.push(new Blob([await kit.asset.element(h)])); // referenced assets only
   for (const t of used.tags) { const c = kit.comps.get(t); if (c) parts.push(c.tpl.outerHTML, '\n'); }
   for (const n of used.nodes) { const src = kit.nodeSources.get(n); if (src) parts.push(`<script type="scv/node" data-scv-node>${src.replace(/<\/script/gi, '<\\/script')}<\/script>\n`); }
   parts.push(outer('scv-boot'), '\n');
-  new Set([...used.tags].map(t => defs.get(t)).filter(Boolean)).forEach(s => parts.push(s.outerHTML, '\n'));
+  new Set([...used.tags].map(t => defs.get(t)).filter(Boolean)).forEach(s => parts.push(new Blob([s.outerHTML]), '\n'));
   SCRIPTS[kind].forEach(id => parts.push(outer(id), '\n'));
   parts.push('</body>\n</html>\n');
   return new Blob(parts, { type: 'text/html' });

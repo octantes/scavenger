@@ -83,7 +83,9 @@ const peakDuring = async (pid, fn) => {
   const before = kb(pid, 'VmRSS');
   writeFileSync(`/proc/${pid}/clear_refs`, '5');
   const t0 = Date.now(); const out = await fn(); const ms = Date.now() - t0;
-  return { peakMB: +((kb(pid, 'VmHWM') - before) / 1024).toFixed(1), beforeMB: +(before / 1024).toFixed(1), ms, ...out };
+  const peakMB = +((kb(pid, 'VmHWM') - before) / 1024).toFixed(1);
+  await send('HeapProfiler.collectGarbage'); await delay(200); // what stays after collection - peak minus this is garbage
+  return { peakMB, retainedMB: +((kb(pid, 'VmRSS') - before) / 1024).toFixed(1), beforeMB: +(before / 1024).toFixed(1), ms, ...out };
 };
 const metrics = async () => Object.fromEntries(((await send('Performance.getMetrics'))?.result?.metrics || []).map(m => [m.name, m.value]));
 const diff = (a, b, keys) => Object.fromEntries(keys.map(k => [k, +((b[k] - a[k]) || 0).toFixed(k.endsWith('Duration') ? 4 : 0)]));

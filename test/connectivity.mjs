@@ -45,12 +45,13 @@ this.attachShadow({mode: 'open'}).innerHTML = ${BT}<style>:host{display:block;wi
 const store   = new Map(); // channel > entry
 const posted  = []; // log of register posts
 const emitted = []; // log of emit posts
+let listReads = 0; // get /quests count - shared poll check
 const quests = createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, scv-token');
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
-  if (req.method === 'GET' && req.url === '/quests') { res.writeHead(200); return res.end(JSON.stringify([...store.values()])); }
+  if (req.method === 'GET' && req.url === '/quests') { listReads++; res.writeHead(200); return res.end(JSON.stringify([...store.values()])); }
   if (req.method === 'GET' && req.url.startsWith('/component/')) { res.setHeader('content-type', 'text/html'); res.writeHead(200); return res.end(compFile(compVer)); } // harvest: quest component file (compVer bumps to simulate a changed layout)
 
   let body = ''; req.on('data', c => body += c); req.on('end', () => {
@@ -275,6 +276,50 @@ try {
   for (let t = 0; t < 45 && !landed; t++) { landed = latePosted.some(p => p.url === 'http://retry.example/x'); if (!landed) await delay(200); }
   ok(landed, 'node retried registration on its own until it landed - not stuck waiting until mode change');
   await new Promise(r => late.close(r));
+
+  // shared poll: waiting quest nodes cost one list read per tick, not one each
+  await load(`http://127.0.0.1:${webPort}/patchbay?quest-api=${encodeURIComponent(questApi)}`);
+  await js(`(() => {
+    setMode('edit');
+    window.__pollNodes = [0, 1, 2, 3, 4].map(i => {
+      const n = spawnLogicNode('quest', 60 + i * 50, 500);
+      const inp = n.querySelector('.scv-logic-input');
+      inp.value = 'sp' + i + ', https://poll.example/' + i + ', sel:.v'; inp.dispatchEvent(new Event('change', { bubbles: true }));
+      return n;
+    });
+    return true;
+  })()`);
+  await delay(200); listReads = 0;
+  await delay(4100); // two shared ticks
+  const waitingReads = listReads;
+  ok(waitingReads >= 1 && waitingReads <= 3, `5 waiting quest nodes share one list read per tick (${waitingReads} reads in ~4s, was 10)`);
+  [0, 1, 2, 3, 4].forEach(i => store.set('sp' + i, { channel: 'sp' + i, result: { value: 'v' + i, timestamp: Date.now() } }));
+  const sharedLanded = await js(`(async () => {
+    for (let t = 0; t < 40; t++) {
+      const got = window.__pollNodes.map(n => n.querySelector('.scv-logic-float')?.textContent);
+      if (got.every((g, i) => g === 'v' + i)) return got;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    return window.__pollNodes.map(n => n.querySelector('.scv-logic-float')?.textContent);
+  })()`, true);
+  ok(sharedLanded && sharedLanded.every((g, i) => g === 'v' + i), `each node gets own channel's value from shared read (${JSON.stringify(sharedLanded)})`);
+  const triggered = await js(`(async () => { // trigger read stays fresh - not served from last shared list
+    const n = window.__pollNodes[0], ch = n.getAttribute('data-scv-emits').split(' ')[0];
+    const r = document.createElement('div'); r.id = 'sprcv'; r.setAttribute('data-scv-receives', ch); document.getElementById('zoom-layer').appendChild(r);
+    invalidateCache && invalidateCache();
+    return ch;
+  })()`);
+  store.set('sp0', { channel: 'sp0', result: { value: 'fresh', timestamp: Date.now() } });
+  const freshVal = await js(`(async () => {
+    window.__pollNodes[0].dispatchEvent(new CustomEvent('scv-receive', { detail: 1 }));
+    for (let t = 0; t < 40 && document.getElementById('sprcv').textContent !== 'fresh'; t++) await new Promise(r => setTimeout(r, 20));
+    return document.getElementById('sprcv').textContent;
+  })()`, true);
+  ok(freshVal === 'fresh', `triggered read fetches now, not reused shared list (${JSON.stringify(freshVal)} on ${triggered})`);
+  await js(`(() => { window.__pollNodes.forEach(n => n.remove()); return true; })()`);
+  await delay(300); listReads = 0;
+  await delay(4100);
+  ok(listReads === 0, `shared poll stops when last watching node leaves (${listReads} reads after removal)`);
 
   // b - kernel > patchbay (clipboard bridge)
   await load(`http://127.0.0.1:${webPort}/fixture`); // harvest element on plain page, capture clipboard payload

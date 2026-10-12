@@ -731,11 +731,24 @@ function createScavQuestClient({ // factory: client half of quest protocol - par
     return { name, url, target, hash, channel: name || 'ch_q_' + hash };
   };
 
-  const fetchValue = ch => fetch(api() + '/quests', { cache: 'no-store', signal: AbortSignal.timeout(6000) }).then(r => { // no-store - polling read must never serve cached value (live component would freeze on first ref) - timeout so server can't wedge _fetching
-    if (!r.ok) throw new Error('fetch failed');
-    return r.json();
-  }).then(q => {
-    if (!Array.isArray(q)) throw new Error('not an array');
+  const POLL_MS = 2000;
+  let _list = null, _listAt = 0, _listApi = '', _inflight = null, _inflightApi = '';
+  const _fetchList = (maxAge = 0) => { // one /quests read shared for every node - concurrent joins in-flight one
+    const base = api();
+    if (maxAge && _list && _listApi === base && Date.now() - _listAt < maxAge) return Promise.resolve(_list);
+    if (_inflight && _inflightApi === base) return _inflight;
+    _inflightApi = base;
+    return _inflight = fetch(base + '/quests', { cache: 'no-store', signal: AbortSignal.timeout(6000) }).then(r => { // no-store - polling read must never serve cached value (live component would freeze on first ref) - timeout so server can't wedge _fetching
+      if (!r.ok) throw new Error('fetch failed');
+      return r.json();
+    }).then(q => {
+      if (!Array.isArray(q)) throw new Error('not an array');
+      _list = q; _listAt = Date.now(); _listApi = base;
+      return q;
+    }).finally(() => { if (_inflightApi === base) _inflight = null; });
+  };
+
+  const _valueIn = (q, ch) => {
     const entry = q.find(x => x.channel === ch);
     if (!entry || !entry.result) throw new Error('no result');
     const val = entry.result.value;
@@ -744,7 +757,9 @@ function createScavQuestClient({ // factory: client half of quest protocol - par
       throw new Error('empty');
     }
     return val;
-  });
+  };
+
+  const fetchValue = ch => _fetchList().then(q => _valueIn(q, ch));
 
   const waitingMessage = err => { // one wording for every quest node - server down names host, value-not-ready is [waiting]
     const down = err && err.name === 'TypeError'; // TypeError means connection refused, distinct from value not ready
@@ -752,18 +767,27 @@ function createScavQuestClient({ // factory: client half of quest protocol - par
     return down ? (host ? "nothing's answering at " + host : 'no quest api set') : '[waiting]';
   };
 
-  const pollValue = (ch, onValue, onWaiting) => { // fetches every 2s until value lands - returns cancel which discards in flight result
-    let cancelled = false, timer = null;
-    const attempt = () => {
-      fetchValue(ch).then(v => { if (!cancelled) onValue(v); }).catch(err => {
-        if (cancelled) return;
-        onWaiting(waitingMessage(err));
-        timer = setTimeout(attempt, 2000);
-      });
-    };
-    attempt();
-    return () => { cancelled = true; if (timer) { clearTimeout(timer); timer = null; } };
+  const _watchers = new Set();
+  let _loop = null;
+  const _deliver = (w, read) => read.then(v => { if (_watchers.has(w)) { if (w.once) _watchers.delete(w); w.onValue(v); } },
+                                          err => { if (_watchers.has(w)) w.onWaiting(waitingMessage(err)); });
+  const _cycle = () => { // single page-wide poll - every watcher reads same list, loop stops when last cancels
+    _loop = null;
+    if (!_watchers.size) return;
+    const read = _fetchList(POLL_MS); // trigger read since last tick counts as this tick's
+    Promise.allSettled([..._watchers].map(w => _deliver(w, read.then(q => _valueIn(q, w.ch)))))
+      .then(() => { if (_watchers.size && !_loop) _loop = setTimeout(_cycle, POLL_MS); });
   };
+
+  const watchValue = (ch, onValue, onWaiting, once = false) => { // value every poll (once: until first lands) - returns cancel which discards in-flight result
+    const w = { ch, onValue, onWaiting, once };
+    _watchers.add(w);
+    _deliver(w, fetchValue(ch)); // first read now, not at next shared tick
+    if (!_loop) _loop = setTimeout(_cycle, POLL_MS);
+    return () => _watchers.delete(w);
+  };
+
+  const pollValue = (ch, onValue, onWaiting) => watchValue(ch, onValue, onWaiting, true);
 
   // server writes: all flow through injected questWrite capability (quests.mjs accepts them from direct loopback only)
   const registerScrape = ({ channel, url, target }) => { // target is raw pipeline the server parses, client doesn't track grammar
@@ -775,7 +799,7 @@ function createScavQuestClient({ // factory: client half of quest protocol - par
   const emitValue = (channel, value) => questWrite('POST', api() + '/quests/emit', { channel, value }).catch(() => {}); // fire-and-forget per-value emit swallows its failure
   const releaseChannel = channel => questWrite('DELETE', api() + '/quests/' + encodeURIComponent(channel)).catch(() => {}); // fire-and-forget cleanup swallows its failure
 
-  return { api, shortHash, parseInputLine, fetchValue, pollValue, waitingMessage, registerScrape, emitValue, releaseChannel };
+  return { api, shortHash, parseInputLine, fetchValue, pollValue, watchValue, waitingMessage, registerScrape, emitValue, releaseChannel };
 }
 
 function defineScavLogic({ // define scv-logic custom element with each type behavior, granting capabilities through dep params
@@ -1272,15 +1296,7 @@ function defineScavLogic({ // define scv-logic custom element with each type beh
         if (inMode) this._pollCancel = quests.pollValue(ch, _showFetched, msg => this._showFloat(msg));
         else if (compMode) { // live component auto-refreshes - re-fetch on interval; showComponent dedups on hash so unchanged poll never re-renders
           this._adoptLive(); // reload: bind to exported component (offline last-state) so first poll morphs in place, not duplicate
-          let stopped = false, ct;
-          const tick = () => {
-            if (stopped || this._questChannel !== ch) return;
-            quests.fetchValue(ch).then(v => { if (!stopped && this._questChannel === ch) showComponent(v); })
-              .catch(err => { if (!stopped) this._showFloat(quests.waitingMessage(err)); }) // same warn/error wording input node shows
-              .then(() => { if (!stopped) ct = setTimeout(tick, 2000); });
-          };
-          tick();
-          this._pollCancel = () => { stopped = true; clearTimeout(ct); };
+          this._pollCancel = quests.watchValue(ch, v => { if (this._questChannel === ch) showComponent(v); }, msg => this._showFloat(msg)); // same warn/error wording input node shows
         }
       };
 

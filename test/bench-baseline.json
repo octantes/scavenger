@@ -1,0 +1,52 @@
+{
+  "recorded": "2026-10-12",
+  "fixture": {
+    "COMPS": 40,
+    "INSTANCES": 10,
+    "WIRED": 2,
+    "FULL": 3,
+    "FULL_CARDS": 400,
+    "PASTED": 10,
+    "NODES": 200,
+    "CHAIN": 20,
+    "harvestKB": 39983,
+    "built": {
+      "wrappers": 413,
+      "nodes": 200,
+      "cables": 101
+    }
+  },
+  "save": {
+    "peakMB": 1321.4,
+    "beforeMB": 552.4,
+    "ms": 2897,
+    "fileMB": 154.1
+  },
+  "publish": {
+    "peakMB": 1284.7,
+    "beforeMB": 552.2,
+    "ms": 2965,
+    "fileMB": 153.5
+  },
+  "liveHeapMB": 5.7,
+  "liveRssMB": 1387,
+  "drag": {
+    "selected": 180,
+    "moves": 30,
+    "msPerMove": 54.9,
+    "layoutsPerMove": 64.4,
+    "styleRecalcsPerMove": 74.5,
+    "layoutMsPerMove": 2.91,
+    "styleMsPerMove": 14.92,
+    "firstLeft": "160px"
+  },
+  "clock": {
+    "routed": 1056,
+    "layouts": 963,
+    "styleRecalcs": 2020,
+    "layoutsPerRouted": 0.912,
+    "layoutMs": 778.9,
+    "styleMs": 363.8,
+    "scriptMs": 171.6
+  }
+}

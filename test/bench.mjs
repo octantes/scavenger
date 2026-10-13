@@ -251,7 +251,7 @@ async function benchNext(payloads, fulls, pastedImg) { // same fixture through n
   const m1 = await metrics();
   await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: start.x + 8 + MOVES * 4, y: start.y + 4 + MOVES * 2, button: 'left', clickCount: 1, modifiers: 2 });
   const d = diff(m0, m1, KEYS);
-  results.drag = { selected: start.selected, moves: MOVES, msPerMove: +((Date.now() - t0) / MOVES).toFixed(1), layoutsPerMove: +(d.LayoutCount / MOVES).toFixed(1), styleRecalcsPerMove: +(d.RecalcStyleCount / MOVES).toFixed(1), layoutMsPerMove: +(d.LayoutDuration * 1000 / MOVES).toFixed(2), styleMsPerMove: +(d.RecalcStyleDuration * 1000 / MOVES).toFixed(2), firstLeft: await js(`document.querySelector('scv-item').style.left`) };
+  results.drag = { selected: start.selected, moves: MOVES, msPerMove: +((Date.now() - t0) / MOVES).toFixed(1), layoutsPerMove: +(d.LayoutCount / MOVES).toFixed(1), styleRecalcsPerMove: +(d.RecalcStyleCount / MOVES).toFixed(1), layoutMsPerMove: +(d.LayoutDuration * 1000 / MOVES).toFixed(2), styleMsPerMove: +(d.RecalcStyleDuration * 1000 / MOVES).toFixed(2), scriptMsPerMove: +(d.ScriptDuration * 1000 / MOVES).toFixed(2), taskMsPerMove: +(d.TaskDuration * 1000 / MOVES).toFixed(2), firstLeft: await js(`document.querySelector('scv-item').style.left`) };
   console.log('drag   ', JSON.stringify(results.drag));
 
   // fast clock chain: 10ms clock through accumulator and 20 mutators
@@ -263,6 +263,17 @@ async function benchNext(payloads, fulls, pastedImg) { // same fixture through n
   const c1 = await metrics(), routed = await js(`window.__routed`), dc = diff(c0, c1, KEYS);
   results.clock = { routed, layouts: dc.LayoutCount, styleRecalcs: dc.RecalcStyleCount, layoutsPerRouted: routed ? +(dc.LayoutCount / routed).toFixed(3) : null, layoutMs: +(dc.LayoutDuration * 1000).toFixed(1), styleMs: +(dc.RecalcStyleDuration * 1000).toFixed(1), scriptMs: +(dc.ScriptDuration * 1000).toFixed(1) };
   console.log('clock  ', JSON.stringify(results.clock));
+
+  // same clock into wired element inside a component - text changes must not re-measure its cable end
+  await js(`(() => { const acc = document.querySelector('scv-logic[data-scv-emits="w0"]'); acc.setAttribute('data-scv-receives', 'k0'); window.__clock.setAttribute('data-scv-emits', 'k0'); window.__routed = 0; return true; })()`);
+  await delay(300);
+  const n0 = await metrics();
+  await js(`(() => { window.__clock.setAttribute('value', '10'); return true; })()`);
+  await delay(2000);
+  await js(`(() => { window.__clock.setAttribute('value', '1000000'); return true; })()`);
+  const n1 = await metrics(), nRouted = await js(`window.__routed`), dn = diff(n0, n1, KEYS);
+  results.inner = { routed: nRouted, layouts: dn.LayoutCount, layoutMs: +(dn.LayoutDuration * 1000).toFixed(1), styleMs: +(dn.RecalcStyleDuration * 1000).toFixed(1), scriptMs: +(dn.ScriptDuration * 1000).toFixed(1) };
+  console.log('inner  ', JSON.stringify(results.inner));
   const old = JSON.parse(readFileSync(join(here, 'bench-baseline.json'), 'utf8'));
   console.log('baseline', JSON.stringify({ save: old.save, publish: old.publish, drag: old.drag, clock: old.clock }));
 }

@@ -977,7 +977,7 @@ builtIn('quest', '0', {
     const comp = doc.querySelector('[data-scv-component]'), def = doc.querySelector('script[data-scv-def]');
     if (!comp || !def) return;
     const script = boxScopeCss(def.textContent);
-    const prev = ctx.mem.live, host = prev?.firstElementChild;
+    const prev = ctx.mem.live?.isConnected ? ctx.mem.live : null, host = prev?.firstElementChild;
     if (host?.shadowRoot) { const m = extractShadowMarkup(script); if (m != null) { const t = document.createElement('template'); t.innerHTML = m; if (morphShadow(host, t.content)) return; } }
     const x = prev ? px(prev, 'left') : px(ctx.el, 'left'), y = prev ? px(prev, 'top') : px(ctx.el, 'top') + 40; // first spawn sits below node
     this.unmount(ctx);

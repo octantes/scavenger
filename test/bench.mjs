@@ -196,7 +196,7 @@ try {
 }
 done();
 
-async function benchNext(payloads, fulls, pastedImg) { // same fixture through next runtime - drag and clock wait for studio
+async function benchNext(payloads, fulls, pastedImg) { // same fixture through next
   await load(`${base}/patchbay`);
   await js(`window.__payloads = ${JSON.stringify(payloads)}; window.__fulls = ${JSON.stringify(fulls)}; window.__img = ${JSON.stringify(pastedImg)}; true`);
   results.fixture.built = await js(`(async () => {
@@ -215,8 +215,9 @@ async function benchNext(payloads, fulls, pastedImg) { // same fixture through n
     const bytes = Uint8Array.from(atob(window.__img.split(',')[1]), c => c.charCodeAt(0));
     const ref = await kit.asset.put(new Blob([bytes], { type: 'image/png' }));
     for (let i = 0; i < ${PASTED}; i++) { const it = document.createElement('scv-item'); const p = at(); it.style.left = p.x + 'px'; it.style.top = p.y + 'px'; it.innerHTML = '<img data-scv-id="img' + i + '" data-scv-src="' + ref + '">'; pb.append(it); }
-    let prev = node('clock', 40, 3400, { value: '1000', 'data-scv-emits': 'k0' }); made++;
-    for (let i = 0; i < ${CHAIN}; i++) { node('mutator', 120 + i * 90, 3400, { value: 'v + 1', 'data-scv-receives': 'k' + i, 'data-scv-emits': 'k' + (i + 1) }); made++; }
+    window.__clock = node('clock', 40, 3400, { value: '1000000', 'data-scv-emits': 'k0' }); made++;
+    node('accumulator', 120, 3400, { 'data-scv-receives': 'k0', 'data-scv-emits': 'k1' }); made++; // pulses become data for the chain
+    for (let i = 1; i <= ${CHAIN}; i++) { node('mutator', 120 + i * 90, 3400, { value: 'v + 1', 'data-scv-receives': 'k' + i, 'data-scv-emits': 'k' + (i + 1) }); made++; }
     const types = ['accumulator', 'variable', 'gate', 'comparator', 'mutator', 'sample', 'action', 'delay'];
     while (made < ${NODES}) { node(types[made % types.length], 40 + (made % 25) * 70, 3600 + Math.floor(made / 25) * 60); made++; }
     await new Promise(r => setTimeout(r, 500));
@@ -231,6 +232,37 @@ async function benchNext(payloads, fulls, pastedImg) { // same fixture through n
   console.log('publish', JSON.stringify(results.publish));
   const live = await metrics();
   console.log('live   ', JSON.stringify({ heapMB: +(live.JSHeapUsedSize / 1048576).toFixed(1), rssMB: +(kb(pid, 'VmRSS') / 1024).toFixed(1) }));
+
+  // group drag: 120 items and 60 nodes moved by real ctrl-drag
+  const MOVES = 30, KEYS = ['LayoutCount', 'RecalcStyleCount', 'LayoutDuration', 'RecalcStyleDuration', 'ScriptDuration', 'TaskDuration'];
+  const start = await js(`(async () => {
+    const pb = document.querySelector('scv-patchbay');
+    pb.select([...pb.querySelectorAll('scv-item')].slice(0, 120).concat([...pb.querySelectorAll('scv-logic')].slice(0, 60)));
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const b = pb.geometry(pb.querySelector('scv-item'));
+    return { x: b.x + b.w / 2, y: b.y + b.h / 2, selected: pb.selection().length };
+  })()`, true);
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: start.x, y: start.y, button: 'none', modifiers: 2 });
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: start.x, y: start.y, button: 'left', clickCount: 1, modifiers: 2 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: start.x + 8, y: start.y + 4, button: 'left', buttons: 1, modifiers: 2 }); // past drag threshold
+  await js(`new Promise(r => requestAnimationFrame(() => r(1)))`, true);
+  const m0 = await metrics(); const t0 = Date.now();
+  for (let i = 1; i <= MOVES; i++) { await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: start.x + 8 + i * 4, y: start.y + 4 + i * 2, button: 'left', buttons: 1, modifiers: 2 }); await js(`new Promise(r => requestAnimationFrame(() => r(1)))`, true); }
+  const m1 = await metrics();
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: start.x + 8 + MOVES * 4, y: start.y + 4 + MOVES * 2, button: 'left', clickCount: 1, modifiers: 2 });
+  const d = diff(m0, m1, KEYS);
+  results.drag = { selected: start.selected, moves: MOVES, msPerMove: +((Date.now() - t0) / MOVES).toFixed(1), layoutsPerMove: +(d.LayoutCount / MOVES).toFixed(1), styleRecalcsPerMove: +(d.RecalcStyleCount / MOVES).toFixed(1), layoutMsPerMove: +(d.LayoutDuration * 1000 / MOVES).toFixed(2), styleMsPerMove: +(d.RecalcStyleDuration * 1000 / MOVES).toFixed(2), firstLeft: await js(`document.querySelector('scv-item').style.left`) };
+  console.log('drag   ', JSON.stringify(results.drag));
+
+  // fast clock chain: 10ms clock through accumulator and 20 mutators
+  await js(`(() => { const pb = document.querySelector('scv-patchbay'); pb.select([]); window.__routed = 0; pb.onRoute(() => window.__routed++); return true; })()`);
+  const c0 = await metrics();
+  await js(`(() => { window.__clock.setAttribute('value', '10'); return true; })()`);
+  await delay(2000);
+  await js(`(() => { window.__clock.setAttribute('value', '1000000'); return true; })()`);
+  const c1 = await metrics(), routed = await js(`window.__routed`), dc = diff(c0, c1, KEYS);
+  results.clock = { routed, layouts: dc.LayoutCount, styleRecalcs: dc.RecalcStyleCount, layoutsPerRouted: routed ? +(dc.LayoutCount / routed).toFixed(3) : null, layoutMs: +(dc.LayoutDuration * 1000).toFixed(1), styleMs: +(dc.RecalcStyleDuration * 1000).toFixed(1), scriptMs: +(dc.ScriptDuration * 1000).toFixed(1) };
+  console.log('clock  ', JSON.stringify(results.clock));
   const old = JSON.parse(readFileSync(join(here, 'bench-baseline.json'), 'utf8'));
-  console.log('baseline', JSON.stringify({ save: old.save, publish: old.publish }));
+  console.log('baseline', JSON.stringify({ save: old.save, publish: old.publish, drag: old.drag, clock: old.clock }));
 }

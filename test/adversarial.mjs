@@ -8,7 +8,7 @@ let fails = 0;
 const ok = (c, m) => { if (!c) { fails++; console.log('  ✗', m); } };
 const delay = ms => new Promise(r => setTimeout(r, ms));
 const here = dirname(fileURLToPath(import.meta.url));
-const pbUrl = pathToFileURL(join(here, '..', 'patchbay-next.html')).href;
+const pbUrl = pathToFileURL(join(here, '..', 'patchbay.html')).href;
 
 const { pageWsUrl, cleanup } = await launchChrome();
 const { ws, send, waitEvent } = await connect(pageWsUrl);

@@ -9,7 +9,7 @@ let fails = 0;
 const ok = (c, m) => { if (!c) { fails++; console.log('  ✗', m); } };
 const delay = ms => new Promise(r => setTimeout(r, ms));
 const here = dirname(fileURLToPath(import.meta.url));
-const pbUrl = pathToFileURL(join(here, '..', 'patchbay-next.html')).href;
+const pbUrl = pathToFileURL(join(here, '..', 'patchbay.html')).href;
 const bm = readFileSync(join(here, '..', 'bookmarklet.js'), 'utf8').trim();
 const decoded = decodeURIComponent(bm.slice('javascript:'.length));
 

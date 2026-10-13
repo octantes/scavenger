@@ -1,1138 +1,970 @@
-// patchbay tier - drive patchbay.html headless, exercise runtime (routing, logic nodes, wiring) + quine reopen round-trip
+// patchbay tier - runtime and exports
 
 import { launchChrome, connect } from './_cdp.mjs';
-import { pathToFileURL, fileURLToPath } from 'url';
+import { createServer } from 'http';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { writeFileSync, rmSync } from 'fs';
-import { tmpdir } from 'os';
 
 let fails = 0;
 const ok = (c, m) => { if (!c) { fails++; console.log('  ✗', m); } };
-const delay = ms => new Promise(r => setTimeout(r, ms));
 const here = dirname(fileURLToPath(import.meta.url));
-const pbUrl = pathToFileURL(join(here, '..', 'patchbay.html')).href;
+const pbFile = join(here, '..', 'patchbay.html');
 
-// 1x1 red png, pasted via clipboard in tiers below
-const PNG_1PX = new Uint8Array([137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,1,0,0,0,1,8,6,0,0,0,31,21,196,137,0,0,0,13,73,68,65,84,8,215,99,248,207,192,240,31,0,5,0,1,255,137,74,166,9,0,0,0,0,73,69,78,68,174,66,96,130]);
-
-const { ws, send, waitEvent, cleanup } = await (async () => {
-  const { pageWsUrl, cleanup } = await launchChrome();
-  const c = await connect(pageWsUrl);
-  return { ...c, cleanup };
-})();
-
-const jsRaw = async (expr, awaitPromise = false) =>
-  (await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise }))?.result?.result?.value;
-const errs = []; // Runtime.exceptionThrown - genuine uncaught js exceptions in our page code, real signal
-const browserLogErrs = []; // Log.entryAdded - browser-internal diagnostics (network/csp/deprecation), not our throws
-await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
-ws.addEventListener('message', e => {
-  const m = JSON.parse(e.data);
-  if (m.method === 'Runtime.exceptionThrown') errs.push(m.params.exceptionDetails?.exception?.description || m.params.exceptionDetails?.text);
-  if (m.method === 'Log.entryAdded' && m.params.entry.level === 'error') browserLogErrs.push(m.params.entry.text);
+// patchbay, exports, image and mock quest api same origin - publish defaults to page origin
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+const saved = new Map();
+const questPosts = [];
+let imgFetches = 0; // fetch() only - img loads ask for image/*
+const srv = createServer((req, res) => {
+  const path = req.url.split('?')[0];
+  if (path === '/pb') { res.setHeader('content-type', 'text/html'); return res.end(readFileSync(pbFile)); }
+  if (path.startsWith('/saved/')) { res.setHeader('content-type', 'text/html'); return res.end(saved.get(path.slice(7)) || ''); }
+  if (path === '/img.png') { if (!/^image\//.test(req.headers.accept || '')) imgFetches++; res.setHeader('content-type', 'image/png'); res.setHeader('access-control-allow-origin', '*'); return res.end(Buffer.concat([PNG, Buffer.from([0])])); } // trailing byte - own hash, still decodes
+  if (req.method === 'GET' && path === '/quests') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify([{ channel: 'q_in', result: { value: 7 } }, { channel: 'q_comp', result: { value: 'live.html#v1' } }])); }
+  if (path === '/component/live.html') { res.setHeader('content-type', 'text/html'); return res.end("<scv-qc1 data-scv-component></scv-qc1>\n<script data-scv-def>window.__ran = 1;\nif(!customElements.get('scv-qc1')){\ncustomElements.define('scv-qc1', class extends HTMLElement {\nconstructor() {\nsuper();\nif (this.shadowRoot) return;\nthis.attachShadow({mode: 'open'}).innerHTML = `<p onclick=\"window.__ran = 2\">live</p>`;\n}\n});\n}\n</script>"); } // def code must never run
+  if (req.method === 'GET' && path === '/alt/quests') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify([{ channel: 'q_in', result: { value: 9 } }])); }
+  if (req.method === 'POST' && path.startsWith('/quests')) { let b = ''; req.on('data', c => b += c); req.on('end', () => { questPosts.push({ path, body: JSON.parse(b || '{}') }); res.end('{}'); }); return; }
+  res.statusCode = 404; res.end();
 });
-// mid-tier reset must account for what's there first - only named benign noise is filtered, anything else fails tier here
-const checkpointErrs = (label, allowPattern) => {
-  const unexpected = allowPattern ? errs.filter(e => !allowPattern.test(e || '')) : errs.slice();
-  ok(unexpected.length === 0, `no unexpected errors before ${label} (${unexpected.slice(0, 3).join(' | ')})`);
-  errs.length = 0;
+await new Promise(r => srv.listen(0, '127.0.0.1', r));
+const base = `http://127.0.0.1:${srv.address().port}`;
+
+const { pageWsUrl, cleanup } = await launchChrome();
+const { ws, send, waitEvent } = await connect(pageWsUrl);
+await send('Page.enable'); await send('Runtime.enable');
+const uncaught = [];
+ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.method === 'Runtime.exceptionThrown') uncaught.push(m.params.exceptionDetails?.exception?.description || m.params.exceptionDetails?.text); });
+const js = async (expr) => {
+  const r = await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true });
+  if (r.result?.exceptionDetails) return { threw: r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text };
+  return r.result?.result?.value;
+};
+const nav = async url => { await send('Page.navigate', { url }); await waitEvent('Page.loadEventFired'); await js('new Promise(r => requestAnimationFrame(() => r()))'); };
+const done = () => { try { ws.close(); } catch {} cleanup(); srv.close(); };
+
+// helpers: each test builds its own patchbay, routing never crosses tests
+const helpers = () => {
+  const kit = customElements.get('scv-patchbay').kit;
+  window.T = {
+    kit,
+    frame: () => new Promise(r => requestAnimationFrame(() => r())),
+    sleep: ms => new Promise(r => setTimeout(r, ms)),
+    pb() { const p = document.createElement('scv-patchbay'); document.body.append(p); p.setMode?.('use'); return p; }, // studio opens in edit
+    node(pb, type, attrs = {}) { const n = document.createElement('scv-logic'); n.dataset.type = type; for (const k in attrs) n.setAttribute(k, attrs[k]); pb.append(n); return n; },
+    item(pb, child, x = 0, y = 0) { const it = document.createElement('scv-item'); it.style.left = x + 'px'; it.style.top = y + 'px'; it.append(child); pb.append(it); return child; },
+    el(html) { const t = document.createElement('template'); t.innerHTML = html; return t.content.firstElementChild; },
+    sink(pb, ch, tag = 'div') { const d = document.createElement(tag); d.setAttribute('data-scv-receives', ch); d.log = []; d.addEventListener('scv-receive', e => d.log.push(e.detail)); pb.append(d); return d; },
+    comp(name, body) { const t = document.createElement('template'); t.setAttribute('data-scv-comp', name); t.innerHTML = body; document.body.append(t); return kit.defineComponent(t); },
+    harvestDef(tag, markup) { // canonical kernel shape
+      const s = document.createElement('script'); s.setAttribute('data-scv-def', '');
+      s.textContent = `if(!customElements.get('${tag}')){\ncustomElements.define('${tag}', class extends HTMLElement {\nconstructor() {\nsuper();\nif (this.shadowRoot) return;\nthis.attachShadow({mode: 'open'}).innerHTML = \`${markup}\`;\n}\n});\n}`;
+      document.body.append(s); return s;
+    },
+  };
+  return true;
+};
+const run = async (name, fn) => { // fn runs in page, returns [pass, detail]
+  const r = await js(`(${fn.toString()})()`);
+  if (r?.threw) return ok(false, `${name} - threw ${r.threw.split('\n')[0]}`);
+  ok(Array.isArray(r) && r[0] === true, `${name} (${JSON.stringify(r?.[1] ?? r)})`);
 };
 
-const load = async url => { await send('Page.navigate', { url }); await waitEvent('Page.loadEventFired'); await delay(400); };
-let quineFile = null;
-const done = () => { try { ws.close(); } catch {} cleanup(); if (quineFile) try { rmSync(quineFile, { force: true }); } catch {} };
-
 try {
-  await load(pbUrl);
+  await nav(base + '/pb');
+  await js(`(${helpers.toString()})()`);
 
-  // public api surface (stable contract)
-  const api = await jsRaw(`['routeSend','setMode','spawnLogicNode','autoWire','renderCables','saveQuine','exportPublish','defineNode','handlePasteData'].filter(n => typeof window[n] !== 'function')`);
-  ok(Array.isArray(api) && api.length === 0, `all public api functions present (missing: ${JSON.stringify(api)})`);
-  ok(await jsRaw(`typeof session === 'object' && 'mode' in session`), 'session object with mode exposed');
+  // boot
 
-  // routing: routeSend reaches receiver and applies value
-  const routed = await jsRaw(`(() => {
-    setMode('edit');
-    const d = document.createElement('div'); d.id = 'rcv'; d.setAttribute('data-scv-receives', 'ch_test'); document.getElementById('zoom-layer').appendChild(d);
-    routeSend('ch_test', 'hello');
-    return document.getElementById('rcv').textContent;
-  })()`);
-  ok(routed === 'hello', `routeSend applies value to receiver (got ${JSON.stringify(routed)})`);
+  await run('runtime defines scv-item, scv-logic, scv-patchbay', async () => {
+    const t = ['scv-item', 'scv-logic', 'scv-patchbay'].map(n => !!customElements.get(n));
+    return [t.every(Boolean), t];
+  });
 
-  // accumulator: sums received values
-  const acc = await jsRaw(`(() => {
-    const n = spawnLogicNode('accumulator', 100, 100);
-    n.dispatchEvent(new CustomEvent('scv-receive', { detail: 5 }));
-    n.dispatchEvent(new CustomEvent('scv-receive', { detail: 3 }));
-    return n.querySelector('.scv-logic-input').value;
-  })()`);
-  ok(String(acc) === '8', `accumulator sums 5+3 → 8 (got ${acc})`);
+  // router - fan-out order
 
-  // mutator: evaluates expression and emits result to wired receiver
-  const mut = await jsRaw(`(() => {
-    const m = spawnLogicNode('mutator', 100, 200);
-    m.querySelector('.scv-logic-input').value = 'v * 2';
-    m.setAttribute('data-scv-emits', 'ch_mut');
-    const r = document.createElement('div'); r.id = 'mrcv'; r.setAttribute('data-scv-receives', 'ch_mut'); document.getElementById('zoom-layer').appendChild(r);
-    invalidateCache && invalidateCache();
-    m.dispatchEvent(new CustomEvent('scv-receive', { detail: 21 }));
-    return document.getElementById('mrcv').textContent;
-  })()`);
-  ok(String(mut) === '42', `mutator 'v * 2' on 21 → 42 downstream (got ${mut})`);
+  await run('two page receivers get channel in document order', async () => {
+    const pb = T.pb(), order = [];
+    const a = T.sink(pb, 'c'), b = T.sink(pb, 'c');
+    a.addEventListener('scv-receive', () => order.push('a')); b.addEventListener('scv-receive', () => order.push('b'));
+    pb.routeSend('c', 1);
+    return [order.join() === 'a,b', order];
+  });
 
-  // comparator: emits 1 when two inputs are equal
-  const cmp = await jsRaw(`(() => {
-    const c = spawnLogicNode('comparator', 100, 300);
-    c.setAttribute('data-scv-emits', 'ch_cmp');
-    const r = document.createElement('div'); r.id = 'crcv'; r.setAttribute('data-scv-receives', 'ch_cmp'); document.getElementById('zoom-layer').appendChild(r);
-    invalidateCache && invalidateCache();
-    c.dispatchEvent(new CustomEvent('scv-receive', { detail: 7 }));
-    c.dispatchEvent(new CustomEvent('scv-receive', { detail: 7 }));
-    return document.getElementById('crcv').textContent;
-  })()`);
-  ok(String(cmp) === '1', `comparator 7==7 → emits 1 (got ${cmp})`);
+  await run('reordering receivers swaps delivery order', async () => {
+    const pb = T.pb(), order = [];
+    const a = T.sink(pb, 'c'), b = T.sink(pb, 'c');
+    a.addEventListener('scv-receive', () => order.push('a')); b.addEventListener('scv-receive', () => order.push('b'));
+    pb.routeSend('c', 1);
+    pb.insertBefore(b, a); await 0;
+    order.length = 0; pb.routeSend('c', 2);
+    return [order.join() === 'b,a', order];
+  });
 
-  // autoWire: creates cable + routes source>target end to end (accumulators only emit is wire)
-  const wired = await jsRaw(`(() => {
-    const a = spawnLogicNode('accumulator', 500, 100);
-    const b = spawnLogicNode('accumulator', 700, 100);
-    autoWire(a, b);
-    renderCables();
-    const cable = document.querySelector('#static-cables .cable-path');
-    const ch = cable && cable.getAttribute('data-channel'); // wire's actual channel
-    const srcEmits = (a.getAttribute('data-scv-emits') || '').split(' ');
-    const tgtRecv = (b.getAttribute('data-scv-receives') || '').split(' ');
-    b.querySelector('.scv-logic-input').value = '0';
-    if (ch) routeSend(ch, 4); // push value down wire's channel
-    return { hasCable: !!cable, shared: !!ch && srcEmits.includes(ch) && tgtRecv.includes(ch), accVal: b.querySelector('.scv-logic-input').value };
-  })()`);
-  ok(wired && wired.hasCable && wired.shared, 'autoWire creates cable on channel shared by source emit + target receive');
-  ok(wired && String(wired.accVal) === '4', `value routes through wire to target (got ${wired && wired.accVal})`);
+  await run('shadow receiver comes after light dom receivers, whatever its position', async () => {
+    const pb = T.pb(), order = [];
+    T.harvestDef('scv-ro1', '<p data-scv-receives="c">x</p>');
+    const host = T.item(pb, document.createElement('scv-ro1'));
+    const light = T.sink(pb, 'c');
+    host.shadowRoot.querySelector('p').addEventListener('scv-receive', () => order.push('shadow'));
+    light.addEventListener('scv-receive', () => order.push('light'));
+    pb.routeSend('c', 1);
+    return [order.join() === 'light,shadow', order];
+  });
 
-  // space-chain onto toggle node wires without toggling mode (completing click must be swallowed, not reach icon)
-  const chain = await jsRaw(`(() => {
-    const move = (x,y) => document.dispatchEvent(new PointerEvent('pointermove', { clientX:x, clientY:y, bubbles:true }));
-    const key = k => document.dispatchEvent(new KeyboardEvent('keydown', { key:k, bubbles:true }));
-    move(400,500); key('4'); // spawn gate (target - its icon click toggles .active)
-    move(650,500); key('1'); // spawn clock (source > lastSpawned)
-    key(' '); // arm chain from clock
-    const gate = [...document.querySelectorAll('scv-logic')].filter(n => n.dataset.type === 'gate').pop();
-    const icon = gate.querySelector('.scv-logic-icon');
-    const before = gate.classList.contains('active');
-    const r = icon.getBoundingClientRect(), opt = { clientX: r.left + r.width/2, clientY: r.top + r.height/2, bubbles:true, composed:true };
-    const cablesBefore = document.querySelectorAll('#static-cables .cable-path').length;
-    icon.dispatchEvent(new PointerEvent('pointerdown', opt)); // completes chain wire
-    icon.dispatchEvent(new MouseEvent('click', opt)); // must be swallowed (no toggle)
-    const afterChain = gate.classList.contains('active');
-    const wiredNow = document.querySelectorAll('#static-cables .cable-path').length > cablesBefore;
-    // control: plain click (no chain) does toggle - proves this check can detect toggle
-    const t0 = gate.classList.contains('active'); icon.dispatchEvent(new MouseEvent('click', { bubbles:true }));
-    return { wiredNow, unchanged: before === afterChain, toggles: t0 !== gate.classList.contains('active') };
-  })()`);
-  ok(chain && chain.wiredNow, 'Space-chain click wires onto target node');
-  ok(chain && chain.toggles, 'target node\'s icon click still toggles normally (control)');
-  ok(chain && chain.unchanged, 'Space-chain click does not toggle wired node\'s mode');
+  await run('receive fires before element own verb', async () => {
+    const pb = T.pb(), order = [];
+    const d = T.sink(pb, 'c'); d.setAttribute('data-scv-action', 'event:custom');
+    d.addEventListener('scv-receive', () => order.push('receive')); d.addEventListener('custom', () => order.push('verb'));
+    pb.routeSend('c', 1);
+    return [order.join() === 'receive,verb', order];
+  });
 
-  // freshly-spawned node under cursor mutes first hover-tooltip, then shows it
-  const spawnMute = await jsRaw(`(() => {
-    const cc = document.getElementById('canvas-container');
-    document.dispatchEvent(new PointerEvent('pointermove', { clientX:420, clientY:560, bubbles:true, composed:true }));
-    document.dispatchEvent(new KeyboardEvent('keydown', { key:'1', bubbles:true })); // spawn clock under cursor
-    const node = [...document.querySelectorAll('scv-logic')].pop();
-    const r = node.getBoundingClientRect(), cx = r.left + r.width/2, cy = r.top + r.height/2;
-    const t = document.getElementById('wiring-tooltip');
-    node.dispatchEvent(new PointerEvent('pointermove', { clientX:cx, clientY:cy, bubbles:true, composed:true }));       const first = t.style.display;
-    cc.dispatchEvent(new PointerEvent('pointermove', { clientX:r.right+300, clientY:r.bottom+200, bubbles:true, composed:true }));
-    node.dispatchEvent(new PointerEvent('pointermove', { clientX:cx, clientY:cy, bubbles:true, composed:true }));       const second = t.style.display;
-    return { first, second };
-  })()`);
-  ok(spawnMute && spawnMute.first === 'none', `fresh node's first hover is muted (got ${spawnMute && spawnMute.first})`);
-  ok(spawnMute && spawnMute.second === 'block', `after cursor leaves and returns, tooltip shows (got ${spawnMute && spawnMute.second})`);
+  // router - delivery
 
-  // cable draw-in fires on new wire - assert dashoffset == --cable-length, not guessed mid-animation snapshot
-  const drew = await jsRaw(`(async () => {
-    const a = spawnLogicNode('clock', 900, 100), b = spawnLogicNode('gate', 1100, 100);
-    await new Promise(r => setTimeout(r, 120)); // let geometry settle so cable isn't skipped
-    autoWire(a, b); renderCables();
-    const p = [...document.querySelectorAll('#static-cables .cable-path')].pop();
-    if (!p) return null;
-    const cs = getComputedStyle(p);
-    const varLen = parseFloat(cs.getPropertyValue('--cable-length')) || 0;
-    return { cls: p.classList.contains('cable-draw-in'), off: parseFloat(cs.strokeDashoffset), varLen };
-  })()`, true);
-  // exact equality too strict - sliver of animation can elapse even at zero wait; >= 90% still proves "read at animation start"
-  ok(drew && drew.cls && drew.varLen > 0 && drew.off >= drew.varLen * 0.9,
-    `new wire animates in from near its full length (draw-in class + dashoffset ≈ --cable-length, not timing-guessed snapshot: ${JSON.stringify(drew)})`);
+  await run('primitives land in text, value and checked', async () => {
+    const pb = T.pb();
+    const d = T.sink(pb, 'c'), i = T.sink(pb, 'c', 'input'), cb = T.el('<input type="checkbox" data-scv-receives="c">'); pb.append(cb);
+    pb.routeSend('c', 'true');
+    return [d.textContent === 'true' && i.value === 'true' && cb.checked === true, [d.textContent, i.value, cb.checked]];
+  });
 
-  // setMode('use'): hides wire canvas, detaches editor pointer listeners, still routes
-  const useMode = await jsRaw(`(() => {
-    setMode('use');
-    const canvasClass = document.getElementById('canvas-container').className; // no 'mode-edit'
-    const wireHidden = document.getElementById('wire-canvas').classList.contains('hidden');
-    // routing still works in use mode (runtime runs); spawn stays edit-only
-    const r = document.createElement('div'); r.id = 'um_r'; r.setAttribute('data-scv-receives', 'um_ch'); document.getElementById('zoom-layer').appendChild(r);
-    invalidateCache();
-    routeSend('um_ch', 'live');
-    const mode = session.mode;
-    setMode('edit');
-    return { mode, notEdit: !/mode-edit/.test(canvasClass), wireHidden, routed: document.getElementById('um_r').textContent };
-  })()`);
-  ok(useMode && useMode.mode === 'use' && useMode.notEdit && useMode.wireHidden && useMode.routed === 'live',
-    `setMode('use') hides cables, drops edit chrome, still routes (${JSON.stringify(useMode)})`);
+  await run('objects arrive by event only, never stringified into dom', async () => {
+    const pb = T.pb(), d = T.sink(pb, 'c'); d.textContent = 'kept';
+    const obj = { a: 1 };
+    pb.routeSend('c', obj);
+    return [d.textContent === 'kept' && d.log[0] === obj, d.textContent];
+  });
 
-  // wired checkbox emits 1 on check / 0 on uncheck, toggles wired gate once per click (follow-up change must not re-emit)
-  const chkBox = await jsRaw(`(() => {
-    setMode('use');
-    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = 'chk';
-    cb.setAttribute('data-scv-emits', 'chk_ch'); document.getElementById('zoom-layer').appendChild(cb);
-    const r = document.createElement('div'); r.id = 'chk_r'; r.setAttribute('data-scv-receives', 'chk_ch'); document.getElementById('zoom-layer').appendChild(r);
-    const g = spawnLogicNode('gate', 0, 0); g.setAttribute('data-scv-receives', 'chk_ch');
-    invalidateCache();
-    cb.click(); // check: routes 1, change fires but must not re-route
-    const v1 = document.getElementById('chk_r').textContent;
-    const g1 = g.classList.contains('active'); // active only if single 1 arrived once (no double-fire)
-    cb.click(); // uncheck: routes 0
-    const v0 = document.getElementById('chk_r').textContent;
-    setMode('edit');
-    return { v1, v0, g1, checked: cb.checked };
-  })()`);
-  ok(chkBox && String(chkBox.v1) === '1', `wired checkbox emits 1 when checked (got ${chkBox && JSON.stringify(chkBox.v1)})`);
-  ok(chkBox && String(chkBox.v0) === '0', `wired checkbox emits 0 when unchecked (got ${chkBox && JSON.stringify(chkBox.v0)})`);
-  ok(chkBox && chkBox.g1 === true, `single checkbox click toggles wired gate exactly once (got active=${chkBox && chkBox.g1})`);
+  await run('pulse writes nothing, fires receive and verb', async () => {
+    const pb = T.pb(), d = T.sink(pb, 'c'); d.textContent = 'kept'; d.setAttribute('data-scv-action', 'hide');
+    pb.routeSend('c', T.kit.pulse());
+    return [d.textContent === 'kept' && T.kit.isPulse(d.log[0]) && d.style.display === 'none', [d.textContent, d.style.display]];
+  });
 
-  // radio carries picked option - checkbox is boolean, radio group is range
-  const radio = await jsRaw(`(() => {
-    setMode('use');
-    const zl = document.getElementById('zoom-layer');
-    const mk = v => { const r = document.createElement('input'); r.type = 'radio'; r.name = 'rg'; r.value = v; r.id = 'rad' + v;
-      r.setAttribute('data-scv-emits', 'rad_ch'); zl.appendChild(r); return r; };
-    const a = mk('10'), b = mk('20'), c = mk('30');
-    const out = document.createElement('div'); out.id = 'rad_r'; out.setAttribute('data-scv-receives', 'rad_ch'); zl.appendChild(out);
-    const acc = spawnLogicNode('accumulator', 0, 0); acc.setAttribute('data-scv-receives', 'rad_ch');
-    acc.querySelector('.scv-logic-input').value = '0';
-    invalidateCache();
-    a.click(); const v10 = document.getElementById('rad_r').textContent;
-    b.click(); const v20 = document.getElementById('rad_r').textContent;
-    c.click(); const v30 = document.getElementById('rad_r').textContent;
-    const sum = acc.querySelector('.scv-logic-input').value; // 60 only if each emitted once, carrying its own value
-    setMode('edit');
-    return { v10, v20, v30, sum };
-  })()`);
-  ok(radio && radio.v10 === '10' && radio.v20 === '20' && radio.v30 === '30',
-    `wired radio emits value that picked it, not bare 1 (got ${radio && JSON.stringify([radio.v10, radio.v20, radio.v30])})`);
-  ok(radio && String(radio.sum) === '60',
-    `each radio pick routes exactly once, carrying its value (accumulator ${radio && radio.sum}, want 60)`);
+  await run('scv-receive carries its channel', async () => {
+    const pb = T.pb(), d = T.sink(pb, 'c'); let ch;
+    d.addEventListener('scv-receive', e => { ch = e.channel; });
+    pb.routeSend('c', 1);
+    return [ch === 'c', ch];
+  });
 
-  // renderCables with zero cables is safe no-op
-  const zeroCables = await jsRaw(`(() => {
-    document.querySelectorAll('scv-logic, .comp-wrapper, [id$="_r"], #rcv, #mrcv, #crcv, #vr, #qrcv').forEach(n => n.remove());
-    invalidateCache();
-    try { renderCables(); return { threw: false, paths: document.querySelectorAll('#static-cables .cable-path').length }; }
-    catch (e) { return { threw: e.message }; }
-  })()`);
-  ok(zeroCables && !zeroCables.threw && zeroCables.paths === 0, `renderCables with no wires is safe no-op (${JSON.stringify(zeroCables)})`);
+  await run('pass-through never echoes back on incoming channel', async () => {
+    const pb = T.pb(), d = T.sink(pb, 'a'); d.setAttribute('data-scv-emits', 'a b');
+    const b = T.sink(pb, 'b'); let echoes = 0;
+    d.addEventListener('scv-receive', () => echoes++);
+    pb.routeSend('a', 5);
+    return [echoes === 1 && b.log[0] === 5, { echoes, b: b.log }];
+  });
 
-  // handlePasteData with full quine document: parts import, channels remap, no cross-wire
-  const quinePaste = await jsRaw(`(async () => {
-    // build tiny 2-node wired board and capture its quine
-    setMode('edit');
-    document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    const a = spawnLogicNode('reader', 100, 100); a.querySelector('.scv-logic-input').value = '3'; a.dispatchEvent(new CustomEvent('scv-receive', { detail: 3 }));
-    const b = spawnLogicNode('accumulator', 300, 100); b.querySelector('.scv-logic-input').value = '0';
-    autoWire(a, b);
-    let blob = null; const oc = URL.createObjectURL, orv = URL.revokeObjectURL;
-    URL.createObjectURL = x => { blob = x; return 'blob:x'; }; URL.revokeObjectURL = () => {};
-    await saveQuine();
-    URL.createObjectURL = oc; URL.revokeObjectURL = orv;
-    const quine = await blob.text();
-    // now clear and import quine document via handlePasteData (drop == open)
-    document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    const before = document.querySelectorAll('scv-logic').length;
-    handlePasteData(quine);
-    await new Promise(r => setTimeout(r, 200));
-    const after = document.querySelectorAll('scv-logic').length;
-    // imported pair still routes internally (channels remapped) - store in reader, trigger it, it emits through restored wire
-    const rd = [...document.querySelectorAll('scv-logic')].find(n => n.dataset.type === 'reader');
-    const acc = [...document.querySelectorAll('scv-logic')].find(n => n.dataset.type === 'accumulator');
-    let acVal = null, crossWired = null;
-    if (rd && acc) {
-      acc.querySelector('.scv-logic-input').value = '0';
-      rd.dispatchEvent(new CustomEvent('scv-receive', { detail: 5 })); // store 5
-      rd.dispatchEvent(new CustomEvent('scv-receive', { detail: 1 })); // trigger > 5 down wire
-      acVal = acc.querySelector('.scv-logic-input').value;
-      // imported reader's emit channel must be fresh id, not original (no cross-wire risk)
-      crossWired = (rd.getAttribute('data-scv-emits') || '').includes('ch_reader_');
+  await run('cycle stops at depth limit, no hang', async () => {
+    const pb = T.pb(), a = T.sink(pb, 'x'); a.setAttribute('data-scv-emits', 'y');
+    const b = T.sink(pb, 'y'); b.setAttribute('data-scv-emits', 'x');
+    pb.routeSend('x', 1);
+    return [a.log.length === 10 && b.log.length === 10, { a: a.log.length, b: b.log.length }];
+  });
+
+  await run('cache follows dom: added receiver gets next value', async () => {
+    const pb = T.pb(); T.sink(pb, 'c');
+    pb.routeSend('c', 1);
+    const late = T.sink(pb, 'c'); await 0;
+    pb.routeSend('c', 2);
+    return [late.log.join() === '2', late.log];
+  });
+
+  await run('cache follows wiring attribute edits', async () => {
+    const pb = T.pb(), d = T.sink(pb, 'c');
+    pb.routeSend('c', 1);
+    d.setAttribute('data-scv-receives', 'other'); await 0;
+    pb.routeSend('c', 2);
+    return [d.log.join() === '1', d.log];
+  });
+
+  await run('two patchbays never share channel', async () => {
+    const a = T.pb(), b = T.pb(), da = T.sink(a, 'c'), db = T.sink(b, 'c');
+    a.routeSend('c', 1);
+    return [da.log.length === 1 && db.log.length === 0, [da.log, db.log]];
+  });
+
+  // router - gestures and emitters
+
+  await run('wired native input routes its value', async () => {
+    const pb = T.pb(), i = T.el('<input data-scv-emits="c">'); pb.append(i);
+    const d = T.sink(pb, 'c');
+    i.value = 'hi'; i.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    return [d.log.join() === 'hi', d.log];
+  });
+
+  await run('raw gestures held in edit mode', async () => {
+    const pb = T.pb(), i = T.el('<input data-scv-emits="c">'); pb.append(i);
+    const d = T.sink(pb, 'c'); pb.mode = 'edit';
+    i.value = 'hi'; i.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    return [d.log.length === 0, d.log];
+  });
+
+  await run('wired link click never navigates', async () => {
+    const pb = T.pb(), a = T.el('<a href="#nowhere" data-scv-emits="c">go</a>'); pb.append(a);
+    T.sink(pb, 'c');
+    const ev = new MouseEvent('click', { bubbles: true, cancelable: true, composed: true });
+    a.dispatchEvent(ev);
+    return [ev.defaultPrevented && location.hash !== '#nowhere', location.hash];
+  });
+
+  await run('closest emitter wins: wired input inside component routes its own value', async () => {
+    const pb = T.pb();
+    const tag = T.comp('ce1', '<input class="i">');
+    const host = T.item(pb, document.createElement(tag)); host.setAttribute('data-scv-emits', 'host');
+    const i = host.shadowRoot.querySelector('.i'); i.setAttribute('data-scv-emits', 'inner');
+    const dh = T.sink(pb, 'host'), di = T.sink(pb, 'inner');
+    i.value = 'v'; i.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    return [di.log.join() === 'v' && dh.log.length === 0, { inner: di.log, host: dh.log }];
+  });
+
+  await run('component host never routes raw inner values', async () => {
+    const pb = T.pb();
+    const tag = T.comp('ce2', '<input class="i">');
+    const host = T.item(pb, document.createElement(tag)); host.setAttribute('data-scv-emits', 'host');
+    const dh = T.sink(pb, 'host');
+    const i = host.shadowRoot.querySelector('.i'); i.value = 'raw'; i.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    return [dh.log.length === 0, dh.log];
+  });
+
+  await run('emit(v) routes from host, emit(v, el) from inner element', async () => {
+    const pb = T.pb();
+    const tag = T.comp('ce3', '<b class="b"></b><script>host.go = () => { emit(1); emit(2, root.querySelector(".b")); };</script>');
+    const host = T.item(pb, document.createElement(tag)); host.setAttribute('data-scv-emits', 'host');
+    host.shadowRoot.querySelector('.b').setAttribute('data-scv-emits', 'inner');
+    const dh = T.sink(pb, 'host'), di = T.sink(pb, 'inner');
+    host.go();
+    return [dh.log.join() === '1' && di.log.join() === '2', { host: dh.log, inner: di.log }];
+  });
+
+  await run('script-emitted element routes once per change', async () => {
+    const pb = T.pb();
+    const tag = T.comp('ce4', '<input class="i"><script>const i = root.querySelector(".i"); i.addEventListener("input", () => emit(i.value.toUpperCase(), i));</script>');
+    const host = T.item(pb, document.createElement(tag));
+    const i = host.shadowRoot.querySelector('.i'); i.setAttribute('data-scv-emits', 'c');
+    const d = T.sink(pb, 'c');
+    i.value = 'x'; i.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    i.value = 'y'; i.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    return [d.log.join() === 'X,Y', d.log];
+  });
+
+  await run('emit(pulse) sends fresh pulse', async () => {
+    const pb = T.pb();
+    const tag = T.comp('ce5', '<script>host.go = () => emit(pulse);</script>');
+    const host = T.item(pb, document.createElement(tag)); host.setAttribute('data-scv-emits', 'c');
+    const d = T.sink(pb, 'c'); host.go();
+    return [T.kit.isPulse(d.log[0]) && typeof d.log[0].t === 'number', d.log];
+  });
+
+  // router - verbs
+
+  await run('toggle hides then restores original display', async () => {
+    const pb = T.pb(), d = T.sink(pb, 'c'); d.style.display = 'inline-block'; d.setAttribute('data-scv-action', 'toggle');
+    pb.routeSend('c', T.kit.pulse()); const hidden = d.style.display;
+    pb.routeSend('c', T.kit.pulse());
+    return [hidden === 'none' && d.style.display === 'inline-block', [hidden, d.style.display]];
+  });
+
+  await run('increment bumps text and announces it', async () => {
+    const pb = T.pb(), d = T.sink(pb, 'c'); d.textContent = '4'; d.setAttribute('data-scv-action', 'increment');
+    pb.routeSend('c', T.kit.pulse());
+    return [d.textContent === '5' && d.log.includes(5), [d.textContent, d.log]];
+  });
+
+  await run('clone copies whole item with fresh id and no wiring', async () => {
+    const pb = T.pb(), d = T.el('<p data-scv-id="orig" data-scv-receives="c" data-scv-action="clone">x</p>');
+    const it = T.item(pb, d, 10, 20).parentElement;
+    pb.routeSend('c', T.kit.pulse());
+    const items = pb.querySelectorAll('scv-item'), copy = items[1]?.firstElementChild;
+    return [items.length === 2 && copy.dataset.scvId !== 'orig' && !copy.hasAttribute('data-scv-receives') && items[1].style.left === '34px', [items.length, copy?.outerHTML, items[1]?.style.left]];
+  });
+
+  await run('delete removes whole item', async () => {
+    const pb = T.pb(), d = T.el('<p data-scv-receives="c" data-scv-action="delete">x</p>');
+    T.item(pb, d);
+    pb.routeSend('c', T.kit.pulse());
+    return [pb.querySelectorAll('scv-item').length === 0, pb.innerHTML];
+  });
+
+  // pulses
+
+  await run('pulse is branded and frozen, data 1 is no pulse', async () => {
+    const p = T.kit.pulse(5);
+    return [T.kit.isPulse(p) && Object.isFrozen(p) && p.t === 5 && !T.kit.isPulse(1) && !T.kit.isPulse({ t: 5 }), p];
+  });
+
+  // clock
+
+  await run('clock pulses on its grid, t in period steps', async () => {
+    const pb = T.pb(), c = T.node(pb, 'clock', { value: '40', 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    await T.sleep(230); c.remove();
+    const steps = d.log.slice(1).map((p, i) => Math.round(p.t - d.log[i].t));
+    return [d.log.length >= 3 && d.log.every(T.kit.isPulse) && steps.every(s => s > 0 && s % 40 === 0) && d.log.every(p => Math.round(p.t) % 40 === 0), { n: d.log.length, steps }];
+  });
+
+  await run('offbeat clock lands half period off', async () => {
+    const pb = T.pb(), c = T.node(pb, 'clock', { value: '60', mode: 'offbeat', 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    await T.sleep(150); c.remove();
+    return [d.log.length >= 1 && d.log.every(p => Math.round(p.t) % 60 === 30), d.log.map(p => Math.round(p.t) % 60)];
+  });
+
+  await run('clock data sets interval attribute', async () => {
+    const pb = T.pb(), c = T.node(pb, 'clock', { value: '1000' });
+    c.receive(250, 'x'); c.receive('fast', 'x');
+    c.remove();
+    return [c.getAttribute('value') === '250', c.getAttribute('value')];
+  });
+
+  await run('clock click pulses now without moving schedule', async () => {
+    const pb = T.pb(), c = T.node(pb, 'clock', { value: '5000', 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    const before = c._clkNext; c.trigger(); const after = c._clkNext; c.remove();
+    return [d.log.length === 1 && T.kit.isPulse(d.log[0]) && before === after, { n: d.log.length, before, after }];
+  });
+
+  await run('removed clock stops, moved clock keeps ticking', async () => {
+    const pb = T.pb(), gone = T.node(pb, 'clock', { value: '30', 'data-scv-emits': 'g' }), moved = T.node(pb, 'clock', { value: '30', 'data-scv-emits': 'm' });
+    const dg = T.sink(pb, 'g'), dm = T.sink(pb, 'm');
+    gone.remove(); pb.append(moved); // same task - move, not delete
+    await T.sleep(200);
+    const n = dm.log.length; moved.remove();
+    return [dg.log.length === 0 && n >= 3, { gone: dg.log.length, moved: n }];
+  });
+
+  await run('clock behind resyncs without burst', async () => {
+    const pb = T.pb(), c = T.node(pb, 'clock', { value: '20', 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    await T.sleep(30); const t0 = performance.now(); while (performance.now() - t0 < 300); // ~15 periods blocked
+    const before = d.log.length; await T.sleep(15); c.remove(); // resync: one pulse, maybe next slot
+    return [d.log.length - before <= 2, { before, after: d.log.length }];
+  });
+
+  // nodes
+
+  await run('accumulator: pulse counts, data sums, alt resets', async () => {
+    const pb = T.pb(), a = T.node(pb, 'accumulator', { 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    a.trigger(); a.receive(T.kit.pulse(), 'x'); a.receive(1, 'x'); a.receive(10, 'x'); a.receive(Infinity, 'x');
+    const v = a.getAttribute('value'); a.cycleMode();
+    return [v === '13' && a.getAttribute('value') === '0' && d.log.join() === '1,2,3,13,13,0', { v, log: d.log }];
+  });
+
+  await run('variable: data stores and emits, pulse re-emits, last persists', async () => {
+    const pb = T.pb(), v = T.node(pb, 'variable', { value: 'speed', 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    v.receive(42, 'x'); v.trigger();
+    return [d.log.join() === '42,42' && v.getAttribute('last') === '42', { log: d.log, last: v.getAttribute('last') }];
+  });
+
+  await run('variable const locks name to its owner', async () => {
+    const pb = T.pb(), a = T.node(pb, 'variable', { value: 'k', mode: 'const' }), b = T.node(pb, 'variable', { value: 'k' });
+    const m = T.node(pb, 'mutator', { value: 'k', 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    a.receive(5, 'x'); b.receive(9, 'x'); m.receive(0, 'x'); a.receive(7, 'x'); m.receive(0, 'x');
+    return [d.log.join() === '5,7', d.log];
+  });
+
+  await run('variable rename frees old name', async () => {
+    const pb = T.pb(), a = T.node(pb, 'variable', { value: 'old' }), m = T.node(pb, 'mutator', { value: 'typeof old', 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    a.receive(1, 'x'); m.receive(0, 'x'); a.setAttribute('value', 'fresh'); m.receive(0, 'x');
+    return [d.log.join() === 'number,undefined', d.log];
+  });
+
+  await run('gate: click flips, pulses and data pass while open', async () => {
+    const pb = T.pb(), g = T.node(pb, 'gate', { 'data-scv-emits': 'c' }), d = T.sink(pb, 'c'), p = T.kit.pulse();
+    g.receive(1, 'x'); g.trigger(); const open = g.hasAttribute('open');
+    g.receive(1, 'x'); g.receive(p, 'x'); g.trigger(); g.receive(2, 'x');
+    return [open && !g.hasAttribute('open') && d.log.length === 2 && d.log[0] === 1 && d.log[1] === p, { open, log: d.log }];
+  });
+
+  await run('action show, hide and toggle open, close and flip gate', async () => {
+    const pb = T.pb(), g = T.node(pb, 'gate', { 'data-scv-receives': 'c' }), a = T.node(pb, 'action', { 'data-scv-emits': 'c' }), seq = [];
+    for (const verb of ['show', 'show', 'hide', 'toggle']) { a.setAttribute('value', verb); a.trigger(); seq.push(g.hasAttribute('open')); }
+    return [seq.join() === 'true,true,false,true' && g.style.display === '', seq];
+  });
+
+  await run('action increment steps accumulator', async () => {
+    const pb = T.pb(), n = T.node(pb, 'accumulator', { 'data-scv-receives': 'c' }), a = T.node(pb, 'action', { value: 'increment', 'data-scv-emits': 'c' });
+    a.trigger(); a.trigger();
+    return [n.getAttribute('value') === '2', n.getAttribute('value')];
+  });
+
+  await run('gate once passes one value then closes', async () => {
+    const pb = T.pb(), g = T.node(pb, 'gate', { mode: 'once', open: '', 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    g.receive('a', 'x'); g.receive('b', 'x');
+    return [d.log.join() === 'a' && !g.hasAttribute('open'), d.log];
+  });
+
+  await run('comparator: latest per wire, arrival order stops mattering', async () => {
+    const pb = T.pb(), c = T.node(pb, 'comparator', { 'data-scv-receives': 'a b', 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    c.receive(3, 'a'); c.receive(4, 'a'); c.receive(4, 'b');
+    return [d.log.length === 1 && T.kit.isPulse(d.log[0]), d.log];
+  });
+
+  await run('comparator one wire detects change in ne mode', async () => {
+    const pb = T.pb(), c = T.node(pb, 'comparator', { mode: 'ne', 'data-scv-receives': 'a', 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    c.receive(1, 'a'); c.receive(1, 'a'); c.receive(2, 'a'); c.receive(2, 'a');
+    return [d.log.length === 1, d.log.length];
+  });
+
+  await run('mutator map: result emitted, undefined emits nothing, pulse in scope', async () => {
+    const pb = T.pb(), m = T.node(pb, 'mutator', { value: 'v > 10 ? pulse : (v > 5 ? v * 2 : undefined)', 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    m.receive(1, 'x'); m.receive(6, 'x'); m.receive(20, 'x');
+    return [d.log.length === 2 && d.log[0] === 12 && T.kit.isPulse(d.log[1]), d.log];
+  });
+
+  await run('mutator filter passes v when truthy', async () => {
+    const pb = T.pb(), m = T.node(pb, 'mutator', { value: 'v % 2', mode: 'filter', 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    [1, 2, 3, 4].forEach(v => m.receive(v, 'x'));
+    return [d.log.join() === '1,3', d.log];
+  });
+
+  await run('mutator click re-runs on last data, kept across reopen as last', async () => {
+    const pb = T.pb(), m = T.node(pb, 'mutator', { value: 'v + 1', 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    m.trigger(); m.receive(1, 'x'); m.trigger();
+    return [d.log.join() === '2,2' && m.getAttribute('last') === '1', { log: d.log, last: m.getAttribute('last') }];
+  });
+
+  await run('error state sticks until next success', async () => {
+    const pb = T.pb(), m = T.node(pb, 'mutator', { value: 'v.x.y' });
+    const warn = console.warn; console.warn = () => {};
+    try { m.receive(null, 'x'); } finally { console.warn = warn; }
+    const bad = m.states.has('error'); await T.sleep(50); const still = m.states.has('error');
+    m.receive({ x: { y: 1 } }, 'x');
+    return [bad && still && !m.states.has('error'), { bad, still, after: m.states.has('error') }];
+  });
+
+  await run('sample stores quietly, pulse emits held, follow passes through', async () => {
+    const pb = T.pb(), s = T.node(pb, 'sample', { 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    s.receive(1, 'x'); const quiet = d.log.length; s.trigger(); s.cycleMode(); s.receive(2, 'x');
+    return [quiet === 0 && d.log.join() === '1,2' && s.getAttribute('mode') === 'follow' && s.getAttribute('last') === '2', { quiet, log: d.log }];
+  });
+
+  await run('delay: pulse out later is fresh, data out later as itself', async () => {
+    const pb = T.pb(), dl = T.node(pb, 'delay', { value: '30', 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    const p = T.kit.pulse(); dl.receive(p, 'x'); dl.receive('v', 'x'); const early = d.log.length;
+    await T.sleep(80);
+    return [early === 0 && d.log.length === 2 && T.kit.isPulse(d.log[0]) && d.log[0] !== p && d.log[0].t >= p.t + 25 && d.log[1] === 'v', { early, log: d.log }];
+  });
+
+  await run('debounce emits only last arrival', async () => {
+    const pb = T.pb(), dl = T.node(pb, 'delay', { value: '40', mode: 'debounce', 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    dl.receive(1, 'x'); await T.sleep(10); dl.receive(2, 'x'); await T.sleep(10); dl.receive(3, 'x');
+    await T.sleep(90);
+    return [d.log.join() === '3', d.log];
+  });
+
+  await run('removed delay never fires', async () => {
+    const pb = T.pb(), dl = T.node(pb, 'delay', { value: '30', 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    dl.receive(1, 'x'); dl.remove(); await T.sleep(80);
+    return [d.log.length === 0, d.log];
+  });
+
+  await run('action: pulse fires verb, data rides as payload, alt cycles verb', async () => {
+    const pb = T.pb(), a = T.node(pb, 'action', { value: 'prop:title', 'data-scv-emits': 'c' });
+    const t = T.el('<p data-scv-receives="c">x</p>'); pb.append(t);
+    a.receive('hello', 'x'); const title = t.title;
+    const b = T.node(pb, 'action'); b.cycleMode();
+    return [title === 'hello' && b.getAttribute('value') === 'hide', { title, verb: b.getAttribute('value') }];
+  });
+
+  await run('reserved variable name shows float', async () => {
+    const pb = T.pb(), v = T.node(pb, 'variable', { value: 'ok' });
+    v.setAttribute('value', 'pulse'); await T.frame(); await T.frame();
+    return [v.shadowRoot.querySelector('.float').textContent === 'reserved', v.shadowRoot.querySelector('.float').textContent];
+  });
+
+  await run('escape drops draft, blur commits nothing', async () => {
+    const pb = T.pb(), c = T.node(pb, 'clock', { value: '1000' }), i = c.shadowRoot.querySelector('.input');
+    pb.mode = 'edit'; c.expand(true); i.value = '5'; // visible, so focus lands
+    i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); i.dispatchEvent(new Event('change'));
+    c.remove();
+    return [i.value === '1000' && c.getAttribute('value') === '1000', [i.value, c.getAttribute('value')]];
+  });
+
+  await run('enter and change commit draft once', async () => {
+    const pb = T.pb(); window.__inputs = 0;
+    T.kit.runNodeSource("defineNode({ name: 'cnt', onInput() { window.__inputs++; } })");
+    const n = T.node(pb, 'cnt'), i = n.shadowRoot.querySelector('.input');
+    n.expand(true); i.value = 'x';
+    i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })); i.dispatchEvent(new Event('change'));
+    return [window.__inputs === 1, window.__inputs];
+  });
+
+  await run('mode cycles back to default and drops attribute', async () => {
+    const pb = T.pb(), c = T.node(pb, 'clock', { value: '9000' });
+    c.cycleMode(); const off = c.getAttribute('mode'); c.cycleMode(); c.remove();
+    return [off === 'offbeat' && !c.hasAttribute('mode'), [off, c.getAttribute('mode')]];
+  });
+
+  await run('node state lives only in host attributes, light dom empty', async () => {
+    const pb = T.pb(), n = T.node(pb, 'accumulator'); n.trigger();
+    return [n.childNodes.length === 0 && n.shadowRoot && n.getAttribute('value') === '1', n.outerHTML];
+  });
+
+  await run('float written once per frame for burst', async () => {
+    const pb = T.pb(), a = T.node(pb, 'accumulator'), f = a.shadowRoot.querySelector('.float');
+    let writes = 0; const animate = f.animate.bind(f); f.animate = (...x) => { writes++; return animate(...x); };
+    for (let i = 0; i < 50; i++) a.trigger();
+    await T.frame(); await T.frame();
+    return [f.textContent === '50' && writes === 1, [f.textContent, writes]];
+  });
+
+  await run('custom node: onPulse, onReceive and re-point on redefine', async () => {
+    const pb = T.pb();
+    T.kit.runNodeSource("defineNode({ name: 'dbl', onReceive(v, ctx) { ctx.emit(v * 2); }, onPulse(ctx) { ctx.emit('p'); } })");
+    const n = T.node(pb, 'dbl', { 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    n.receive(3, 'x'); n.trigger();
+    T.kit.runNodeSource("defineNode({ name: 'dbl', onReceive(v, ctx) { ctx.emit(v * 3); } })");
+    n.receive(3, 'x');
+    return [d.log.join() === '6,p,9', d.log];
+  });
+
+  await run('custom node arriving before its def picks it up', async () => {
+    const pb = T.pb(), n = T.node(pb, 'late', { 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    n.receive(1, 'x');
+    T.kit.runNodeSource("defineNode({ name: 'late', icon: 'L8', onReceive(v, ctx) { ctx.emit(v + 1); } })");
+    n.receive(1, 'x');
+    return [d.log.join() === '2' && n.shadowRoot.querySelector('.dot').textContent === 'L8', d.log];
+  });
+
+  await run('built-in names refused for custom defs', async () => {
+    const warn = console.warn; console.warn = () => {};
+    let r; try { r = T.kit.defineNode({ name: 'clock' }); } finally { console.warn = warn; }
+    return [r === null, r];
+  });
+
+  await run('wired checkbox emits 1 checked, 0 unchecked', async () => {
+    const pb = T.pb(), cb = T.el('<input type="checkbox" data-scv-emits="c">'); pb.append(cb);
+    const d = T.sink(pb, 'c'); cb.click(); cb.click();
+    return [d.log.join() === '1,0', d.log];
+  });
+
+  await run('method verb calls receiver, a throwing one is contained', async () => {
+    const pb = T.pb(), b = T.el('<button data-scv-receives="c" data-scv-action="method:click">x</button>'), s = T.el('<p data-scv-receives="c" data-scv-action="method:setAttribute">x</p>');
+    let clicks = 0; b.addEventListener('click', () => clicks++); pb.append(b, s);
+    const warn = console.warn; console.warn = () => {};
+    try { pb.routeSend('c', 'title'); } finally { console.warn = warn; }
+    return [clicks === 1 && s.attributes.length === 2, [clicks, s.attributes.length]];
+  });
+
+  await run('event verb dispatches value as detail', async () => {
+    const pb = T.pb(), el = T.el('<p data-scv-action="event:ping:c">x</p>'); pb.append(el); let got;
+    el.addEventListener('ping', e => { got = e.detail; });
+    pb.routeSend('c', 42);
+    return [got === 42, got];
+  });
+
+  await run('custom def icon renders as text, input type stays safe', async () => {
+    T.kit.runNodeSource(`defineNode({ name: 'esc1', icon: '<b>x</b>', inputType: 'text" onfocus="window.__x=1' })`);
+    const pb = T.pb(), n = T.node(pb, 'esc1'), sr = n.shadowRoot;
+    return [sr.querySelector('.dot').textContent === '<b>x</b>' && !sr.querySelector('b') && sr.querySelector('.input').type === 'text' && !sr.querySelector('.input').hasAttribute('onfocus'), sr.innerHTML.length];
+  });
+
+  await run('variable refuses globals, v and non-identifiers', async () => {
+    const out = [];
+    for (const name of ['Math', 'v', '1bad', 'rate']) {
+      const pb = T.pb(), v = T.node(pb, 'variable', { value: name }), m = T.node(pb, 'mutator', { value: `typeof ${name === '1bad' ? 'rate' : name}`, 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+      v.receive(5, 'x'); m.receive(0, 'x'); out.push(d.log[0]);
     }
-    return { before, after, acVal, crossWired };
-  })()`, true);
-  ok(quinePaste && quinePaste.before === 0 && quinePaste.after === 2 && String(quinePaste.acVal) === '5' && quinePaste.crossWired === false,
-    `handlePasteData imports full quine doc, wiring intact and routing (${JSON.stringify(quinePaste)})`);
+    return [out.join() === 'object,number,undefined,number', out];
+  });
 
-  // central claim: saveQuine > reopen restores graph and live routing
-  const quineHtml = await jsRaw(`(async () => {
-    // fresh, minimal board: one accumulator wired from reader, plus plain receiver
-    document.querySelectorAll('scv-logic, .comp-wrapper, #rcv, #mrcv, #crcv').forEach(n => n.remove());
-    invalidateCache && invalidateCache();
-    const rd = spawnLogicNode('reader', 120, 120); rd.dataset.scvId = 'q_reader';
-    rd.querySelector('.scv-logic-input').value = '9';
-    const ac = spawnLogicNode('accumulator', 360, 120); ac.dataset.scvId = 'q_acc';
-    autoWire(rd, ac);
-    let captured = null;
-    const origCreate = URL.createObjectURL;
-    URL.createObjectURL = (blob) => { captured = blob; return 'blob:capture'; };
-    const origRevoke = URL.revokeObjectURL; URL.revokeObjectURL = () => {};
-    await saveQuine();
-    URL.createObjectURL = origCreate; URL.revokeObjectURL = origRevoke;
-    return captured ? await captured.text() : null;
-  })()`, true);
-  ok(typeof quineHtml === 'string' && quineHtml.includes('data-scv-runtime'), 'saveQuine produced stamped quine document');
+  await run('mutator compiles once per expression and variable set, recovers from broken text', async () => {
+    const pb = T.pb(), m = T.node(pb, 'mutator', { value: 'v * 2', 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    const F = window.Function; let made = 0; window.Function = function (...a) { if (String(a.at(-1)).startsWith('return (')) made++; return F(...a); }; // mutator compiles only
+    const warn = console.warn; console.warn = () => {};
+    try {
+      for (let i = 0; i < 5; i++) m.receive(i, 'x'); const same = made;
+      m.setAttribute('value', 'v * 3'); m.receive(1, 'x'); const edit = made;
+      const v = T.node(pb, 'variable', { value: 'k' }); v.receive(1, 'x'); m.receive(1, 'x'); const scope = made;
+      m.receive(2, 'x'); const repeat = made;
+      m.setAttribute('value', 'v *'); m.receive(3, 'x'); const broke = d.log.at(-1);
+      m.setAttribute('value', 'v + 1'); m.receive(3, 'x');
+      return [same === 1 && edit === 2 && scope === 3 && repeat === 3 && broke === 6 && d.log.at(-1) === 4, { same, edit, scope, repeat, broke, last: d.log.at(-1) }];
+    } finally { window.Function = F; console.warn = warn; }
+  });
 
-  if (typeof quineHtml === 'string') {
-    quineFile = join(tmpdir(), 'scv-quine-' + Date.now() + '.html');
-    writeFileSync(quineFile, quineHtml);
-    checkpointErrs('reopening the saved quine'); // no known noisy pattern named here, strict checkpoint (nothing filtered)
-    await load(pathToFileURL(quineFile).href);
-    const restored = await jsRaw(`(() => {
-      const nodes = [...document.querySelectorAll('scv-logic')];
-      const rd = document.querySelector('scv-logic[data-scv-id="q_reader"]');
-      const ac = document.querySelector('scv-logic[data-scv-id="q_acc"]');
-      const readerVal = rd && rd.querySelector('.scv-logic-input') ? rd.querySelector('.scv-logic-input').value : null;
-      const emits = (rd ? rd.getAttribute('data-scv-emits') : '') || '';
-      const receives = (ac ? ac.getAttribute('data-scv-receives') : '') || '';
-      // wire is channel target receives; source must also emit it
-      const wireCh = receives.split(' ').filter(Boolean)[0];
-      const wired = !!wireCh && emits.split(' ').includes(wireCh);
-      // live routing in reopened quine: send through restored wire > accumulator sums
-      let acVal = null;
-      if (ac && wireCh) { ac.querySelector('.scv-logic-input').value = '0'; routeSend(wireCh, 6); acVal = ac.querySelector('.scv-logic-input').value; }
-      return { count: nodes.length, readerVal, wired, acVal };
+  await run('sample holds 0 and re-emits it', async () => {
+    const pb = T.pb(), sm = T.node(pb, 'sample', { 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    sm.receive(0, 'x'); sm.trigger();
+    return [d.log.length === 1 && d.log[0] === 0, d.log];
+  });
+
+  await run('node chain past 20 hops stops with one warning', async () => {
+    const pb = T.pb(); let prev = T.node(pb, 'mutator', { value: 'v + 1', 'data-scv-emits': 'h0' });
+    const first = prev;
+    for (let i = 1; i < 25; i++) prev = T.node(pb, 'mutator', { value: 'v + 1', 'data-scv-receives': 'h' + (i - 1), 'data-scv-emits': 'h' + i });
+    const d = T.sink(pb, 'h24'); const warn = console.warn; let warned = 0; console.warn = () => warned++;
+    try { first.receive(0, 'x'); } finally { console.warn = warn; }
+    return [d.log.length === 0 && warned === 1, { got: d.log, warned }];
+  });
+
+  // component api
+
+  await run('shared: one instance, released one frame after last owner leaves', async () => {
+    const pb = T.pb(); window.__made = 0; window.__released = 0;
+    const tag = T.comp('sh1', '<script>host.res = shared("k1", () => ({ n: ++window.__made }), () => window.__released++);</script>');
+    const a = T.item(pb, document.createElement(tag)), b = T.item(pb, document.createElement(tag));
+    const same = a.res === b.res;
+    a.parentElement.remove(); await T.frame(); await T.frame(); const afterOne = window.__released;
+    b.parentElement.remove(); await T.frame(); await T.frame();
+    return [same && window.__made === 1 && afterOne === 0 && window.__released === 1, { same, made: window.__made, afterOne, released: window.__released }];
+  });
+
+  await run('onTeardown skips move, fires when really gone', async () => {
+    const pb = T.pb(); window.__td = 0;
+    const tag = T.comp('td1', '<script>onTeardown(() => window.__td++);</script>');
+    const it = T.item(pb, document.createElement(tag)).parentElement;
+    it.remove(); pb.append(it); await T.frame(); await T.frame(); const moved = window.__td;
+    it.remove(); await T.frame(); await T.frame();
+    return [moved === 0 && window.__td === 1, { moved, gone: window.__td }];
+  });
+
+  await run('signal aborts at teardown, rerun script never doubles host listener', async () => {
+    const pb = T.pb(); window.__pings = 0;
+    const tag = T.comp('sg1', '<b></b><script>host.addEventListener("ping", () => window.__pings++, { signal });</script>');
+    const host = T.item(pb, document.createElement(tag)), it = host.parentElement;
+    it.remove(); await T.frame(); await T.frame(); pb.append(it);
+    host.dispatchEvent(new Event('ping'));
+    return [window.__pings === 1, window.__pings];
+  });
+
+  await run('node signal aborts at teardown', async () => {
+    const pb = T.pb(); window.__aborts = 0;
+    T.kit.runNodeSource("defineNode({ name: 'sg2', init(ctx) { ctx.signal.addEventListener('abort', () => window.__aborts++); } })");
+    const n = T.node(pb, 'sg2'); n.remove(); await T.frame(); await T.frame();
+    return [window.__aborts === 1, window.__aborts];
+  });
+
+  await run('component and node scripts show named sources', async () => {
+    const pb = T.pb();
+    const tag = T.comp('su1', '<script>host.st = new Error().stack;</script>');
+    const host = T.item(pb, document.createElement(tag));
+    T.kit.runNodeSource("defineNode({ name: 'su2', init() { window.__st = new Error().stack; } })");
+    T.node(pb, 'su2');
+    return [host.st.includes('scv/scv-su1') && window.__st.includes('scv/su2'), [host.st.split('\n')[1], window.__st.split('\n')[1]]];
+  });
+
+  await run('patch skips unchanged writes', async () => {
+    const p = document.createElement('p'); document.body.append(p);
+    const recs = []; const mo = new MutationObserver(r => recs.push(...r)); mo.observe(p, { childList: true, attributes: true, characterData: true, subtree: true });
+    T.kit.patch(p, { text: 'a', class: 'x' }); T.kit.patch(p, { text: 'a', class: 'x' });
+    await 0; mo.disconnect(); p.remove();
+    return [recs.length === 2, recs.length];
+  });
+
+  await run('component back after teardown: fresh internals, same slot data', async () => {
+    const pb = T.pb(); window.__runs = 0;
+    const tag = T.comp('rb1', '<b data-scv-slot="n">0</b><script>window.__runs++;</script>');
+    const host = T.item(pb, document.createElement(tag)), it = host.parentElement;
+    const b0 = host.shadowRoot.querySelector('b'); b0.textContent = '9';
+    it.remove(); await T.frame(); await T.frame(); pb.append(it);
+    const b1 = host.shadowRoot.querySelector('b');
+    return [window.__runs === 2 && b1 !== b0 && b1.textContent === '9', { runs: window.__runs, text: b1.textContent }];
+  });
+
+  await run('redrop rebuilds instances on new script, keeps slot data and wiring', async () => {
+    const pb = T.pb();
+    T.comp('rd1', '<b data-scv-slot="n">0</b><i>v1</i><script>host.ver = 1;</script>');
+    const host = T.item(pb, document.createElement('scv-rd1'));
+    host.shadowRoot.querySelector('b').textContent = '5'; host.shadowRoot.querySelector('i').setAttribute('data-scv-receives', 'c');
+    T.comp('rd1', '<b data-scv-slot="n">0</b><i>v2</i><script>host.ver = 2;</script>');
+    const i = host.shadowRoot.querySelector('i');
+    return [host.ver === 2 && host.shadowRoot.querySelector('b').textContent === '5' && i.textContent === 'v2' && i.getAttribute('data-scv-receives') === 'c', { ver: host.ver, html: host.shadowRoot.innerHTML }];
+  });
+
+  // assets
+
+  await run('same bytes give same ref and one url', async () => {
+    const b = () => new Blob([new Uint8Array([1, 2, 3])]);
+    const r1 = await T.kit.asset.put(b()), r2 = await T.kit.asset.put(b());
+    return [r1 === r2 && r1.startsWith('scv-asset:') && T.kit.asset.url(r1).startsWith('blob:'), [r1, r2]];
+  });
+
+  await run('decode runs once per page per decoder', async () => {
+    const ref = await T.kit.asset.put(new Blob([new Uint8Array([9, 9])])); let n = 0;
+    const fn = buf => { n++; return buf.byteLength; };
+    const [a, b] = await Promise.all([T.kit.asset.decode(ref, fn), T.kit.asset.decode(ref, fn)]);
+    return [n === 1 && a === 2 && b === 2, { n, a, b }];
+  });
+
+  await run('asset css variable reaches component shadow', async () => {
+    const pb = T.pb();
+    const ref = await T.kit.asset.put(new Blob([new Uint8Array([7, 7, 7])], { type: 'image/png' }));
+    const hash = T.kit.asset.hashOf(ref);
+    const tag = T.comp('cv1', `<style>div { background-image: var(--scv-asset-${hash}); }</style><div></div>`);
+    const host = T.item(pb, document.createElement(tag));
+    const bg = getComputedStyle(host.shadowRoot.querySelector('div')).backgroundImage;
+    return [bg.includes('blob:'), bg];
+  });
+
+  await run('img with data-scv-src gets src when added', async () => {
+    const pb = T.pb(), ref = await T.kit.asset.put(new Blob([new Uint8Array([5])], { type: 'image/png' }));
+    const img = T.item(pb, T.el(`<img data-scv-src="${ref}">`)); await 0;
+    return [img.getAttribute('src') === T.kit.asset.url(ref), img.getAttribute('src')];
+  });
+
+  await run('asset table entry keeps odd mime type intact', async () => {
+    const ref = await T.kit.asset.put(new Blob([new Uint8Array([3, 1])], { type: 'text/x"q&' }));
+    const t = document.createElement('template'); t.innerHTML = await T.kit.asset.element(T.kit.asset.hashOf(ref));
+    return [t.content.firstElementChild.dataset.type === 'text/x"q&', t.innerHTML];
+  });
+
+  await run('redropped component instance compared against new def, saved bare', async () => {
+    const pb = T.pb();
+    T.comp('dk1', '<b>one</b>');
+    T.item(pb, document.createElement('scv-dk1'));
+    await pb.save('publish');
+    T.comp('dk1', '<b>two</b>');
+    const html = await (await pb.save('publish')).text();
+    return [/<scv-dk1><\/scv-dk1>/.test(html), html.match(/<scv-dk1>.*?<\/scv-dk1>/)?.[0]];
+  });
+
+  await run('harvest markup extracted exactly as def builds it', async () => {
+    const raw = '<p title="a`b">c\\d ${e} $f <\/script-ish> <!--x--></p>';
+    const embed = t => t.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$').replace(/<\/script/gi, '<\\/script').replace(/<!--/g, '<\\!--'); // kernel's escaping
+    const def = T.harvestDef('scv-esc1', embed(raw));
+    const live = document.createElement('scv-esc1').shadowRoot.innerHTML;
+    const t = document.createElement('template'); t.innerHTML = T.kit.extractShadowMarkup(def.textContent);
+    return [t.innerHTML === live, { got: t.innerHTML, live }];
+  });
+
+  await run('same-length edit keeps its shadow', async () => {
+    const pb = T.pb(); T.harvestDef('scv-sl1', '<p>hello</p>');
+    const host = T.item(pb, document.createElement('scv-sl1'));
+    host.shadowRoot.querySelector('p').textContent = 'jello';
+    const html = await (await pb.save('publish')).text();
+    return [html.includes('<p>jello</p>'), html.match(/<scv-sl1>.*?<\/scv-sl1>/)?.[0]];
+  });
+
+  await run('text that reads like blob src survives save', async () => {
+    const pb = T.pb(); T.item(pb, T.el('<pre data-scv-id="code">img src="blob:abc" stays</pre>'));
+    const html = await (await pb.save('publish')).text();
+    return [html.includes('img src="blob:abc" stays'), html.match(/<pre.*?<\/pre>/)?.[0]];
+  });
+
+  // save - one fixture, three exports, each reopened
+
+  const built = await js(`(async () => {
+    document.querySelectorAll('scv-patchbay').forEach(p => p.remove());
+    const pb = T.pb(), kit = T.kit;
+    pb.id = 'main';
+    T.harvestDef('scv-hv', '<style>p{color:red}</style><p class="t">hello</p><input value="x">');
+    T.harvestDef('scv-unused', '<p>never placed</p>');
+    const h1 = T.item(pb, document.createElement('scv-hv'), 10, 10), h2 = T.item(pb, document.createElement('scv-hv'), 300, 10);
+    h2.shadowRoot.querySelector('input').value = 'typed';
+    h2.shadowRoot.querySelector('p').setAttribute('data-scv-receives', 'ch1');
+    T.comp('meter', '<b data-scv-slot="n">0</b><button>+</button><script>const b = root.querySelector("b"); root.querySelector("button").onclick = () => { b.textContent = Number(b.textContent) + 1; emit(Number(b.textContent)); };</script>');
+    T.comp('spare', '<i>not placed</i>');
+    const m = T.item(pb, document.createElement('scv-meter'), 10, 200); m.setAttribute('data-scv-emits', 'ch1');
+    m.shadowRoot.querySelector('button').click(); m.shadowRoot.querySelector('button').click();
+    const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), c => c.charCodeAt(0));
+    const ref = await kit.asset.put(new Blob([png], { type: 'image/png' }));
+    await kit.asset.put(new Blob([new Uint8Array([4, 4])])); // never referenced - pruned
+    T.item(pb, T.el('<img data-scv-id="i1" data-scv-src="' + ref + '">'), 500, 200);
+    T.item(pb, T.el('<img data-scv-id="i2" data-scv-src="' + ref + '">'), 520, 200);
+    T.item(pb, T.el('<img data-scv-id="i3" src="/img.png">'), 540, 200);
+    T.item(pb, T.el('<img data-scv-id="i4" src="/img.png">'), 560, 200);
+    await Promise.all([...pb.querySelectorAll('img[src]')].map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; })));
+    kit.runNodeSource("defineNode({ name: 'twice', icon: '2', onReceive(v, ctx) { ctx.emit(v * 2); } })");
+    kit.runNodeSource("defineNode({ name: 'idle', icon: 'z' })");
+    T.node(pb, 'clock', { value: '750', mode: 'offbeat', style: 'left:50px;top:400px' });
+    T.node(pb, 'twice', { style: 'left:150px;top:400px' });
+    const g = T.node(pb, 'gate', { style: 'left:250px;top:400px' }); g.trigger();
+    const v = T.node(pb, 'variable', { value: 'speed', style: 'left:350px;top:400px' }); v.receive(42, 'x');
+    const n = T.node(pb, 'accumulator', { style: 'left:450px;top:400px' });
+    n.states.add('selected'); n.expand(true); h1.parentElement.states.add('selected');
+    T.node(pb, 'mutator', { value: 'v.x', style: 'left:550px;top:400px' }).receive(1, 'x'); // error state
+    const appended = document.createElement('scv-item'); appended.setAttribute('data-scv-appended', ''); pb.append(appended);
+    pb.mode = 'edit';
+    await T.frame();
+    const out = {};
+    for (const k of ['quine', 'view', 'publish']) out[k] = await (await pb.save(k)).text();
+    return out;
+  })()`);
+  ok(built && !built.threw, `fixture saved (${built?.threw})`);
+  for (const k of ['quine', 'view', 'publish']) saved.set(k, built?.[k] || '');
+  const q = saved.get('quine');
+  const body = q.slice(q.indexOf('<scv-patchbay'), q.indexOf('<script id="scv-boot">')); // state only - runtime source holds every word checked below
+  const items = body.slice(0, body.indexOf('</scv-patchbay>'));
+
+  ok(/<script id="scv-canvas">/.test(q) && /<script id="scv-studio">/.test(q) && /<script id="scv-runtime">/.test(q), 'quine carries runtime, canvas and studio scripts by id');
+  ok(/<script id="scv-canvas">/.test(saved.get('view')) && !/id="scv-studio"/.test(saved.get('view')), 'view keeps canvas, drops studio');
+  ok(!/id="scv-canvas"/.test(saved.get('publish')) && !/id="scv-studio"/.test(saved.get('publish')) && /id="scv-runtime"/.test(saved.get('publish')), 'publish keeps only runtime');
+  ok(!body.includes('blob:'), 'no blob url written into file');
+  const assets = (body.match(/<script type="scv\/asset"/g) || []).length;
+  ok(assets === 2, `each referenced asset once, unreferenced pruned (${assets})`);
+  ok(!/<img[^>]*\ssrc=/.test(items) && (items.match(/data-scv-src=/g) || []).length === 4, 'refs never sit in src, remote images interned');
+  ok(!q.includes('scv-unused') && !q.includes('not placed') && !q.includes("name: 'idle'"), 'unused harvest def, component template and node def pruned');
+  ok(!body.includes('data-scv-appended'), 'items recreated by node init are skipped');
+  ok(/<scv-patchbay[^>]*extent="\d+ \d+"/.test(q), 'extent written at save');
+  ok(!/<scv-patchbay[^>]*style=/.test(q), 'canvas view state never written to host');
+  ok(!/selected|expanded|error|class=""/.test(items), 'transient states never serialize');
+  ok(/<scv-logic data-type="gate" style="[^"]*" open=""><\/scv-logic>/.test(q), 'saved node is one line of attributes');
+  const shadows = (q.match(/<scv-hv[^>]*>(<template shadowrootmode)?/g) || []).map(s => s.includes('template'));
+  ok(shadows.join() === 'false,true', `unchanged harvest instance saved bare, changed one with its shadow (${shadows})`);
+  ok(imgFetches === 1, `remote image fetched once into table (${imgFetches})`);
+
+  ok(/^<!DOCTYPE html>  <!-- scavenge\.ar[^\n]*-->\n\n<html lang="en" data-scv-runtime="2\.\d+\.\d+">/.test(q), 'header: doctype and license, blank line, html lang en stamped');
+  ok(!/127\.0\.0\.1:9876/.test(body), 'quine bakes no quest api');
+
+  await run('last instance gone drops its def from save, undo-free live page keeps it', async () => {
+    const pb = T.pb(); T.harvestDef('scv-pr1', '<p>prune</p>');
+    const it = document.createElement('scv-item'); it.innerHTML = '<scv-pr1 data-scv-id="x"></scv-pr1>'; pb.append(it);
+    const withIt = await (await pb.save('publish')).text(); it.remove();
+    const without = await (await pb.save('publish')).text();
+    return [/customElements\.get\('scv-pr1'\)/.test(withIt) && !/scv-pr1/.test(without) && !!document.querySelector('script[data-scv-def]') && [...document.querySelectorAll('script[data-scv-def]')].some(s => s.textContent.includes('scv-pr1')), without.length];
+  });
+
+  await run('def used only inside a bare component shadow still ships', async () => {
+    const pb = T.pb(); T.harvestDef('scv-inner1', '<i>inner</i>');
+    T.comp('outer1', '<scv-inner1></scv-inner1>');
+    const it = document.createElement('scv-item'); it.innerHTML = '<scv-outer1 data-scv-id="o"></scv-outer1>'; pb.append(it); await T.frame();
+    const html = await (await pb.save('publish')).text();
+    return [/<scv-outer1 data-scv-id="o"><\/scv-outer1>/.test(html) && /customElements\.get\('scv-inner1'\)/.test(html), html.match(/<scv-outer1.*?<\/scv-outer1>/)?.[0]];
+  });
+
+  for (const k of ['quine', 'view', 'publish']) {
+    uncaught.length = 0;
+    await nav(`${base}/saved/${k}`);
+    const r = await js(`(async () => {
+      const pb = document.querySelector('scv-patchbay');
+      const nodes = [...pb.querySelectorAll('scv-logic')].map(n => [n.dataset.type, n.getAttribute('value'), n.getAttribute('mode'), n.hasAttribute('open'), n.getAttribute('last')].join('|'));
+      const hv = pb.querySelectorAll('scv-hv'), m = pb.querySelector('scv-meter'), imgs = [...pb.querySelectorAll('img')];
+      await Promise.all(imgs.map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; })));
+      const table = [...document.querySelectorAll('script[type="scv/asset"]')].every(s => s.textContent === '');
+      m.shadowRoot.querySelector('button').click();
+      return {
+        nodes, items: pb.querySelectorAll('scv-item').length,
+        bare: hv[0].shadowRoot?.querySelector('p')?.textContent, typed: hv[1].shadowRoot?.querySelector('input')?.value,
+        meter: m.shadowRoot.querySelector('b').textContent, routed: hv[1].shadowRoot.querySelector('p').textContent,
+        imgs: imgs.map(i => i.naturalWidth), table, twice: !!customElements.get('scv-logic') && pb.querySelector('[data-type="twice"]').shadowRoot.querySelector('.dot').textContent,
+        canvas: typeof pb.setView, studio: typeof pb.save, api: customElements.get('scv-patchbay').kit.quests.api(pb),
+      };
     })()`);
-    ok(restored && restored.count === 2, `reopened quine restored both nodes (got ${restored && restored.count})`);
-    ok(restored && restored.readerVal === '9', `reader value persisted through save/reopen (got ${restored && restored.readerVal})`);
-    ok(restored && restored.wired, 'wiring (shared channel) survived round-trip');
-    ok(restored && String(restored.acVal) === '6', `live routing works in reopened quine (got ${restored && restored.acVal})`);
+    ok(r && !r.threw, `${k} reopens (${r?.threw})`);
+    if (!r || r.threw) continue;
+    ok(r.nodes.join() === 'clock|750|offbeat|false|,twice|||false|,gate|||true|,variable|speed||false|42,accumulator|||false|,mutator|v.x||false|1', `${k}: node attributes round-trip (${r.nodes})`);
+    ok(r.items === 7, `${k}: items round-trip (${r.items})`);
+    ok(r.bare === 'hello' && r.typed === 'typed', `${k}: bare instance rebuilt by def, typed value kept (${r.bare}, ${r.typed})`);
+    ok(r.meter === '3' && r.routed === '3', `${k}: authored component keeps slot data and still routes (${r.meter}, ${r.routed})`);
+    ok(r.imgs.join() === '1,1,1,1' && r.table, `${k}: table images load, live dom drops base64 (${r.imgs}, ${r.table})`);
+    ok(r.twice === '2', `${k}: custom node def travels with file (${r.twice})`);
+    ok(r.canvas === (k === 'publish' ? 'undefined' : 'function') && r.studio === (k === 'quine' ? 'function' : 'undefined'), `${k}: behaviour matches script set (${r.canvas}, ${r.studio})`);
+    ok(r.api === (k === 'quine' ? 'http://127.0.0.1:9876' : base), `${k}: quest api default (${r.api})`);
+    ok(uncaught.length === 0, `${k}: no uncaught errors (${uncaught})`);
   }
 
-  // pasted/dropped clipboard bitmap > b64 <img> inside handled comp-wrapper (harvest-style import)
-  const imgPaste = await jsRaw(`(async () => {
-    setMode('edit');
-    document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    const png = new Uint8Array([${PNG_1PX}]);
-    const dt = new DataTransfer();
-    dt.items.add(new File([png], 'pixel.png', { type: 'image/png' }));
-    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-    await new Promise(r => setTimeout(r, 120));
-    const w = document.querySelector('.comp-wrapper');
-    const img = w && w.querySelector('img[data-scv-id]');
-    const src = img && img.getAttribute('src') || '';
-    return {
-      hasW: !!w, isData: src.startsWith('data:image/png;base64,'), hasId: !!img,
-      handles: w ? w.querySelectorAll('.comp-handles .comp-drag-handle, .comp-drag-edge').length > 0 : false,
-      selected: !!w && w.classList.contains('selected'),
-    };
-  })()`, true);
-  ok(imgPaste && imgPaste.hasW && imgPaste.isData && imgPaste.hasId && imgPaste.handles,
-    `clipboard bitmap paste spawns handled comp-wrapper <img> (${JSON.stringify(imgPaste)})`);
-  ok(imgPaste && imgPaste.selected, 'pasted image is active selection (handles shown)');
-  const imgUndo = await jsRaw(`(() => {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
-    return document.querySelectorAll('.comp-wrapper img[src^="data:image/"]').length === 0;
+  // quine generations: re-saving a reopened quine never grows it
+
+  {
+    let prev = q, sizes = [];
+    for (let g = 2; g <= 3; g++) {
+      saved.set('gen', prev);
+      await nav(`${base}/saved/gen`);
+      prev = await js(`(async () => (await document.querySelector('scv-patchbay').save('quine')).text())()`);
+      sizes.push(prev.length);
+    }
+    ok(sizes[0] === sizes[1], `quine size stable across generations (${sizes})`);
+  }
+
+  // script elements removed by hand
+
+  const strip = (html, id) => html.replace(new RegExp(`<script id="${id}">[\\s\\S]*?</script>\\n`), '');
+  saved.set('handview', strip(q, 'scv-studio'));
+  saved.set('handpub', strip(strip(q, 'scv-studio'), 'scv-canvas'));
+  for (const [k, canvas] of [['handview', 'function'], ['handpub', 'undefined']]) {
+    await nav(`${base}/saved/${k}`);
+    const r = await js(`(() => { const pb = document.querySelector('scv-patchbay'); return [typeof pb.setView, typeof pb.save, getComputedStyle(pb.querySelector('scv-logic')).display]; })()`);
+    ok(r && r[0] === canvas && r[1] === 'undefined', `quine with scripts removed by hand behaves as ${k === 'handview' ? 'view' : 'publish'} (${r})`);
+  }
+
+  await run('nodes hidden without studio even in edit state', async () => {
+    const pb = document.querySelector('scv-patchbay'); pb.mode = 'edit';
+    return [getComputedStyle(pb.querySelector('scv-logic')).display === 'none', getComputedStyle(pb.querySelector('scv-logic')).display];
+  });
+
+  // view
+
+  await nav(`${base}/saved/view`);
+  const view = await js(`(async () => {
+    const pb = document.querySelector('scv-patchbay');
+    pb.dispatchEvent(new WheelEvent('wheel', { deltaX: 10, deltaY: 20, bubbles: true, cancelable: true }));
+    const panned = pb.view;
+    pb.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, clientX: 100, clientY: 100, bubbles: true, cancelable: true }));
+    const at = pb.toCanvas(100, 100);
+    return { panned, zoom: pb.zoom, at };
   })()`);
-  ok(imgUndo, 'undo removes pasted image wrapper');
+  ok(view && view.panned.x === -10 && view.panned.y === -20, `view: wheel pans (${JSON.stringify(view?.panned)})`);
+  ok(view && view.zoom > 1 && Math.abs(view.at.x - 110) < 0.01 && Math.abs(view.at.y - 120) < 0.01, `view: ctrl-wheel zooms about pointer (${JSON.stringify(view)})`);
 
-  // drop branch shares same import path: image file dropped on canvas
-  const imgDrop = await jsRaw(`(async () => {
-    setMode('edit');
-    document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    const png = new Uint8Array([${PNG_1PX}]);
-    const dt = new DataTransfer();
-    dt.items.add(new File([png], 'pixel.png', { type: 'image/png' }));
-    window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, clientX: 140, clientY: 90, bubbles: true, cancelable: true }));
-    await new Promise(r => setTimeout(r, 120));
-    const w = document.querySelector('.comp-wrapper');
-    const img = w && w.querySelector('img[data-scv-id]');
-    const src = img && img.getAttribute('src') || '';
-    return {
-      hasW: !!w, isData: src.startsWith('data:image/png;base64,'), hasId: !!img,
-      handles: w ? w.querySelectorAll('.comp-handles .comp-drag-handle, .comp-drag-edge').length > 0 : false,
-      selected: !!w && w.classList.contains('selected'),
-    };
-  })()`, true);
-  ok(imgDrop && imgDrop.hasW && imgDrop.isData && imgDrop.hasId && imgDrop.handles,
-    `dropped bitmap spawns handled comp-wrapper <img> (${JSON.stringify(imgDrop)})`);
-  ok(imgDrop && imgDrop.selected, 'dropped image is active selection (handles shown)');
-  const imgDropUndo = await jsRaw(`(() => {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
-    return document.querySelectorAll('.comp-wrapper img[src^="data:image/"]').length === 0;
-  })()`);
-  ok(imgDropUndo, 'undo removes dropped image wrapper');
+  // quests
 
-  // small-fix batch assertions
-  const smallFixes = await jsRaw(`(async () => {
-    const out = {};
-    // url holding commas parses whole - no phantom tail target
-    const qc = createScavQuestClient(); // quests client instance (patchbay's own is closure-local, not reachable)
-    const line = qc.parseInputLine('https://api.example.com/?ids=1,2,3');
-    out.line = line && line.url === 'https://api.example.com/?ids=1,2,3' && line.target === '';
-
-    // reader round-trips: '007' stays string, plain '7' stays numeric
-    const mkReader = val => {
-      const r = document.createElement('scv-logic');
-      r.setAttribute('data-type', 'reader');
-      r.innerHTML = '<div class="scv-logic-icon"></div><input class="scv-logic-input" value="' + val + '"><div class="scv-logic-caret"></div><button class="scv-logic-del"></button><div class="scv-logic-drag"></div>';
-      document.getElementById('zoom-layer').appendChild(r);
-      return r;
-    };
-    const r007 = mkReader('007'), r7 = mkReader('7');
-    out.readerStr = r007._storedValue === '007';
-    out.readerNum = r7._storedValue === 7;
-    r007.remove(); r7.remove();
-
-    // paste path: copied+pasted reader must round-trip '007' same string-exact way typed one does
-    document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    const src007 = spawnLogicNode('reader', 120, 120);
-    src007.querySelector('.scv-logic-input').value = '007';
-    clearSelection(); selectEl(src007); updateSelectionDim();
-    copySelected(); pasteSelected(400, 400);
-    const pasted007 = [...document.querySelectorAll('scv-logic[data-type="reader"]')].find(n => n !== src007);
-    out.readerPasteStr = !!pasted007 && pasted007._storedValue === '007';
-    document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-
-    // ctrl+shift+z redo works with uppercase 'Z' shift key produces
-    const pre = document.querySelectorAll('scv-logic').length;
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true })); // real spawn path pushes undo pair
-    const s1 = document.querySelectorAll('scv-logic').length;
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
-    const s2 = document.querySelectorAll('scv-logic').length;
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Z', ctrlKey: true, shiftKey: true, bubbles: true }));
-    const s3 = document.querySelectorAll('scv-logic').length;
-    out.redo = s1 === pre + 1 && s2 === pre && s3 === pre + 1;
-
-    // ctrl+digit must not spawn (tab-switch left alone); held repeat must not repeat-spawn
-    const b = document.querySelectorAll('scv-logic').length;
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: '3', ctrlKey: true, bubbles: true }));
-    const c1 = document.querySelectorAll('scv-logic').length;
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: '3', repeat: true, bubbles: true }));
-    const c2 = document.querySelectorAll('scv-logic').length;
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: '3', bubbles: true }));
-    const c3 = document.querySelectorAll('scv-logic').length;
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
-    out.digit = c1 === b && c2 === b && c3 === b + 1;
-
-    // single click selects alone and dims rest
-    const mkWrap = (id, l, t) => {
-      const w = document.createElement('div');
-      w.className = 'comp-wrapper'; w.style.left = l + 'px'; w.style.top = t + 'px';
-      const h = document.createElement('div'); h.dataset.scvId = id; w.appendChild(h);
-      document.getElementById('zoom-layer').appendChild(w);
-      return w;
-    };
-    const wa = mkWrap('w_sa', 300, 300), wb = mkWrap('w_sb', 420, 300);
-    wa.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 305, clientY: 305 }));
-    out.singleDim = wa.classList.contains('selected') && wb.classList.contains('dimmed');
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    wa.remove(); wb.remove();
-
-    // space-chain hover node clears when pointer moves onto empty canvas
-    const stub = document.createElement('div'); stub.className = 'comp-wrapper';
-    document.getElementById('zoom-layer').appendChild(stub);
-    stub.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
-    const armed = session.chainHoverNode === stub;
-    stub.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, relatedTarget: canvasContainer }));
-    const cleared = session.chainHoverNode === null;
-    stub.remove();
-    out.chain = armed && cleared;
-
-    // menu replacing open one fires onClose - ctxLockDir must not stay locked
-    session.ctxLockDir = 'rt';
-    showMenu([{ label: 'one', fn: () => {} }], 10, 10, ctxLockClear);
-    showMenu([{ label: 'two', fn: () => {} }], 10, 10, ctxLockClear);
-    out.menuLock = session.ctxLockDir === null;
-    document.body.click(); // outside click dismisses second menu (handler attached via setTimeout)
+  await nav(`${base}/saved/publish`);
+  await js(`(${helpers.toString()})()`);
+  await run('standalone publish keeps window.routeSend', async () => {
+    const pb = document.querySelector('scv-patchbay'), d = document.createElement('div'); d.setAttribute('data-scv-receives', 'outside'); pb.append(d); await 0;
+    window.routeSend('outside', 'in');
+    return [d.textContent === 'in', d.textContent];
+  });
+  questPosts.length = 0;
+  await js(`(async () => {
+    const pb = document.querySelector('scv-patchbay'), q = document.createElement('scv-logic');
+    q.dataset.type = 'quest'; q.setAttribute('mode', 'output'); q.setAttribute('value', 'outch'); pb.append(q);
     await new Promise(r => setTimeout(r, 20));
-    out.menuDismiss = session.ctxLockDir === null;
-
-    document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    return out;
-  })()`, true);
-  ok(smallFixes && smallFixes.line, `parseInputLine keeps commas inside url (#334 ${JSON.stringify(smallFixes && smallFixes.line)})`);
-  ok(smallFixes && smallFixes.readerStr && smallFixes.readerNum, `reader round-trips '007' as string and '7' as number (#319 ${JSON.stringify(smallFixes)})`);
-  ok(smallFixes && smallFixes.readerPasteStr, `pasted reader preserves '007' string-exact, same as typed one (#319 paste path ${JSON.stringify(smallFixes && smallFixes.readerPasteStr)})`);
-  ok(smallFixes && smallFixes.redo, `ctrl+shift+z redoes with uppercase 'Z' (#293 got ${JSON.stringify(smallFixes && smallFixes.redo)})`);
-  ok(smallFixes && smallFixes.digit, `ctrl+digit and held-repeat don't spawn, plain digit does (#303/#297 got ${JSON.stringify(smallFixes && smallFixes.digit)})`);
-  ok(smallFixes && smallFixes.singleDim, `single click selects alone and dims rest (#125 got ${JSON.stringify(smallFixes && smallFixes.singleDim)})`);
-  ok(smallFixes && smallFixes.chain, `space-chain hover node clears on moving to empty canvas (#122 got ${JSON.stringify(smallFixes && smallFixes.chain)})`);
-  ok(smallFixes && smallFixes.menuLock && smallFixes.menuDismiss, `replacing menu runs old onClose - ctxLockDir never stays locked (#304 got ${JSON.stringify(smallFixes)})`);
-
-  // arrow-key nudge, ctrl+a select all, ctrl+d duplicate, pasted-image size clamp
-  const canvasBasics = await jsRaw(`(() => {
-    document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    const out = {};
-
-    // nudge: 1px per tap, 10px with shift, one undo step per tap (not per os key-repeat)
-    const n = spawnLogicNode('reader', 200, 200);
-    clearSelection(); selectEl(n); updateSelectionDim();
-    const before = { x: px(n, 'left'), y: px(n, 'top') };
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-    out.step1 = px(n, 'left') - before.x === 1 && px(n, 'top') === before.y;
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', shiftKey: true, bubbles: true }));
-    out.step10 = px(n, 'top') - before.y === 10;
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', repeat: true, bubbles: true }));
-    out.repeatIgnored = px(n, 'left') - before.x === 1; // repeat event above must not have moved it again
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
-    out.undone = px(n, 'left') === before.x && px(n, 'top') === before.y;
-    n.remove();
-
-    // select all - edit mode only
-    const a = spawnLogicNode('reader', 100, 100), b = spawnLogicNode('gate', 300, 100);
-    clearSelection();
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }));
-    out.selectAll = isSelected(a) && isSelected(b);
-    setMode('use'); clearSelection();
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }));
-    out.selectAllUseModeNoop = !isSelected(a) && !isSelected(b); // selection is edit-only - use mode must not arm it invisibly
-    setMode('edit');
-    a.remove(); b.remove();
-
-    // duplicate - same copy+paste machinery, standard 30px cursor-less offset, dup becomes new selection
-    const d = spawnLogicNode('reader', 150, 150);
-    clearSelection(); selectEl(d); updateSelectionDim();
-    const countBefore = document.querySelectorAll('scv-logic').length;
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', ctrlKey: true, bubbles: true }));
-    const dup = [...document.querySelectorAll('scv-logic')].find(x => x !== d);
-    out.duplicated = document.querySelectorAll('scv-logic').length === countBefore + 1;
-    out.dupOffset = !!dup && Math.abs(px(dup, 'left') - px(d, 'left') - 30) < 1 && Math.abs(px(dup, 'top') - px(d, 'top') - 30) < 1;
-    out.dupIsNewSelection = !!dup && isSelected(dup) && !isSelected(d);
-    d.remove(); dup?.remove();
-
-    // pasted image is clamped to sane on-canvas size, not native pixel dimensions
-    const markup = imgWrapperMarkup('data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 400, 300);
-    out.imgClamped = /max-width:\\s*400px/.test(markup) && /max-height:\\s*400px/.test(markup);
-
-    invalidateCache();
-    return out;
-  })()`);
-  ok(canvasBasics && canvasBasics.step1, `arrow-key nudges 1px (${JSON.stringify(canvasBasics)})`);
-  ok(canvasBasics && canvasBasics.step10, 'shift+arrow nudges 10px');
-  ok(canvasBasics && canvasBasics.repeatIgnored, 'held (repeat) arrow key does not re-nudge - one undo step per tap');
-  ok(canvasBasics && canvasBasics.undone, 'two ctrl+z fully undoes both nudges');
-  ok(canvasBasics && canvasBasics.selectAll, 'ctrl+a selects every node/wrapper in edit mode');
-  ok(canvasBasics && canvasBasics.selectAllUseModeNoop, 'ctrl+a is no-op in use mode (selection is invisible there)');
-  ok(canvasBasics && canvasBasics.duplicated, 'ctrl+d duplicates selection');
-  ok(canvasBasics && canvasBasics.dupOffset, 'duplicate is offset by standard 30px cursor-less paste offset');
-  ok(canvasBasics && canvasBasics.dupIsNewSelection, 'duplicate becomes new selection, original deselected');
-  ok(canvasBasics && canvasBasics.imgClamped, 'pasted/dropped image is clamped to 400px max-width/max-height, not native pixel size');
-
-  // pasted bare url > link card (host/path base, quest-enriched in place, bakes into quine)
-  const linkPaste = await jsRaw(`(async () => {
-    setMode('edit');
-    document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    const origFetch = window.fetch;
-    window.fetch = async () => { throw new Error('quests down'); }; // no quests: refused enrich fetch > host card stays, no console noise
-    const dt = new DataTransfer();
-    dt.setData('text/plain', 'https://www.example.com/alpha/beta');
-    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-    await new Promise(r => setTimeout(r, 120));
-    _stopCardRetry(); // down-server fetch armed silent-upgrade poll - stop for this block
-    window.fetch = origFetch;
-    const w = document.querySelector('.comp-wrapper');
-    const card = w && w.querySelector('.scv-link-card');
-    return {
-      hasW: !!w, hasCard: !!card,
-      title: card ? card.querySelector('.scv-lc-title').textContent : null,
-      desc: card ? card.querySelector('.scv-lc-desc').textContent : null,
-      thumbSrc: card ? card.querySelector('.scv-lc-thumb').getAttribute('src') : null,
-      href: card ? card.querySelector('.scv-lc-open').getAttribute('href') : null,
-      hostOnImg: card ? !!card.querySelector('.scv-lc-thumb[data-scv-id]') : false,
-      handles: w ? w.querySelectorAll('.comp-handles .comp-drag-handle, .comp-drag-edge').length > 0 : false,
-      selected: !!w && w.classList.contains('selected'),
-      miss: card ? (() => { const t = card.querySelector('.scv-lc-thumb'); const before = t.getAttribute('src'); t.dispatchEvent(new Event('error')); return { before, after: t.getAttribute('src'), gif: t.getAttribute('src').startsWith('data:image/gif') }; })() : null,
-    };
-  })()`, true);
-  const favSrc = 'https://www.example.com/favicon.ico';
-  ok(linkPaste && linkPaste.hasW && linkPaste.hasCard && linkPaste.title === 'example.com' && linkPaste.desc === 'alpha / beta' && (linkPaste.thumbSrc === favSrc || linkPaste.thumbSrc.startsWith('data:image/gif')) && linkPaste.href === 'https://www.example.com/alpha/beta' && linkPaste.hostOnImg && linkPaste.handles,
-    `pasted bare url spawns handled link card (${JSON.stringify(linkPaste)})`);
-  ok(linkPaste && linkPaste.selected, 'pasted link card is active selection (handles shown)');
-  ok(linkPaste && linkPaste.miss && linkPaste.miss.gif,
-    `failed thumb swaps to transparent pixel - no broken-image white box (before ${linkPaste && linkPaste.miss.before}, after ${linkPaste && linkPaste.miss.after})`);
-
-  // quest enrichment: stubbed unfurl fetch fills real title/description/image in place (no quests = host card stays)
-  const enriched = await jsRaw(`(async () => {
-    const png = new Uint8Array([${PNG_1PX}]);
-    const card = document.querySelector('.comp-wrapper .scv-link-card');
-    window.__QUEST_API__ = 'http://127.0.0.1:9876';
-    const origFetch = window.fetch;
-    window.fetch = async (u, o) => {
-      if (String(u).includes('/unfurl?')) return { ok: true, json: async () => ({ title: 'Real Title', description: 'A real description.', image: 'https://cdn.example/img.png' }) };
-      return new Response(new Blob([png], { type: 'image/png' })); // toBase64 fetch
-    };
-    await enrichCard(card.closest('.comp-wrapper'), 'https://www.example.com/alpha/beta');
-    const title = card.querySelector('.scv-lc-title').textContent;
-    const desc = card.querySelector('.scv-lc-desc').textContent;
-    const src = card.querySelector('.scv-lc-thumb').getAttribute('src');
-    window.fetch = origFetch;
-    delete window.__QUEST_API__;
-    return { title, desc, baked: src.startsWith('data:image/png;base64,') };
-  })()`, true);
-  ok(enriched && enriched.title === 'Real Title' && enriched.desc === 'A real description.' && enriched.baked,
-    `quest enrichment fills card title/description and b64s image (${JSON.stringify(enriched)})`);
-
-  // enriched card bakes into quine: reopened without quests keeps title/desc + data: thumb
-  const linkBake = await jsRaw(`(async () => {
-    let captured = null;
-    const origCreate = URL.createObjectURL;
-    URL.createObjectURL = blob => { captured = blob; return 'blob:capture'; };
-    const origRevoke = URL.revokeObjectURL; URL.revokeObjectURL = () => {};
-    await saveQuine();
-    URL.createObjectURL = origCreate; URL.revokeObjectURL = origRevoke;
-    return captured ? await captured.text() : null;
-  })()`, true);
-  ok(typeof linkBake === 'string' && linkBake.includes('Real Title') && linkBake.includes('A real description.') && linkBake.includes('data:image/png;base64,'),
-    'enriched card bakes title/description/data: thumb into quine');
-  checkpointErrs('the linked-card quine capture', /blob:/i); // known noise: quine-capture download click's blob: href
-
-  const linkUndo = await jsRaw(`(() => {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
-    return document.querySelectorAll('.comp-wrapper .scv-link-card').length === 0;
-  })()`);
-  ok(linkUndo, 'undo removes pasted link card');
-
-  // silent upgrade: host-grade card enriches in place once server answers, survives quine round-trip so init() re-upgrades
-  const silentUp = await jsRaw(`(async () => {
-    setMode('edit');
-    document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    const png = new Uint8Array([${PNG_1PX}]);
-    const origFetch = window.fetch;
-    window.fetch = async () => { throw new Error('quests down'); };
-    const dt = new DataTransfer();
-    dt.setData('text/plain', 'https://www.example.com/alpha/beta');
-    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-    await new Promise(r => setTimeout(r, 120));
-    _stopCardRetry();
-    window.fetch = origFetch;
-    // host-grade card round-trips through quine unmarked - reopened quine's boot sweep would re-upgrade it
-    let quine = null; const oc = URL.createObjectURL, orv = URL.revokeObjectURL;
-    URL.createObjectURL = x => { quine = x; return 'blob:q'; }; URL.revokeObjectURL = () => {};
-    await saveQuine();
-    URL.createObjectURL = oc; URL.revokeObjectURL = orv;
-    const qtext = await quine.text();
-    // now server answers: enrichCards upgrades old card in place, no re-paste
-    window.__QUEST_API__ = 'http://127.0.0.1:9876';
-    window.fetch = async (u, o) => {
-      if (String(u).includes('/unfurl?')) return { ok: true, json: async () => ({ title: 'Upgraded Title', description: 'Now with data.', image: 'https://cdn.example/img.png' }) };
-      return new Response(new Blob([png], { type: 'image/png' }));
-    };
-    await enrichCards();
-    await new Promise(r => setTimeout(r, 120));
-    const card = document.querySelector('.comp-wrapper .scv-link-card');
-    const title = card.querySelector('.scv-lc-title').textContent;
-    const desc = card.querySelector('.scv-lc-desc').textContent;
-    const baked = card.querySelector('.scv-lc-thumb').getAttribute('src').startsWith('data:image/png;base64,');
-    const marked = card.dataset.scvLc === '1';
-    window.fetch = origFetch; delete window.__QUEST_API__; _stopCardRetry();
-    return { title, desc, baked, marked, reopenable: qtext.includes('example.com') && !qtext.includes('data-scv-lc="1"') };
-  })()`, true);
-  ok(silentUp && silentUp.title === 'Upgraded Title' && silentUp.desc === 'Now with data.' && silentUp.baked && silentUp.marked && silentUp.reopenable,
-    `silent upgrade: old host card enriches once quests answers, stays unmarked through quine (${JSON.stringify(silentUp)})`);
-  checkpointErrs('silent-upgrade quine capture', /blob:/i); // known noise: same quine-capture download click's blob: href
-
-  const linkUpUndo = await jsRaw(`(() => {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
-    return document.querySelectorAll('.comp-wrapper .scv-link-card').length === 0;
-  })()`);
-  ok(linkUpUndo, 'undo removes upgraded link card');
-
-  // crop edges: cropping link card clips whole card, not just thumbnail host
-  const cropCard = await jsRaw(`(() => {
-    setMode('edit');
-    document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    const origFetch = window.fetch;
-    window.fetch = async () => { throw new Error('quests down'); };
-    const dt = new DataTransfer();
-    dt.setData('text/plain', 'https://www.example.com/alpha/beta');
-    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-    window.fetch = origFetch; _stopCardRetry();
-    const w = document.querySelector('.comp-wrapper');
-    if (!w) return null;
-    const card = w.querySelector('.scv-link-card'), img = w.querySelector('.scv-lc-thumb');
-    applyCrop(w, img, { top: 8, right: 12, bottom: 4, left: 6 });
-    const rail = w.querySelector('.comp-rail'),
-          up = w.querySelector('.comp-z-up'), down = w.querySelector('.comp-z-down'),
-          move = w.querySelector('.comp-drag-handle');
-    const wRect = w.getBoundingClientRect(), rRect = rail.getBoundingClientRect();
-    const rel = r => ({ x: r.left - wRect.left + r.width / 2, y: r.top - wRect.top + r.height / 2 });
-    const u = rel(up.getBoundingClientRect()), d = rel(down.getBoundingClientRect()),
-          m = rel(move.getBoundingClientRect());
-    return {
-      cardClip: getComputedStyle(card).clipPath,
-      imgClip: getComputedStyle(img).clipPath,
-      edgeR: getComputedStyle(w).getPropertyValue('--c-r').trim(),
-      handlesZ: getComputedStyle(w.querySelector('.comp-handles')).zIndex,
-      edgeZ: getComputedStyle(w.querySelector('.comp-drag-edge')).zIndex,
-      railDisplay: getComputedStyle(rail).display,
-      zUp: getComputedStyle(up).backgroundColor,
-      zUpRound: getComputedStyle(up).borderRadius,
-      zUpAfter: getComputedStyle(up, '::after').inset,
-      upSvg: !!up.querySelector('svg'), downSvg: !!down.querySelector('svg'),
-      moveSvg: !!move.querySelector('svg'),
-      delSvg: !!w.querySelector('.comp-del svg'), scaleSvg: !!w.querySelector('.comp-scale-handle svg'),
-      upSvgW: getComputedStyle(up.querySelector('svg')).width,
-      downSvgW: getComputedStyle(down.querySelector('svg')).width,
-      moveSvgW: getComputedStyle(move.querySelector('svg')).width,
-      delSvgW: getComputedStyle(w.querySelector('.comp-del svg')).width,
-      scaleSvgW: getComputedStyle(w.querySelector('.comp-scale-handle svg')).width,
-      onLeftEdge: Math.abs(u.x + 24) < 1 && Math.abs(d.x + 24) < 1 && Math.abs(m.x + 24) < 1, // buttons center one grid cell left of edge - lands on dot column when snapped
-      gap: u.x + 9,
-      upAboveDown: u.y < d.y,
-      moveCenteredY: Math.abs(m.y - wRect.height / 2) < 1,
-      stackCentered: Math.abs((u.y + d.y) / 2 - wRect.height / 2) < 1,
-      pitch: d.y - u.y,
-      railLeft: rRect.left - wRect.left,
-      cornerOffY: (() => {
-        const del = w.querySelector('.comp-del'), scale = w.querySelector('.comp-scale-handle');
-        const dr = del.getBoundingClientRect(), sr = scale.getBoundingClientRect();
-        const dIcon = del.querySelector('svg').getBoundingClientRect(), sIcon = scale.querySelector('svg').getBoundingClientRect();
-        return {
-          del: (dIcon.top + dIcon.height / 2) - (dr.top + dr.height / 2),
-          scale: (sIcon.top + sIcon.height / 2) - (sr.top + sr.height / 2),
-          railUp: (() => { const u2 = up.querySelector('svg').getBoundingClientRect(); return (u2.top + u2.height / 2) - (uRect2().top + uRect2().height / 2); })(),
-        };
-        function uRect2() { return up.getBoundingClientRect(); }
-      })(),
-    };
-  })()`);
-  ok(cropCard && /^inset\(8px 12px 4px 6px\)$/.test(cropCard.cardClip) && cropCard.imgClip === 'none' && cropCard.edgeR === '12px',
-    `crop edges clip whole link card, not just thumbnail (${JSON.stringify(cropCard)})`);
-  ok(cropCard && cropCard.handlesZ === '2147483647' && cropCard.edgeZ === '2147483646',
-    `corner buttons sit above crop edges where strips overlap them (handles z ${cropCard && cropCard.handlesZ}, edge z ${cropCard && cropCard.edgeZ})`);
-  ok(cropCard && cropCard.railDisplay === 'flex' && cropCard.zUp === 'rgb(26, 28, 28)'
-    && cropCard.zUpRound === '50%' && cropCard.zUpAfter === '-6px'
-    && cropCard.upSvg && cropCard.downSvg && cropCard.moveSvg && cropCard.delSvg && cropCard.scaleSvg
-    && parseFloat(cropCard.upSvgW) === 12 && parseFloat(cropCard.downSvgW) === 12
-    && Math.abs(parseFloat(cropCard.moveSvgW) - 10.2) < 0.1
-    && Math.abs(parseFloat(cropCard.delSvgW) - 10.2) < 0.1
-    && Math.abs(parseFloat(cropCard.scaleSvgW) - 10.2) < 0.1
-    && cropCard.onLeftEdge && cropCard.upAboveDown && cropCard.moveCenteredY && cropCard.stackCentered
-    && Math.abs(cropCard.pitch - 48) < 1 && Math.abs(cropCard.railLeft + 33) < 1
-    && Math.abs(cropCard.gap + 15) < 1,
-    `left-edge rail hovering outside wrapper, vertically centered, ▲ + ▼ stacked around move handle, all svg icons, no shared boundary so no zoom seam (pitch ${cropCard && cropCard.pitch.toFixed(1)}, gap ${cropCard && cropCard.gap.toFixed(1)}, up ${cropCard && cropCard.upSvgW}/${cropCard && cropCard.downSvgW}/${cropCard && cropCard.moveSvgW}/${cropCard && cropCard.delSvgW}/${cropCard && cropCard.scaleSvgW}, cornerOff ${cropCard && JSON.stringify(cropCard.cornerOffY)})`);
-
-  // button hitboxes beat crop edges - ::after enlarges corner button above strips, so corner probe hits button
-  const hitProbe = await jsRaw(`(async () => {
-    setMode('edit');
-    document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    const origFetch = window.fetch;
-    window.fetch = async () => { throw new Error('quests down'); };
-    const dt = new DataTransfer();
-    dt.setData('text/plain', 'https://www.example.com/alpha/beta');
-    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-    window.fetch = origFetch; _stopCardRetry();
-    const w = document.querySelector('.comp-wrapper');
-    if (!w) return null;
-    w.style.left = '160px'; w.style.top = '160px'; // pull on-screen so hit-testing works
-    const del = w.querySelector('.comp-del');
-    const c = del.getBoundingClientRect();
-    const hit = document.elementFromPoint(c.left + c.width / 2 - 8.5, c.top + c.height / 2 + 8.5); // down-left: inside t/r strips, outside 18px circle, inside enlarged hitbox
-    const up = w.querySelector('.comp-z-up');
-    const u = up.getBoundingClientRect();
-    const hitUp = document.elementFromPoint(u.left + u.width / 2 + 9, u.top + u.height / 2 - 4); // in gap beside wrapper: outside 18px circle, inside enlarged rail-button hitbox, clear of move button below
-    return {
-      hitIsDel: hit === del || del.contains(hit),
-      hitClass: hit && (hit.className || hit.tagName),
-      afterInset: getComputedStyle(del, '::after').inset,
-      scaleInset: getComputedStyle(w.querySelector('.comp-scale-handle'), '::after').inset,
-      railInset: getComputedStyle(up, '::after').inset,
-      hitIsRailUp: hitUp === up || up.contains(hitUp),
-      hitUpClass: hitUp && (hitUp.className || hitUp.tagName),
-      edgeZ: getComputedStyle(w.querySelector('.comp-drag-edge')).zIndex,
-    };
-  })()`, true);
-  ok(hitProbe && hitProbe.hitIsDel && hitProbe.afterInset === '-6px' && hitProbe.scaleInset === '-6px',
-    `corner buttons grow bigger invisible hitbox (::after inset ${hitProbe && hitProbe.afterInset}) and win crop-edge overlap (probe hit ${hitProbe && hitProbe.hitClass})`);
-  ok(hitProbe && hitProbe.hitIsRailUp && hitProbe.railInset === '-6px',
-    `left-rail buttons grow same invisible hitbox reaching toward edge (probe hit ${hitProbe && hitProbe.hitUpClass})`);
-
-  // scavenged component with baked z-index: chrome stays on top - mirror harvest's baked z with :host-positioned widget
-  const scavZ = await jsRaw(`(async () => {
-    setMode('edit');
-    document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    const tag = 'scv-zoverlay';
-    if (!customElements.get(tag)) customElements.define(tag, class extends HTMLElement {
-      connectedCallback() {
-        const r = this.attachShadow({ mode: 'open' });
-        r.innerHTML = '<div style="position:relative;z-index:99999;width:200px;height:80px;background:#123">z</div>';
-      }
-    });
-    const comp = { tag, scvId: 'z_000000001', script: '',
-      x: (200 + canvasContainer.scrollLeft) / session.zoom, y: (200 + canvasContainer.scrollTop) / session.zoom, scale: 1, zIndex: 1 };
-    const w = renderComponent(comp);
-    await new Promise(r => setTimeout(r, 60));
-    if (!w.isConnected) return null;
-    const del = w.querySelector('.comp-del'), dragH = w.querySelector('.comp-drag-handle');
-    const probe = el => { const r = el.getBoundingClientRect(); const h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return h === el || el.contains(h); };
-    const shadowRootZ = w.querySelector(tag).shadowRoot.querySelector('div');
-    return { baked: getComputedStyle(shadowRootZ).zIndex, hitIsDel: probe(del), hitIsDrag: probe(dragH) };
-  })()`, true);
-  ok(scavZ && scavZ.baked === '99999', `scavenged widget bakes z-index onto shadow root (${scavZ && JSON.stringify(scavZ)})`);
-  ok(scavZ && scavZ.hitIsDel && scavZ.hitIsDrag,
-    `corner buttons stay clickable over z-indexed scavenged component (del ${scavZ && scavZ.hitIsDel}, drag ${scavZ && scavZ.hitIsDrag})`);
-
-  // wire-delete peels one layer per click - both receives + action on one channel share cable, so one click mustn't drop both
-  const wireDelete = await jsRaw(`(async () => {
-    setMode('edit');
-    document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    const out = {};
-    const click = sel => {
-      const c = document.querySelector(sel);
-      c.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
-    };
-
-    // dual-layer: receives + action on same channel - first click peels receives, second peels action
-    const a = spawnLogicNode('reader', 100, 100), b = spawnLogicNode('action', 400, 100);
-    a.setAttribute('data-scv-emits', 'ch_dual'); b.setAttribute('data-scv-receives', 'ch_dual'); b.setAttribute('data-scv-action', 'toggle:ch_dual');
-    invalidateCache(); renderCables();
-    await new Promise(r => setTimeout(r, 60));
-    click('.cable-path[data-channel="ch_dual"]');
-    await new Promise(r => setTimeout(r, 60));
-    out.firstClick = { recv: b.getAttribute('data-scv-receives'), act: b.getAttribute('data-scv-action') };
-    click('.cable-path[data-channel="ch_dual"]');
-    await new Promise(r => setTimeout(r, 60));
-    out.secondClick = { recv: b.getAttribute('data-scv-receives'), act: b.getAttribute('data-scv-action') };
-    a.remove(); b.remove();
-
-    // action-token: compound verb has channel at index 2 - whole-token compare never matches it (old bug), sibling survives
-    const c = spawnLogicNode('reader', 100, 300), d = spawnLogicNode('action', 400, 300);
-    c.setAttribute('data-scv-emits', 'ch_tok'); d.setAttribute('data-scv-action', 'prop:style.color:ch_tok hide:ch_other');
-    invalidateCache(); renderCables();
-    await new Promise(r => setTimeout(r, 60));
-    click('.cable-path[data-channel="ch_tok"]');
-    await new Promise(r => setTimeout(r, 60));
-    out.tokenParsed = d.getAttribute('data-scv-action');
-    c.remove(); d.remove();
-
-    invalidateCache();
-    return out;
-  })()`, true);
-  ok(wireDelete && wireDelete.firstClick?.recv === null && wireDelete.firstClick?.act === 'toggle:ch_dual',
-    `first click on dual-layer cable peels only receives wiring, leaving action wiring intact (${JSON.stringify(wireDelete && wireDelete.firstClick)})`);
-  ok(wireDelete && wireDelete.secondClick?.act === null,
-    `second click on now action-only cable peels action wiring too (${JSON.stringify(wireDelete && wireDelete.secondClick)})`);
-  ok(wireDelete && wireDelete.tokenParsed === 'hide:ch_other',
-    `compound action verb's embedded channel (index 2, not whole token) is what gets matched and removed - unrelated sibling token survives (${JSON.stringify(wireDelete && wireDelete.tokenParsed)})`);
-
-  // harvested @container widget must not collapse - container-type:inline-size zeroes shrink-to-fit host with no size yet
-  const containerScope = await jsRaw(`(async () => {
-    setMode('edit');
-    document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    const tag = 'scv-flexwidget';
-    if (!customElements.get(tag)) customElements.define(tag, class extends HTMLElement {
-      connectedCallback() {
-        const r = this.attachShadow({ mode: 'open' });
-        r.innerHTML = '<style>.row{display:flex;flex-wrap:wrap}.sq{width:100px;height:100px;background:#333}.wide{width:200px;height:60px;background:#666}</style>'
-          + '<div class="row"><div class="sq"></div><div class="sq"></div><div class="wide"></div></div>';
-      }
-    });
-    const comp = { tag, scvId: 'fw_000000001', script: '/* @container (min-width: 10px) { } */',
-      x: (200 + canvasContainer.scrollLeft) / session.zoom, y: (200 + canvasContainer.scrollTop) / session.zoom, scale: 1, zIndex: 1 };
-    const w = renderComponent(comp);
-    await new Promise(r => setTimeout(r, 80));
-    if (!w.isConnected) return null;
-    const el = w.querySelector(tag);
-    return { hostContainerType: el.style.containerType, wrapperWidth: w.getBoundingClientRect().width, hostWidth: el.getBoundingClientRect().width };
-  })()`, true);
-  ok(containerScope && containerScope.hostContainerType === 'inline-size', `@container-scoped harvest gets container-type set (${containerScope && JSON.stringify(containerScope)})`);
-  ok(containerScope && containerScope.wrapperWidth > 300 && containerScope.hostWidth > 300,
-    `host is frozen at its natural width before containment applies, so wrapper doesn't collapse (${containerScope && JSON.stringify(containerScope)})`);
-
-  // same, zoomed out - frozen width is css px but getBoundingClientRect reads post-zoom px, so freeze must divide zoom back out
-  const containerScopeZoomed = await jsRaw(`(async () => {
-    setMode('edit');
-    document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    session.zoom = 0.5; zoomLayer.style.transform = 'scale(0.5)';
-    const tag = 'scv-wide1920';
-    if (!customElements.get(tag)) customElements.define(tag, class extends HTMLElement {
-      connectedCallback() {
-        const r = this.attachShadow({ mode: 'open' });
-        r.innerHTML = '<div style="width:1920px;height:400px;background:#333"></div>';
-      }
-    });
-    const comp = { tag, scvId: 'w1920_00001', script: '/* @container (min-width: 10px) { } */', x: 0, y: 0, scale: 1, zIndex: 1 };
-    const w = renderComponent(comp);
+    q.receive(customElements.get('scv-patchbay').kit.pulse(), 'x'); q.receive(5, 'x');
     await new Promise(r => setTimeout(r, 100));
-    const el = w.querySelector(tag);
-    const out = { hostCssWidth: parseFloat(el.style.width), wrapperScreenWidth: w.getBoundingClientRect().width };
-    session.zoom = 1; zoomLayer.style.transform = 'scale(1)'; // restore for subsequent tests
-    return out;
-  })()`, true);
-  ok(containerScopeZoomed && Math.abs(containerScopeZoomed.hostCssWidth - 1920) < 2,
-    `at 0.5x zoom, frozen width is still true 1920px css size, not zoomed screen size (${containerScopeZoomed && JSON.stringify(containerScopeZoomed)})`);
-  ok(containerScopeZoomed && Math.abs(containerScopeZoomed.wrapperScreenWidth - 960) < 2,
-    `...so on-screen box renders at exactly 0.5x that (960px), matching real visual size at this zoom (${containerScopeZoomed && JSON.stringify(containerScopeZoomed)})`);
-
-  // number-key spawn during armed space-chain must still connect - setMode('edit') runs per spawn, mustn't reset chain
-  const chainThroughSpawn = await jsRaw(`(() => {
-    setMode('edit');
-    document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    const key = k => document.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
-    key('1');
-    const n1 = session.lastSpawned;
-    key(' ');
-    const armed = session.isChainPending;
-    key('2');
-    const n2 = session.lastSpawned;
-    // real mode switch (edit->use) must still tear chain down - only redundant same-mode call preserves it
-    key('1'); key(' ');
-    const armedBeforeSwitch = session.isChainPending;
-    setMode('use'); const armedAfterSwitch = session.isChainPending, spawnedAfterSwitch = session.lastSpawned;
-    setMode('edit');
-    return { armed, n2Wired: !!(n2 && n2.getAttribute('data-scv-receives')),
-             switchResets: armedBeforeSwitch === true && armedAfterSwitch === false && spawnedAfterSwitch === null };
   })()`);
-  ok(chainThroughSpawn && chainThroughSpawn.armed, 'space arms chain while already in edit mode');
-  ok(chainThroughSpawn && chainThroughSpawn.n2Wired, `spawning next node via number key completes chain, not just spawns unconnected (${JSON.stringify(chainThroughSpawn)})`);
-  ok(chainThroughSpawn && chainThroughSpawn.switchResets, `real edit->use mode switch still tears down armed chain, while redundant same-mode call preserves it (${JSON.stringify(chainThroughSpawn)})`);
+  ok(questPosts.length === 1 && questPosts[0].path === '/quests/emit' && questPosts[0].body.value === 5, `quest output posts data only (${JSON.stringify(questPosts)})`);
 
-  // ctrl+digit during chain inverts direction; outside chain must not spawn - falls through to browser tab-switch
-  const ctrlChain = await jsRaw(`(() => {
-    const key = (k, extra={}) => document.dispatchEvent(new KeyboardEvent('keydown', { key:k, bubbles:true, cancelable:true, ...extra }));
-    // inverse: ctrl+digit while chaining - spawned node emits, previous receives
-    setMode('edit'); document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    key('1'); const a1 = session.lastSpawned;
-    key(' ');
-    key('2', { ctrlKey: true }); const a2 = session.lastSpawned;
-    const inverseCh = a2 && a2.getAttribute('data-scv-emits');
-    const inverted = !!inverseCh && (a1.getAttribute('data-scv-receives') || '').split(' ').includes(inverseCh) && !a2.getAttribute('data-scv-receives');
-    // no-chain: ctrl+digit with nothing armed must not spawn and must not preventDefault (browser tab-switch wins)
-    setMode('edit'); document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    const before = document.querySelectorAll('scv-logic').length;
-    const ev = new KeyboardEvent('keydown', { key:'3', ctrlKey:true, bubbles:true, cancelable:true });
-    document.dispatchEvent(ev);
-    return { inverted, noChainSpawned: document.querySelectorAll('scv-logic').length - before, noChainPrevented: ev.defaultPrevented };
+  const qin = await js(`(async () => {
+    const pb = document.querySelector('scv-patchbay'), q = document.createElement('scv-logic');
+    q.dataset.type = 'quest'; q.setAttribute('value', 'q_in'); pb.append(q);
+    const d = document.createElement('div'); d.setAttribute('data-scv-receives', 'q_in'); pb.append(d);
+    await new Promise(r => setTimeout(r, 300));
+    return [d.textContent, q.getAttribute('last'), q.getAttribute('data-scv-emits')];
   })()`);
-  ok(ctrlChain && ctrlChain.inverted, `ctrl+digit during chain wires new node back into previous (inverse direction) (${JSON.stringify(ctrlChain)})`);
-  ok(ctrlChain && ctrlChain.noChainSpawned === 0 && ctrlChain.noChainPrevented === false,
-    `ctrl+digit with no chain armed spawns nothing and lets browser handle it (tab-switch) (${JSON.stringify(ctrlChain)})`);
+  ok(qin && qin[0] === '7' && qin[1] === '7' && qin[2] === 'q_in', `quest input polls, emits and keeps last (${qin})`);
 
-  // every path calling setMode('edit') already in edit mode (paste/drop) mustn't disrupt chain - only real switch tears down
-  const chainThroughPaste = await jsRaw(`(async () => {
-    const key = (k, extra={}) => document.dispatchEvent(new KeyboardEvent('keydown', { key:k, bubbles:true, cancelable:true, ...extra }));
-    setMode('edit'); document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    key('1'); key(' '); // arm chain
-    const before = document.querySelectorAll('scv-logic').length;
-    const dt = new DataTransfer();
-    dt.setData('text/plain', '<scv-logic data-scv-id="chain_paste_probe"></scv-logic>'); // triggers harvest/.scv paste branch - handlePasteData mints fresh id, so check by count
-    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-    await new Promise(r => setTimeout(r, 60));
-    return { chainSurvivedPaste: session.isChainPending, pastedProbe: document.querySelectorAll('scv-logic').length > before };
-  })()`, true);
-  ok(chainThroughPaste && chainThroughPaste.pastedProbe, `harvest paste mid-chain still imports payload (${JSON.stringify(chainThroughPaste)})`);
-  ok(chainThroughPaste && chainThroughPaste.chainSurvivedPaste,
-    `pasting harvest payload mid-chain (setMode('edit') called while already in edit mode) does not disarm chain (${JSON.stringify(chainThroughPaste)})`);
+  const qc = await js(`(async () => {
+    const pb = document.querySelector('scv-patchbay'), q = document.createElement('scv-logic');
+    q.dataset.type = 'quest'; q.setAttribute('mode', 'component'); q.setAttribute('value', 'q_comp'); q.style.left = '40px'; q.style.top = '40px'; pb.append(q);
+    await new Promise(r => setTimeout(r, 400));
+    const it = pb.querySelector('scv-item[data-scv-quest-channel="q_comp"]'), p = it?.firstElementChild?.shadowRoot?.querySelector('p'); p?.click();
+    return [it?.style.top, p?.textContent, window.__ran ?? null];
+  })()`);
+  ok(qc && qc[0] === '80px' && qc[1] === 'live' && qc[2] === null, `quest component renders below node, its def code never runs (${qc})`);
 
-  // workshop chrome (studio-only): intro menu, bg picker, dot grid, edge tooltip - robust reads only, never mid-transition value
-  const hexToRgb = h => { const n = parseInt(h.slice(1), 16); return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`; };
-  await load(pbUrl); // clean, empty canvas in edit mode
-  ok(await jsRaw(`session.mode === 'edit'`), 'patchbay boots in edit mode');
-
-  // intro menu: two columns (9 node keys left, 9 commands right) each internally aligned, ctrl
-  const intro = await jsRaw(`(() => {
-    const m = document.getElementById('intro-menu'); if (!m) return null;
-    const colAligned = sel => {
-      const dt = new Set([...m.querySelectorAll(sel + ' dt')].map(d => Math.round(d.getBoundingClientRect().right)));
-      const dd = new Set([...m.querySelectorAll(sel + ' dd')].map(d => Math.round(d.getBoundingClientRect().left)));
-      return dt.size === 1 && dd.size === 1;
+  const perPb = await js(`(async () => {
+    const make = api => {
+      const pb = document.createElement('scv-patchbay'); pb.questApi = api; document.body.append(pb);
+      const q = document.createElement('scv-logic'); q.dataset.type = 'quest'; q.setAttribute('value', 'q_in'); pb.append(q);
+      const d = document.createElement('div'); d.setAttribute('data-scv-receives', 'q_in'); pb.append(d);
+      return d;
     };
-    const all = [...m.querySelectorAll('.intro-cols dt')];
-    const twoCols = m.querySelectorAll('.intro-cols dl').length === 2;
-    return {
-      onEmpty: m.classList.contains('on'),
-      keysN: m.querySelectorAll('.intro-keys dt').length, nodesN: m.querySelectorAll('.intro-nodes dt').length,
-      twoCols, aligned: colAligned('.intro-keys') && colAligned('.intro-nodes'),
-      ctrl: all.some(d => d.textContent.includes('ctrl + z')) && all.every(d => !d.textContent.includes('⌘')),
-    };
+    const alt = make(location.origin + '/alt'), own = make(location.origin);
+    await new Promise(r => setTimeout(r, 300));
+    return [alt.textContent, own.textContent];
   })()`);
-  ok(intro && intro.onEmpty, 'intro menu shows as empty-state (edit + empty canvas)');
-  ok(intro && intro.twoCols && intro.keysN === 9 && intro.nodesN === 9, `intro is two columns of 9 (keys ${intro && intro.keysN} / nodes ${intro && intro.nodesN})`);
-  ok(intro && intro.aligned, 'within each column, keys and meanings align');
-  ok(intro && intro.ctrl, 'shortcuts show ctrl (with spaces), not command icon');
-  const sig = await jsRaw(`getComputedStyle(document.documentElement).getPropertyValue('--output').trim()`);
-  const att = await jsRaw(`getComputedStyle(document.documentElement).getPropertyValue('--input').trim()`);
-  const keyCols = await jsRaw(`[...document.querySelectorAll('#intro-menu .intro-keys dt')].map(d=>getComputedStyle(d).color)`);
-  const nodeCols = await jsRaw(`[...document.querySelectorAll('#intro-menu .intro-nodes dt')].map(d=>getComputedStyle(d).color)`);
-  ok(Array.isArray(nodeCols) && nodeCols.length === 9 && nodeCols.every(c => c === hexToRgb(sig)), 'left column (node numbers) uses primary accent (pink)');
-  ok(Array.isArray(keyCols) && keyCols.length === 9 && keyCols.every(c => c === hexToRgb(att)), 'right column (commands) uses attention color (teal)');
+  ok(perPb && perPb[0] === '9' && perPb[1] === '7', `each patchbay reads its own quest api (${perPb})`);
 
-  // ? overlay toggles (tint-free) backdrop and dismisses via ? / esc
-  const overlay = await jsRaw(`(() => {
-    const bd = document.getElementById('intro-backdrop');
-    const fire = k => document.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
-    fire('?'); const opened = bd.classList.contains('on');
-    fire('?'); const off = !bd.classList.contains('on');
-    fire('?'); fire('Escape'); const esc = !bd.classList.contains('on');
-    return { opened, off, esc, tint: getComputedStyle(bd).backgroundColor };
+  // clock wakes
+
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: `window.__timeouts = 0; const _st = window.setTimeout; window.setTimeout = (...a) => { window.__timeouts++; return _st(...a); };` });
+  await nav(base + '/pb');
+  const wakes = await js(`(async () => {
+    const pb = document.querySelector('scv-patchbay'), c = document.createElement('scv-logic');
+    c.dataset.type = 'clock'; c.setAttribute('value', '250'); pb.append(c);
+    const t0 = window.__timeouts; await new Promise(r => requestAnimationFrame(r));
+    const start = window.__timeouts; let n = 0; const id = setInterval(() => n++, 1000);
+    await new Promise(r => { const s = performance.now(); (function wait() { performance.now() - s > 1000 ? r() : requestAnimationFrame(wait); })(); });
+    clearInterval(id); c.remove();
+    return window.__timeouts - start;
   })()`);
-  ok(overlay.opened, '? opens help overlay');
-  ok(overlay.off, '? again closes it');
-  ok(overlay.esc, 'Escape closes overlay');
-  ok(overlay.tint === 'rgba(0, 0, 0, 0)', 'backdrop has no color tint (blur only)');
+  ok(typeof wakes === 'number' && wakes <= 6, `one clock at 250ms wakes page about 4 times per second (${wakes})`);
 
-  // bg picker: opens, validates, drives grid luminance, uppercase, caret-editable
-  const picker = await jsRaw(`(() => {
-    const dot = document.getElementById('bg-dot'), sw = document.getElementById('bg-swatch'), hx = document.getElementById('bg-hex');
-    sw.click(); const opened = dot.classList.contains('open');
-    hx.value = '#334455'; hx.dispatchEvent(new Event('input'));
-    const applied = document.documentElement.style.getPropertyValue('--background-sunk').trim() === '#334455';
-    hx.value = '#eeeeee'; hx.dispatchEvent(new Event('input'));
-    // parse rgb triple out, don't match exact string - 'rgba(0,0,0' would break the moment css-var gains spaces
-    const gridMatch = /rgba?\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)/.exec(document.documentElement.style.getPropertyValue('--background-grid'));
-    const darkDots = !!gridMatch && gridMatch[1] === '0' && gridMatch[2] === '0' && gridMatch[3] === '0'; // light bg (#eeeeee) picks dark (black) dots
-    hx.value = 'zzz'; hx.dispatchEvent(new Event('input'));
-    const flagged = hx.classList.contains('bad') && document.documentElement.style.getPropertyValue('--background-sunk').trim() === '#eeeeee';
-    hx.value = '#111111'; hx.focus(); hx.setSelectionRange(2, 2); hx.setRangeText('A', 2, 2, 'end');
-    const editable = document.activeElement === hx && hx.value.includes('A');
-    return { opened, applied, darkDots, flagged, editable, upper: getComputedStyle(hx).textTransform };
-  })()`);
-  ok(picker.opened, 'swatch click opens hex pill');
-  ok(picker.applied, 'valid hex applies to --background-sunk');
-  ok(picker.darkDots, 'light bg flips grid dots dark (luminance)');
-  ok(picker.flagged, 'invalid hex is flagged and does not change --background-sunk');
-  ok(picker.editable, 'hex field is focusable + caret-editable');
-  ok(picker.upper === 'uppercase', 'hex field renders uppercase');
-
-  // dot grid: single layer, uniform scale (dot radius tracks zoom)
-  const grid = await jsRaw(`(() => {
-    const layers = getComputedStyle(document.getElementById('canvas-container'), '::before').backgroundImage.split('radial-gradient').length - 1;
-    setZoom(1, 400, 300); const s1 = getComputedStyle(document.documentElement).getPropertyValue('--grid-size').trim();
-    setZoom(0.5, 400, 300); const r = getComputedStyle(document.documentElement).getPropertyValue('--background-grid-r').trim();
-    setZoom(1, 400, 300);
-    return { layers, s1, r };
-  })()`);
-  ok(grid.layers === 1, `grid is single dot layer (got ${grid.layers})`);
-  ok(grid.s1 === '24px', 'grid spacing is 24px at zoom 1');
-  ok(grid.r === '0.5px', 'dot radius scales with zoom (uniform, continuous)');
-
-  // edge-aware tooltip mirrors away from corner it is near, staying in viewport
-  const tip = await jsRaw(`(() => {
-    const t = document.getElementById('wiring-tooltip'); t.textContent = '#x'; t.style.display = 'block';
-    placeTooltip(t, innerWidth - 10, innerHeight - 10);
-    const l = parseFloat(t.style.left), tp = parseFloat(t.style.top);
-    return { mirrored: l < innerWidth - 10 && tp < innerHeight - 10, inView: l >= 0 && tp >= 0 };
-  })()`);
-  ok(tip.mirrored, 'tooltip near bottom-right mirrors up-left');
-  ok(tip.inView, 'tooltip stays within viewport');
-
-  const undoCap = await jsRaw(`(() => {
-    session.undoStack.length = 0; session.undoPos = -1;
-    let last = null;
-    for (let i = 0; i < 60; i++) pushUndo(() => {}, ((n) => () => { last = n; })(i), 'm' + i);
-    const len = session.undoStack.length, pos = session.undoPos;
-    undo();
-    return { len, pos, last, label: session.undoStack[session.undoStack.length - 1].label };
-  })()`);
-  ok(undoCap && undoCap.len === 50, `undo stack is capped at UNDO_MAX (got ${undoCap && undoCap.len})`);
-  ok(undoCap && undoCap.last === 59, `undo after cap replays newest action, not shifted one (got ${undoCap && undoCap.last})`);
-  ok(undoCap && undoCap.label === 'm59', `newest action survives shift (got ${undoCap && undoCap.label})`);
-
-  const pasteText = async (txt) => await jsRaw(`(async () => {
-    setMode('edit');
-    document.querySelectorAll('.comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    const dt = new DataTransfer(); dt.setData('text/plain', ${JSON.stringify(txt)});
-    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-    await new Promise(r => setTimeout(r, 150));
-    const card = document.querySelector('.scv-link-card');
-    return { card: !!card, href: card ? card.querySelector('.scv-lc-open').getAttribute('href') : null,
-             title: card ? card.querySelector('.scv-lc-title').textContent : null };
-  })()`, true);
-
-  const plain = await pasteText('just some notes, not a url');
-  ok(plain && plain.card === false, 'plain text does not become link card');
-  const jsUrl = await pasteText('javascript:window.__pwn3=1');
-  ok(jsUrl && jsUrl.card === false, 'javascript: url does not become link card');
-  ok(await jsRaw(`!window.__pwn3`), 'pasted javascript: url never reaches href');
-  const dataUrl = await pasteText('data:text/html,<script>window.__pwn4=1<\\/script>');
-  ok(dataUrl && dataUrl.card === false, 'data: url does not become link card');
-
-  const quoted = await pasteText('https://example.com/a"onmouseover="window.__pwn5=1');
-  ok(quoted && quoted.card === true, 'normal https url still becomes link card');
-  ok(quoted && quoted.href === 'https://example.com/a"onmouseover="window.__pwn5=1',
-    `quote in pasted url stays inside href instead of ending it (${JSON.stringify(quoted && quoted.href)})`);
-  ok(await jsRaw(`!document.querySelector('.scv-lc-open[onmouseover]')`), 'quote in pasted url cannot open new attribute on card');
-  const marked = await pasteText('https://example.com/<img src=x>');
-  ok(await jsRaw(`!document.querySelector('.scv-link-card img[src="x"]')`), 'markup in pasted url renders as text, not as element');
-
-  const dsdPaste = await jsRaw(`(async () => {
-    setMode('edit');
-    document.querySelectorAll('.comp-wrapper').forEach(n => n.remove()); invalidateCache();
-    delete window.__dsdPwn;
-    handlePasteData('<div class="comp-wrapper" style="left:40px;top:40px" data-comp-id="dsd1">'
-      + '<scv-dsdprobe data-scv-id="d1"><template shadowrootmode="open">'
-      + '<img src="x" onerror="window.__dsdPwn=1"><b onclick="window.__dsdClick=1">i</b>'
-      + '</template></scv-dsdprobe></div>');
-    await new Promise(r => setTimeout(r, 900));
-    const host = document.querySelector('scv-dsdprobe');
-    const sr = host && host.shadowRoot;
-    return { pasted: !!host, hydrated: !!sr,
-             img: sr ? !!sr.querySelector('img[onerror]') : null,
-             click: sr ? !!sr.querySelector('b[onclick]') : null,
-             fired: !!window.__dsdPwn };
-  })()`, true);
-  ok(dsdPaste && dsdPaste.pasted && dsdPaste.hydrated, 'pasted declarative shadow root still hydrates');
-  ok(dsdPaste && dsdPaste.img === false && dsdPaste.click === false,
-    `on* handlers inside pasted declarative shadow template are stripped (${JSON.stringify(dsdPaste)})`);
-  ok(dsdPaste && dsdPaste.fired === false, 'handler inside pasted shadow template never runs');
-
-  const caps = await jsRaw(`(() => {
-    const hit = {};
-    const realSave = window.saveQuine, realPub = window.exportPublish, realRedo = window.redo;
-    window.saveQuine = () => { hit.save = true; };
-    window.exportPublish = () => { hit.publish = true; };
-    window.redo = () => { hit.redo = true; };
-    const tap = k => document.dispatchEvent(new KeyboardEvent('keydown', { key: k, ctrlKey: true, bubbles: true }));
-    ['S', 'P', 'Y'].forEach(tap);
-    window.saveQuine = realSave; window.exportPublish = realPub; window.redo = realRedo;
-    return hit;
-  })()`);
-  ok(caps && caps.save, 'ctrl + S (caps lock on) still saves quine');
-  ok(caps && caps.publish, 'ctrl + P (caps lock on) still publishes');
-  ok(caps && caps.redo, 'ctrl + Y (caps lock on) still redoes');
-
-  const churn = `(async () => {
-    setMode('edit');
-    const types = ['clock','accumulator','gate','comparator','mutator','reader','action','variable'];
-    const made = types.map((t, i) => spawnLogicNode(t, 100 + i * 90, 2200));
-    for (let i = 0; i < made.length - 1; i++) autoWire(made[i], made[i + 1]);
-    invalidateCache(); renderCables();
-    made.forEach(n => n.classList.add('open')); renderCables();
-    clearSelection(); made.forEach(selectEl); updateSelectionDim();
-    copySelected(); pasteSelected(400, 2400);
-    nudgeSelected(5, 5); nudgeSelected(-5, -5);
-    deleteSelected(); undo(); redo(); undo();
-    document.querySelectorAll('scv-logic, .comp-wrapper').forEach(n => n.remove());
-    session.undoStack.length = 0; session.undoPos = -1;
-    invalidateCache(); renderCables();
-    await new Promise(r => setTimeout(r, 30));
-  })()`;
-  const counts = async () => {
-    await send('HeapProfiler.collectGarbage').catch(() => {});
-    const m = (await send('Performance.getMetrics'))?.result?.metrics || [];
-    const g = k => (m.find(x => x.name === k) || {}).value ?? 0;
-    return { listeners: g('JSEventListeners'), nodes: g('Nodes') };
-  };
-  await send('Performance.enable');
-  await jsRaw(churn, true);                       // warm up - first cycle allocates one-time structures
-  const soakBefore = await counts();
-  for (let i = 0; i < 12; i++) await jsRaw(churn, true);
-  const soakAfter = await counts();
-  ok(soakAfter.listeners <= soakBefore.listeners, `twelve spawn/wire/paste/delete/undo cycles leak no listeners (${soakBefore.listeners} → ${soakAfter.listeners})`);
-  ok(soakAfter.nodes <= soakBefore.nodes, `and leak no detached nodes (${soakBefore.nodes} → ${soakAfter.nodes})`);
-
-  ok(errs.length === 0, `no uncaught js errors during run (${errs.slice(0, 3).join(' | ')})`);
-  if (browserLogErrs.length) console.log(`  (info: ${browserLogErrs.length} browser-internal Log.entryAdded error(s), not our code - not counted against tier: ${browserLogErrs.slice(0, 2).join(' | ')})`);
+  ok(uncaught.length === 0, `no uncaught errors (${uncaught})`);
 } catch (e) {
   fails++; console.log('  ✗ patchbay tier threw:', e.message);
-}
+} finally { done(); }
 
-done();
 console.log(fails ? `patchbay: FAIL (${fails})` : 'patchbay: PASS');
 process.exit(fails ? 1 : 0);

@@ -11,7 +11,7 @@ let fails = 0;
 const ok = (c, m) => { if (!c) { fails++; console.log('  ✗', m); } };
 const delay = ms => new Promise(r => setTimeout(r, ms));
 const here = dirname(fileURLToPath(import.meta.url));
-const patchbayHtml = readFileSync(join(here, '..', 'patchbay-next.html'), 'utf8');
+const patchbayHtml = readFileSync(join(here, '..', 'patchbay.html'), 'utf8');
 const kernelSrc = readFileSync(join(here, '..', 'kernel.js'), 'utf8');
 
 // static server: patchbay, captured publish, small harvest fixture

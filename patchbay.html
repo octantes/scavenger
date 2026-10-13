@@ -280,8 +280,8 @@ const createRouter = (root, {
     });
   };
 
-  const _write = (node, value) => { // primitives only - objects and pulses by event
-    if (!PRIMITIVE.has(typeof value)) return;
+  const _write = (node, value) => { // primitives only - objects, pulses and component hosts by event
+    if (!PRIMITIVE.has(typeof value) || node.shadowRoot) return;
     if (FORM_TAGS.has(node.tagName) && (node.type === 'checkbox' || node.type === 'radio')) node.checked = [true, 1, '1', 'true', 'on', 'checked'].includes(value);
     else if (FORM_TAGS.has(node.tagName)) node.value = value; // text would wipe select options
     else node.textContent = value;

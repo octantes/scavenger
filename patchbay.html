@@ -280,11 +280,11 @@ const createRouter = (root, {
     });
   };
 
-  const _write = (node, value) => { // primitives only - objects, pulses and component hosts by event
-    if (!PRIMITIVE.has(typeof value) || node.shadowRoot) return;
+  const _write = (node, value) => { // primitives into controls and leaves - objects, pulses and markup by event
+    if (!PRIMITIVE.has(typeof value)) return;
     if (FORM_TAGS.has(node.tagName) && (node.type === 'checkbox' || node.type === 'radio')) node.checked = [true, 1, '1', 'true', 'on', 'checked'].includes(value);
     else if (FORM_TAGS.has(node.tagName)) node.value = value; // text would wipe select options
-    else node.textContent = value;
+    else if (!node.shadowRoot && !node.firstElementChild) node.textContent = value;
   };
 
   const _deliver = (node, channel, value) => {

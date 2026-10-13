@@ -136,12 +136,18 @@ try {
     return [d.textContent === 'kept' && d.log[0] === obj, d.textContent];
   });
 
-  await run('component host gets value by event only, light children kept', async () => {
+  await run('container gets value by event only, markup kept', async () => {
+    const pb = T.pb(), d = T.sink(pb, 'c'); d.innerHTML = '<b>kept</b>';
+    pb.routeSend('c', 'v');
+    return [d.innerHTML === '<b>kept</b>' && d.log[0] === 'v', d.innerHTML];
+  });
+
+  await run('component host gets value by event only, no text in light dom', async () => {
     const pb = T.pb(); T.harvestDef('scv-wh1', '<p>x</p>');
-    const host = T.item(pb, T.el('<scv-wh1 data-scv-receives="c"><b>slotted</b></scv-wh1>')); let got;
+    const host = T.item(pb, T.el('<scv-wh1 data-scv-receives="c"></scv-wh1>')); let got;
     host.addEventListener('scv-receive', e => { got = e.detail; });
     pb.routeSend('c', 'v');
-    return [host.innerHTML === '<b>slotted</b>' && got === 'v', [host.innerHTML, got]];
+    return [host.innerHTML === '' && got === 'v', [host.innerHTML, got]];
   });
 
   await run('pulse writes nothing, fires receive and verb', async () => {

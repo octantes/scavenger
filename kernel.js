@@ -547,15 +547,19 @@
       [el, ...el.querySelectorAll('*')].forEach(n => { if (n.shadowRoot) utils.purge(n.shadowRoot); });
       return el;
     },
-    captureShadows: (original, clone) => { // recursively flatten shadow doms into light dom - captures styles and markup
+    captureShadows: (original, clone) => { // recursively flatten shadow doms into light dom - captures styles and markup, > clone to original pairs
       let hostSeq = 0; // nested shadow's :host rules end in one shadow once flattened - rescope each to real element, not outer host
+      const pairs = new Map();
       const walk = (orig, cl) => {
         if (!orig || !cl) return;
+        pairs.set(cl, orig);
         const ol = orig.children, ll = cl.children; // light dom children before prepending shadow content to cl
-        for (let i = 0; i < ol.length && i < ll.length; i++) walk(ol[i], ll[i]);
+        const light = new Map();
+        for (let i = 0; i < ol.length && i < ll.length; i++) { light.set(ol[i], ll[i]); walk(ol[i], ll[i]); }
         const sr = orig.shadowRoot;
         if (sr) {
-          let inner = sr.innerHTML;
+          const adopted = [...(sr.adoptedStyleSheets || [])].map(sh => { try { return `<style>${[...sh.cssRules].map(r => r.cssText).join('\n')}</style>`; } catch (e) { debug('adopted sheet unreadable', e, true); return ''; } }).filter(Boolean); // never in innerHTML
+          let inner = adopted.join('') + sr.innerHTML;
           if (orig !== original) { // harvest root's own shadow becomes final :host - only descendants need rescope
             const mark = `scv-h${hostSeq++}`;
             cl.classList.add(mark);
@@ -564,12 +568,18 @@
           }
           const before = cl.children.length;
           utils.insertHTML(cl, 'afterbegin', inner);
-          const inserted = cl.children.length - before;
-          const sk = sr.children;
-          for (let i = 0; i < inserted && i < sk.length; i++) walk(sk[i], cl.children[i]);
+          const top = [...cl.children].slice(adopted.length, cl.children.length - before), sk = sr.children;
+          for (let i = 0; i < top.length && i < sk.length; i++) walk(sk[i], top[i]);
+          const oSlots = sr.querySelectorAll('slot'), cSlots = top.flatMap(t => [...(t.matches('slot') ? [t] : []), ...t.querySelectorAll('slot')]);
+          oSlots.forEach((os, i) => { // slotted light children sit where their slot is - a canvas layer keeps its items
+            const cs = cSlots[i]; if (!cs) return;
+            const moved = os.assignedElements().map(a => light.get(a)).filter(Boolean);
+            cs.replaceWith(...(moved.length ? moved : cs.childNodes));
+          });
         }
       };
       walk(original, clone);
+      return pairs;
     },
     preserveScvNodes: (original, clone) => { // protect logic nodes from structural mutation - keeps patchbays functional
       const keep = new Set();
@@ -599,15 +609,13 @@
       try {
       const _realm = utils.getIframe().contentWindow;
       const uid = (opts.uid && /^[0-9a-z]+$/.test(opts.uid)) ? opts.uid : Math.random().toString(36).slice(2, 8); // stable id per quest channel makes re-harvests diffable so morph in place works
+      const skipped = [el, ...el.querySelectorAll('*')].filter(n => getComputedStyle(n).contentVisibility !== 'visible' && !n.style.contentVisibility); // skipped content has no layout - shown for capture
+      skipped.forEach(n => n.style.contentVisibility = 'visible');
+      try {
       const cl = el.cloneNode(true);
-      utils.captureShadows(el, cl); // fold shadow in, then pair composed - querySelectorAll never reaches nested shadow nodes
+      const pairs = utils.captureShadows(el, cl); // fold shadow in - pairs follow slotted nodes wherever they land
       const ao = [], ac = [];
-      (function pair(o, c) {
-        ao.push(o); ac.push(c);
-        const ok = o.shadowRoot ? [...o.shadowRoot.children, ...o.children] : [...o.children]; // same order captureShadows splices them
-        const ck = [...c.children];
-        for (let i = 0; i < ok.length && i < ck.length; i++) pair(ok[i], ck[i]);
-      })(el, cl);
+      [cl, ...cl.querySelectorAll('*')].forEach(c => { const o = pairs.get(c); if (o) { ao.push(o); ac.push(c); } });
       const keepScv = utils.preserveScvNodes(el, cl); // logic nodes and wired elements keep their markup
       const origSet = new Set(), nodeMap = new Map();
 
@@ -1076,7 +1084,7 @@
       if (el.querySelector('scv-logic')) { // constrain live nodes to fixed-size frame and clip
         // size frame to contain every node
         let w = el.offsetWidth, h = el.offsetHeight;
-        el.querySelectorAll('.comp-wrapper, scv-logic').forEach(n => {
+        el.querySelectorAll('scv-item, scv-logic').forEach(n => {
           w = Math.max(w, (parseFloat(n.style.left) || 0) + n.offsetWidth);
           h = Math.max(h, (parseFloat(n.style.top) || 0) + n.offsetHeight);
         });
@@ -1115,6 +1123,7 @@
         ? `\nif(!document.getElementById('scv-fonts-${uid}')){\nconst f=document.createElement('style');\nf.id='scv-fonts-${uid}';\nf.textContent=\`${escFonts}\`;\ndocument.head.appendChild(f);\n}\n`
         : '';
       return `${rfMarker}<!-- AUTHOR: ${author} -->\n<${tg} data-scv-component></${tg}>\n<script data-scv-def>${fontBoot}\nif(!customElements.get('${tg}')){\ncustomElements.define('${tg}', class extends HTMLElement {\nconstructor() {\nsuper();\nif (this.shadowRoot) return;\nthis.attachShadow({mode: 'open'}).innerHTML = \`<style>${escCss}</style>${escHtml}\`;\n}\n});\n}\n<\/script>`;
+      } finally { skipped.forEach(n => n.style.removeProperty('content-visibility')); }
       } finally { if (registry.freeze && !_hadFreeze) kernel.stop('freeze'); }
     },
     download: (html, name) => { // trigger file download from html string - saves extracted artifact to disk
@@ -1589,7 +1598,7 @@
   ];
 
   function openWirePanel(tgt) { // show wiring panel anchored to target element
-    const el = tgt.closest('scv-logic, .comp-wrapper, [data-scv-id]') || tgt;
+    const el = tgt.closest('scv-logic, scv-item, [data-scv-id]') || tgt;
     const r = el.getBoundingClientRect();
     const panel = utils.createOverlay(IDS.wirePanel);
     panel.style.left = Math.max(8, Math.min(r.left + r.width / 2 - 110, window.innerWidth - 236)) + 'px'; // centred on target, not hung off corner

@@ -590,6 +590,22 @@ try {
     return [r.join() === 'true,D', r];
   });
 
+  await run('followed file: save rebuilds instances keeping data, places none, stops when file is gone', async () => {
+    const r = await js(`(async () => {
+      let text = '<template data-scv-comp="lf"><b data-scv-slot="n">0</b><i>v1</i></template>', at = 1, gone = false, reads = 0;
+      const handle = { getFile: async () => { reads++; if (gone) throw new DOMException('gone', 'NotFoundError'); return new File([text], 'lf.html', { lastModified: at }); }, isSameEntry: async o => o === handle };
+      T.pb.import(text, { at: { x: 100, y: 700 } }); await T.pb.follow(handle, text);
+      const host = T.pb.querySelector('scv-lf'); host.shadowRoot.querySelector('b').textContent = '5';
+      await new Promise(r => setTimeout(r, 1200)); const idle = T.pb.querySelectorAll('scv-lf').length;
+      text = text.replace('v1', 'v2'); at = 2; await new Promise(r => setTimeout(r, 1300));
+      const after = [host.shadowRoot.querySelector('i').textContent, host.shadowRoot.querySelector('b').textContent, T.pb.querySelectorAll('scv-lf').length];
+      host.parentElement.remove(); text = text.replace('v2', 'v3'); at = 3; await new Promise(r => setTimeout(r, 1300)); const deleted = T.pb.querySelectorAll('scv-lf').length;
+      gone = true; await new Promise(r => setTimeout(r, 1200)); const n = reads; await new Promise(r => setTimeout(r, 1200));
+      return [idle, ...after, deleted, reads === n];
+    })()`);
+    return [r.join() === '1,v2,5,1,0,true', r];
+  });
+
   // real clipboard - copy and paste editing commands
 
   await send('Browser.grantPermissions', { permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] });

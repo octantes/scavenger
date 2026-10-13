@@ -2066,6 +2066,7 @@ const studio = pb => {
     kit.asset.boot(doc);
     const tags = [...doc.querySelectorAll('template[data-scv-comp]')].map(t => kit.defineComponent(document.importNode(t, true))).filter(Boolean); // authored code runs - same trust as opening its file
     const types = [...doc.querySelectorAll('script[data-scv-node]')].flatMap(s => kit.runNodeSource(s.textContent));
+    if (opts.redefine) return [];
     const src = doc.querySelector('scv-patchbay') || doc.body;
     let units = [...src.children].filter(isUnit);
     if (!units.length) units = [...doc.querySelectorAll('[data-scv-component]')].filter(host => customElements.get(host.localName)).map((host, i) => { host.removeAttribute('data-scv-component'); host.dataset.scvId = 'x'; return itemFor(host, i * GRID, i * GRID); }); // kernel harvest snippet
@@ -2130,13 +2131,37 @@ const studio = pb => {
     if (/^\s*https?:\/\/\S+\s*$/.test(text)) { e.preventDefault(); linkCard(text.trim().replace(/[.,;:!?]+$/, ''), at); }
   });
   pb.addEventListener('dragover', e => e.preventDefault());
+  const followed = new Map(); // dropped authoring file > last seen - session only, a reload drops it again
+  let followT = 0;
+  const poll = async () => { // saves in any editor update the canvas - metadata read once a second
+    for (const [h, seen] of followed) {
+      try {
+        const f = await h.getFile();
+        if (f.lastModified === seen.at) continue;
+        const text = await f.text();
+        followed.set(h, { at: f.lastModified, text });
+        if (text !== seen.text) importText(text, { redefine: true });
+      } catch (err) { followed.delete(h); kit.debug('followed file gone', err); }
+    }
+    if (!followed.size) { clearInterval(followT); followT = 0; }
+  };
+  const follow = async (h, text) => {
+    for (const k of followed.keys()) if (await k.isSameEntry?.(h)) followed.delete(k);
+    followed.set(h, { at: (await h.getFile()).lastModified, text });
+    followT ||= setInterval(poll, 1000);
+  };
+  pb.follow = follow;
   pb.addEventListener('drop', async e => {
     e.preventDefault();
+    const item = [...(e.dataTransfer?.items || [])].find(i => i.kind === 'file'), handle = item?.getAsFileSystemHandle?.(); // only answers inside the event
     const file = e.dataTransfer?.files?.[0], at = toCanvas(e.clientX, e.clientY);
     if (!file) return;
     if (file.type.startsWith('image/')) return void imageItem(file, at);
     const text = await file.text();
-    if (/<scv-|data-scv-/i.test(text)) importText(text, { at });
+    if (!/<scv-|data-scv-/i.test(text)) return;
+    importText(text, { at });
+    const h = await handle?.catch(() => null);
+    if (h && /data-scv-comp|data-scv-node/.test(text) && !/<scv-patchbay|<scv-item/.test(text)) follow(h, text); // sources only, never quines
   });
   const duplicate = async () => { const sel = movable(selection()); if (sel.length) importText(await (await clip(sel)).text(), { offset: GRID }); };
   pb.duplicate = duplicate;

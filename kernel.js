@@ -6,7 +6,7 @@
     return;
   }
 
-  const theme = { // matches patchbay and compiler theme - enforced by token tests
+  const theme = { // matches patchbay theme - enforced by token tests
     backgroundSunk: '#1A1C1C',
     output:         '#986C98',
     input:          '#8AB6BB',

@@ -55,7 +55,7 @@ let parseOk = true; try { new Function(strippedKernel); } catch (e) { parseOk = 
 ok(parseOk, 'stripped kernel still parses as valid JS');
 
 // every shipped file is plain text - stray control byte turns source binary to grep and rides into exports as U+FFFD
-for (const f of ['kernel.js', 'patchbay.html', 'compiler.html', 'quests.mjs', 'bookmarklet.js']) {
+for (const f of ['kernel.js', 'patchbay.html', 'quests.mjs', 'bookmarklet.js']) {
   const bytes = readFileSync(join(root, f));
   const bad = [...bytes].findIndex(c => c < 9 || (c > 13 && c < 32) || c === 127);
   ok(bad === -1, `${f} carries no control bytes (found 0x${bytes[bad]?.toString(16)} at offset ${bad})`);

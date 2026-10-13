@@ -617,6 +617,7 @@ const defineComponent = tpl => { // placed instances rebuild on new def
   const { frag, code } = _compParts(tpl);
   const c = { tpl, frag, run: _compileComp(tag, code), icon: tpl.getAttribute('data-scv-icon') || '', color: tpl.getAttribute('data-scv-color') || '' };
   const known = _comps.has(tag);
+  if (known && _comps.get(tag).tpl.outerHTML === tpl.outerHTML) return tag; // same def from a paste - placed instances keep running
   _comps.set(tag, c);
   if (!known) customElements.define(tag, class extends ScvComponent {});
   else document.querySelectorAll(tag).forEach(el => {
@@ -824,29 +825,59 @@ builtIn('action', '9', {
 // canonical kernel defs - script defines tag, markup in one template literal
 
 const boxScopeCss = css => css.replace(/@media/g, '@container'); // harvested widget queries its box, never window
-const extractShadowMarkup = defText => { // unescaped shadow markup
-  const marker = ".attachShadow({mode: 'open'}).innerHTML = `";
-  const s = defText.indexOf(marker);
+const literalAfter = (text, marker) => { // unescaped template literal following marker
+  const s = text.indexOf(marker);
   if (s < 0) return null;
   const start = s + marker.length;
-  for (let i = start; i < defText.length; i++) { // one slice - per-char appends cost megabytes
-    const c = defText.charCodeAt(i);
+  for (let i = start; i < text.length; i++) { // one slice - per-char appends cost megabytes
+    const c = text.charCodeAt(i);
     if (c === 92) i++; // backslash
-    else if (c === 96) return defText.slice(start, i).replace(/\\([\s\S])/g, '$1'); // closing backtick
+    else if (c === 96) return text.slice(start, i).replace(/\\([\s\S])/g, '$1'); // closing backtick
   }
   return null;
 };
-const mountHarvest = (pb, { tag, script, x = 80, y = 80 }) => { // def runs once per page
-  if (!pb) return null;
-  const known = !!customElements.get(tag);
-  if (!known) { const s = document.createElement('script'); s.setAttribute('data-scv-def', ''); s.textContent = script; document.body.appendChild(s); }
+const extractShadowMarkup = defText => literalAfter(defText, ".attachShadow({mode: 'open'}).innerHTML = `");
+const embed = t => t.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$').replace(/<\/script/gi, '<\\/script').replace(/<!--/g, '<\\!--'); // kernel's escaping
+const defang = root => { // markup keeps no code: scripts, handlers, javascript: urls, srcdoc frames, refresh
+  root.querySelectorAll('script, meta, base, object, embed').forEach(s => s.remove());
+  root.querySelectorAll('*').forEach(el => {
+    for (const a of [...el.attributes]) if (/^on/i.test(a.name) || a.name === 'srcdoc' || /^javascript:/i.test(a.value.replace(/[\u0000-\u0020\u007f]/g, ''))) el.removeAttribute(a.name); // urls ignore tabs and newlines inside
+    if (el.shadowRoot) defang(el.shadowRoot);
+  });
+  root.querySelectorAll('template').forEach(t => defang(t.content));
+  return root;
+};
+const harvestOf = defText => { // def read as data - its code never runs
+  const tag = (defText.match(/customElements\.get\('(scv-[a-z0-9-]+)'\)/) || [])[1], raw = extractShadowMarkup(defText);
+  if (!tag || raw == null) return null;
+  const t = document.createElement('template'); t.innerHTML = raw;
+  const markup = defang(t.content) && t.innerHTML;
+  const id = (defText.match(/f\.id='(scv-fonts-[\w-]+)'/) || [])[1];
+  return { tag, markup, fonts: id ? { id, css: literalAfter(defText, 'f.textContent=`') || '' } : null };
+};
+const defineHarvest = h => { // element built from markup, canonical def written for save
+  if (h.fonts && !document.getElementById(h.fonts.id)) { const f = document.createElement('style'); f.id = h.fonts.id; f.textContent = h.fonts.css; document.head.append(f); } // @font-face is inert inside shadow
+  if (customElements.get(h.tag)) return false;
+  customElements.define(h.tag, class extends HTMLElement { constructor() { super(); if (!this.shadowRoot) this.attachShadow({ mode: 'open' }).innerHTML = h.markup; } });
+  const s = document.createElement('script');
+  s.type = 'scv/def'; // inert while live - save writes it runnable
+  s.setAttribute('data-scv-def', '');
+  const fonts = h.fonts ? `\nif(!document.getElementById('${h.fonts.id}')){\nconst f=document.createElement('style');\nf.id='${h.fonts.id}';\nf.textContent=\`${embed(h.fonts.css)}\`;\ndocument.head.appendChild(f);\n}\n` : '';
+  s.textContent = `${fonts}\nif(!customElements.get('${h.tag}')){\ncustomElements.define('${h.tag}', class extends HTMLElement {\nconstructor() {\nsuper();\nif (this.shadowRoot) return;\nthis.attachShadow({mode: 'open'}).innerHTML = \`${embed(h.markup)}\`;\n}\n});\n}\n`;
+  document.body.append(s);
+  return true;
+};
+const mountHarvest = (pb, { tag, script, x = 80, y = 80 }) => { // quest component - same rebuild as paste
+  const h = pb && harvestOf(script);
+  if (!h) return null;
+  const known = !defineHarvest(h);
   const item = document.createElement('scv-item');
   item.style.left = x + 'px'; item.style.top = y + 'px';
-  const el = document.createElement(tag);
+  const el = document.createElement(h.tag);
   el.dataset.scvId = 'comp_' + uid(9);
-  if (known && el.shadowRoot) { const m = extractShadowMarkup(script); if (m != null) el.shadowRoot.innerHTML = m; } // constructor built prior version
+  if (known && el.shadowRoot) el.shadowRoot.innerHTML = h.markup; // constructor built prior version
   item.append(el); pb.append(item);
-  if (/@container/.test(script)) { const w = el.getBoundingClientRect().width / (pb.zoom || 1); if (w > 0) el.style.width = w + 'px'; el.style.containerType = 'inline-size'; } // host must be container its css queries
+  if (/@container/.test(h.markup)) { const w = el.getBoundingClientRect().width / (pb.zoom || 1); if (w > 0) el.style.width = w + 'px'; el.style.containerType = 'inline-size'; } // host must be container its css queries
   return item;
 };
 
@@ -1129,7 +1160,7 @@ const defineNode = def => { // page-wide - redropped def re-points placed nodes
 };
 const runNodeSource = text => { // > names defined
   const names = [], tag = text.match(/name:\s*['"]([^'"]+)/)?.[1] || 'node';
-  try { new Function('defineNode', text + '\n//# sourceURL=scv/' + tag)(def => { const n = defineNode(def); if (n) { names.push(n); _nodeSources.set(n, text); } return n; }); }
+  try { new Function('defineNode', text + '\n//# sourceURL=scv/' + tag)(def => { if (_nodeSources.get(def?.name) === text) return names.push(def.name), def.name; const n = defineNode(def); if (n) { names.push(n); _nodeSources.set(n, text); } return n; }); } // same source - placed nodes keep running
   catch (e) { console.warn('[scav] node def failed', e); }
   return names;
 };
@@ -1140,6 +1171,12 @@ const PAGE_CSS = `
 scv-patchbay { display: block; position: relative; }
 scv-item { position: absolute; display: block; width: max-content; transform-origin: top left; contain: layout style; } /* own content sizes it, never canvas edge */
 scv-item > [data-scv-id] { display: block; min-height: 10px; }
+.scv-link-card { display: flex; gap: 10px; width: 312px; min-height: 96px; padding: 8px; box-sizing: border-box; background: var(--background-sunk); border: 1px solid var(--border); border-radius: var(--corner-low); color: var(--text-base); }
+.scv-lc-thumb { width: 78px; height: 78px; flex: none; object-fit: cover; border-radius: var(--corner-low); background: var(--background-raised); }
+.scv-lc-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.scv-lc-title { font-weight: bold; font-size: var(--fs-b); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scv-lc-desc { font-size: var(--fs-a); color: var(--text-dim); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.scv-lc-open { font-size: var(--fs-a); color: var(--input); text-decoration: none; margin-top: auto; align-self: flex-start; }
 scv-logic { display: none; }
 scv-item:state(far) { content-visibility: hidden; contain-intrinsic-size: auto 1px auto 1px; } /* keeps last rendered size */
 `;
@@ -1215,7 +1252,7 @@ Object.assign(kit, {
   splitWords, uid, px, debug, channelOf, collectChannels, hostOf, itemOf, patchbayOf, onFrame, whenGone, whenReady,
   pulse, isPulse, asset, quests, clock, shared, unshare, patch, resolveRefs,
   isEmitter: el => _emitters.has(el), defineNode, runNodeSource, nodeSources: _nodeSources, defineComponent, comps: _comps, compTag,
-  mountHarvest, morphShadow, extractShadowMarkup, boxScopeCss, snapSlots, restoreSlots, slotValue, setSlot,
+  mountHarvest, harvestOf, defineHarvest, defang, morphShadow, extractShadowMarkup, boxScopeCss, snapSlots, restoreSlots, slotValue, setSlot,
 });
 
 document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet(PAGE_CSS)];
@@ -1945,6 +1982,7 @@ const studio = pb => {
     if (m && (k === 'p' || k === 'P')) { e.preventDefault(); return pb.export('publish'); }
     if (!pb.editing) return;
     if (m && (k === 'a' || k === 'A')) { e.preventDefault(); return select(units()); }
+    if (m && (k === 'd' || k === 'D')) { e.preventDefault(); return void duplicate(); } // browser bookmark shortcut otherwise
     if (k === 'Backspace' || k === 'Delete') { e.preventDefault(); return remove(selection()); }
     if (k === '[' || k === ']') return zorder(k === ']' ? 1 : -1);
     if (k.startsWith('Arrow')) {
@@ -1987,6 +2025,122 @@ const studio = pb => {
     if (!/^#[0-9a-f]{6}$/i.test(v)) return hex.classList.add('bad');
     hex.classList.remove('bad'); bg.classList.remove('open'); setBg(v.toLowerCase());
   });
+
+  // paste, drop and duplicate share import - only authored defs run code
+
+  const note = msg => { // short message at pointer
+    const r = rectOf();
+    tip.textContent = msg; tip.hidden = false;
+    Object.assign(tip.style, { left: st.pointer.x - r.left + 15 + 'px', top: st.pointer.y - r.top + 15 + 'px', transform: '' });
+    clearTimeout(st.noteT); st.noteT = setTimeout(() => { tip.hidden = true; }, 2500);
+  };
+  const wiredIn = (u, fn) => { if (u.matches(kit.WIRING_SEL)) fn(u); walk(u, kit.WIRING_SEL, fn); };
+  const remap = (el, map) => { // mapped channels renamed, others keep name
+    for (const a of [ATTR_EMITS, ATTR_RECEIVES]) { const v = el.getAttribute(a); if (v) el.setAttribute(a, splitWords(v).map(c => map.get(c) || c).join(' ')); }
+    const acts = el.getAttribute(ATTR_ACTION);
+    if (acts) el.setAttribute(ATTR_ACTION, splitWords(acts).map(t => { const p = t.split(':'), i = ['prop', 'method', 'event'].includes(p[0]) ? 2 : 1; if (map.has(p[i])) p[i] = map.get(p[i]); return p.join(':'); }).join(' '));
+  };
+  const putAt = (u, x, y) => { u.style.left = Math.round(x) + 'px'; u.style.top = Math.round(y) + 'px'; return u; };
+  const itemFor = (child, x, y) => { const it = document.createElement('scv-item'); it.append(child); return putAt(it, x, y); };
+  const adopt = (units, at, offset) => { // fresh ids, colliding channels re-minted, centred on pointer
+    units.forEach(u => { kit.defang(u); [u, ...u.querySelectorAll('[data-scv-id]')].forEach(n => { if (n.dataset.scvId) n.dataset.scvId = (n.localName === 'scv-logic' ? 'logic_' : 'comp_') + uid(9); }); });
+    const live = new Set(), em = new Set(), rc = new Set();
+    walk(pb, kit.WIRING_SEL, n => kit.collectChannels(n, live, live));
+    units.forEach(u => wiredIn(u, n => kit.collectChannels(n, em, rc)));
+    const map = new Map(), mint = () => { let c; do c = 'ch_' + uid(8); while (live.has(c) || em.has(c) || rc.has(c)); live.add(c); return c; };
+    new Set([...em, ...rc]).forEach(c => { if (live.has(c)) map.set(c, mint()); }); // named channel reconnects in another patchbay
+    units.forEach(u => wiredIn(u, n => remap(n, map)));
+    const cx = units.reduce((s, u) => s + px(u, 'left'), 0) / units.length, cy = units.reduce((s, u) => s + px(u, 'top'), 0) / units.length;
+    const dx = offset ?? at.x - cx, dy = offset ?? at.y - cy;
+    units.forEach(u => putAt(u, px(u, 'left') + dx, px(u, 'top') + dy));
+    pb.append(...units);
+    record(() => pb.append(...units), () => units.forEach(u => u.remove()), 'paste');
+    setMode('edit'); select(units);
+    return units;
+  };
+  const importDoc = (doc, opts = {}) => {
+    const at = opts.at || toCanvas(st.pointer.x, st.pointer.y);
+    if (parseInt(doc.documentElement?.getAttribute('data-scv-runtime')) < 2 || doc.querySelector('.comp-wrapper')) { note('1.x file, open it directly'); return []; }
+    let unknown = 0;
+    doc.querySelectorAll('script[data-scv-def]').forEach(s => { const hv = kit.harvestOf(kit.boxScopeCss(s.textContent)); hv ? kit.defineHarvest(hv) : unknown++; });
+    kit.asset.boot(doc);
+    const tags = [...doc.querySelectorAll('template[data-scv-comp]')].map(t => kit.defineComponent(document.importNode(t, true))).filter(Boolean); // authored code runs - same trust as opening its file
+    const types = [...doc.querySelectorAll('script[data-scv-node]')].flatMap(s => kit.runNodeSource(s.textContent));
+    const src = doc.querySelector('scv-patchbay') || doc.body;
+    let units = [...src.children].filter(isUnit);
+    if (!units.length) units = [...doc.querySelectorAll('[data-scv-component]')].filter(host => customElements.get(host.localName)).map((host, i) => { host.removeAttribute('data-scv-component'); host.dataset.scvId = 'x'; return itemFor(host, i * GRID, i * GRID); }); // kernel harvest snippet
+    if (units.length) return adopt(units.map(u => document.adoptNode(u)), at, opts.offset);
+    const fresh = [ // authoring file places first instance of new type
+      ...tags.filter(t => !pb.querySelector(t)).map(t => { const c = document.createElement(t); c.dataset.scvId = 'x'; return itemFor(c, 0, 0); }),
+      ...types.filter(t => !pb.querySelector(`scv-logic[data-type="${CSS.escape(t)}"]`)).map(t => { const n = document.createElement('scv-logic'); n.dataset.type = t; return putAt(n, 0, 0); }),
+    ];
+    if (fresh.length) return adopt(fresh, at);
+    if (unknown) note('harvest not recognized');
+    return [];
+  };
+  const importText = (text, opts) => importDoc(Document.parseHTMLUnsafe(text), opts); // declarative shadows come back attached
+  pb.import = importText;
+
+  const imageItem = async (blob, at) => { const img = document.createElement('img'); img.dataset.scvId = 'x'; img.dataset.scvSrc = await kit.asset.put(blob); img.style.cssText = 'max-width:400px;max-height:400px'; return adopt([itemFor(img, 0, 0)], at); }; // screenshot sized down, scale handle grows it
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  const linkCard = (url, at) => { // instant card from url alone - quest server fills it in
+    let u; try { u = new URL(url); } catch { return []; }
+    let path = u.pathname; try { path = decodeURIComponent(path); } catch {}
+    path = path.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean).join(' / ');
+    const card = document.createElement('div');
+    card.className = 'scv-link-card'; card.dataset.scvId = 'x';
+    card.innerHTML = `<img class="scv-lc-thumb" src="${esc(u.origin + '/favicon.ico')}" alt="" referrerpolicy="no-referrer"><div class="scv-lc-body"><div class="scv-lc-title">${esc(u.hostname.replace(/^www\./, ''))}</div><div class="scv-lc-desc">${esc(path || '(root)')}</div><a class="scv-lc-open" href="${esc(url)}" target="_blank" rel="noopener">open ↗</a></div>`;
+    const out = adopt([itemFor(card, 0, 0)], at);
+    enrich();
+    return out;
+  };
+  const enrich = async () => { // every unfilled card - retried while quests is down
+    clearTimeout(st.enrichT);
+    const cards = [...pb.querySelectorAll('.scv-link-card:not([data-scv-lc])')];
+    const done = await Promise.all(cards.map(async card => {
+      const url = card.querySelector('.scv-lc-open')?.getAttribute('href');
+      const meta = await fetch(kit.quests.api(pb) + '/unfurl?url=' + encodeURIComponent(url), { signal: AbortSignal.timeout(3000) }).then(r => r.ok ? r.json() : null).catch(() => null);
+      if (!meta || !card.isConnected) return !card.isConnected;
+      if (meta.title) card.querySelector('.scv-lc-title').textContent = meta.title;
+      if (meta.description) card.querySelector('.scv-lc-desc').textContent = meta.description;
+      const thumb = card.querySelector('.scv-lc-thumb'), blob = meta.image && await fetch(meta.image).then(r => r.ok ? r.blob() : null).catch(() => null);
+      if (blob) thumb.dataset.scvSrc = await kit.asset.put(blob); else if (meta.image) thumb.src = meta.image;
+      card.dataset.scvLc = ''; // answered - saved card never refetches
+      return true;
+    }));
+    if (done.includes(false)) st.enrichT = setTimeout(enrich, 5000);
+  };
+  root.addEventListener('error', e => { if (e.target.classList?.contains('scv-lc-thumb') && !e.target.src.startsWith('data:')) e.target.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }, true); // broken thumb shows nothing
+
+  const typingIn = e => { const t = e.composedPath()[0]; return !!(t?.closest?.('input, textarea, select') || t?.isContentEditable); };
+  pb.copy = () => clip(movable(selection()));
+  pb.addEventListener('copy', e => {
+    if (typingIn(e) || !selection().length) return;
+    e.preventDefault();
+    const html = pb.copy(); // assets read async - clipboard takes promise
+    navigator.clipboard.write([new ClipboardItem({ 'text/html': html, 'text/plain': new Blob([`${selection().length} scavenger items`], { type: 'text/plain' }) })]).catch(err => kit.debug('copy not written', err));
+  });
+  pb.addEventListener('paste', e => {
+    if (typingIn(e)) return;
+    const d = e.clipboardData, file = [...(d?.files || [])].find(f => f.type.startsWith('image/')), html = d?.getData('text/html') || '', text = d?.getData('text/plain') || '';
+    const at = toCanvas(st.pointer.x, st.pointer.y), scv = /<scv-|data-scv-/i;
+    if (file) { e.preventDefault(); return void imageItem(file, at); }
+    if (scv.test(html)) { e.preventDefault(); return void importText(html, { at }); }
+    if (scv.test(text)) { e.preventDefault(); return void importText(text, { at }); } // kernel harvest arrives as text
+    if (/^\s*https?:\/\/\S+\s*$/.test(text)) { e.preventDefault(); linkCard(text.trim().replace(/[.,;:!?]+$/, ''), at); }
+  });
+  pb.addEventListener('dragover', e => e.preventDefault());
+  pb.addEventListener('drop', async e => {
+    e.preventDefault();
+    const file = e.dataTransfer?.files?.[0], at = toCanvas(e.clientX, e.clientY);
+    if (!file) return;
+    if (file.type.startsWith('image/')) return void imageItem(file, at);
+    const text = await file.text();
+    if (/<scv-|data-scv-/i.test(text)) importText(text, { at });
+  });
+  const duplicate = async () => { const sel = movable(selection()); if (sel.length) importText(await (await clip(sel)).text(), { offset: GRID }); };
+  pb.duplicate = duplicate;
+  enrich();
 
   pb.save = kind => save(pb, kind);
   pb.export = async (kind = 'quine') => download(await save(pb, kind), NAMES[kind]);
@@ -2070,7 +2224,22 @@ const _item = async (el, defs, used) => { // component shadows only where they d
   const html = (startTag(el) + el.getHTML({ shadowRoots: shadows }) + `</${el.localName}>`)
     .replace(/<[a-z][^<>]*>/gi, tag => tag.replace(/\s(?:src|href|poster)="blob:[^"]*"/g, '')); // blob url dies with page - boot rebuilds from data-scv-src
   for (const m of html.matchAll(/scv-asset[:-]([0-9a-f]{16,64})/g)) used.refs.add(m[1]);
-  return new Blob([html]); // string freed now, not at end of save
+  return html;
+};
+const _defsOf = async (used, defs) => { // what items use, each once
+  const assets = [], authored = [], harvests = [];
+  for (const h of used.refs) assets.push(new Blob([await kit.asset.element(h)])); // referenced assets only
+  for (const t of used.tags) { const c = kit.comps.get(t); if (c) authored.push(c.tpl.outerHTML, '\n'); }
+  for (const n of used.nodes) { const src = kit.nodeSources.get(n); if (src) authored.push(`<script type="scv/node" data-scv-node>${src.replace(/<\/script/gi, '<\\/script')}<\/script>\n`); }
+  new Set([...used.tags].map(t => defs.get(t)).filter(Boolean)).forEach(s => harvests.push(new Blob(['<script data-scv-def>', s.textContent, '<\/script>\n']))); // runs as written - rebuilt ones sit inert while live
+  return { assets, authored, harvests };
+};
+const clip = async list => { // selection as mini save - items, then defs and assets they use
+  const defs = _defs(), used = { tags: new Set(), nodes: new Set(), refs: new Set() }, parts = ['<scv-patchbay>\n'];
+  for (const el of list) parts.push(new Blob([await _item(el, defs, used)]), '\n');
+  const d = await _defsOf(used, defs);
+  parts.push('</scv-patchbay>\n', ...d.assets, ...d.authored, ...d.harvests);
+  return new Blob(parts, { type: 'text/html' });
 };
 
 const extentOf = pb => {
@@ -2090,13 +2259,9 @@ const save = async (pb, kind = 'quine') => {
   const defs = _defs(), used = { tags: new Set(), nodes: new Set(), refs: new Set() };
   const parts = [LICENSE, `<html lang="en" data-scv-runtime="${escAttr(VERSION)}">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>${NAMES[kind]}</title>\n`,
     document.querySelector('link[rel="icon"]')?.outerHTML || '', '\n', outer('scv-runtime-css'), '\n', outer('scv-runtime'), '\n</head>\n<body>\n', startTag(pb), '\n'];
-  for (const el of pb.children) if (!el.hasAttribute('data-scv-appended')) parts.push(await _item(el, defs, used), '\n');
-  parts.push('</scv-patchbay>\n');
-  for (const h of used.refs) parts.push(new Blob([await kit.asset.element(h)])); // referenced assets only
-  for (const t of used.tags) { const c = kit.comps.get(t); if (c) parts.push(c.tpl.outerHTML, '\n'); }
-  for (const n of used.nodes) { const src = kit.nodeSources.get(n); if (src) parts.push(`<script type="scv/node" data-scv-node>${src.replace(/<\/script/gi, '<\\/script')}<\/script>\n`); }
-  parts.push(outer('scv-boot'), '\n');
-  new Set([...used.tags].map(t => defs.get(t)).filter(Boolean)).forEach(s => parts.push(new Blob([s.outerHTML]), '\n'));
+  for (const el of pb.children) if (!el.hasAttribute('data-scv-appended')) parts.push(new Blob([await _item(el, defs, used)]), '\n'); // string freed now, not at end of save
+  const d = await _defsOf(used, defs);
+  parts.push('</scv-patchbay>\n', ...d.assets, ...d.authored, outer('scv-boot'), '\n', ...d.harvests);
   SCRIPTS[kind].forEach(id => parts.push(outer(id), '\n'));
   parts.push('</body>\n</html>\n');
   return new Blob(parts, { type: 'text/html' });

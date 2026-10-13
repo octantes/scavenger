@@ -21,7 +21,8 @@ const srv = createServer((req, res) => {
   if (path === '/pb') { res.setHeader('content-type', 'text/html'); return res.end(readFileSync(pbFile)); }
   if (path.startsWith('/saved/')) { res.setHeader('content-type', 'text/html'); return res.end(saved.get(path.slice(7)) || ''); }
   if (path === '/img.png') { if (!/^image\//.test(req.headers.accept || '')) imgFetches++; res.setHeader('content-type', 'image/png'); res.setHeader('access-control-allow-origin', '*'); return res.end(Buffer.concat([PNG, Buffer.from([0])])); } // trailing byte - own hash, still decodes
-  if (req.method === 'GET' && path === '/quests') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify([{ channel: 'q_in', result: { value: 7 } }])); }
+  if (req.method === 'GET' && path === '/quests') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify([{ channel: 'q_in', result: { value: 7 } }, { channel: 'q_comp', result: { value: 'live.html#v1' } }])); }
+  if (path === '/component/live.html') { res.setHeader('content-type', 'text/html'); return res.end("<scv-qc1 data-scv-component></scv-qc1>\n<script data-scv-def>window.__ran = 1;\nif(!customElements.get('scv-qc1')){\ncustomElements.define('scv-qc1', class extends HTMLElement {\nconstructor() {\nsuper();\nif (this.shadowRoot) return;\nthis.attachShadow({mode: 'open'}).innerHTML = `<p onclick=\"window.__ran = 2\">live</p>`;\n}\n});\n}\n</script>"); } // def code must never run
   if (req.method === 'GET' && path === '/alt/quests') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify([{ channel: 'q_in', result: { value: 9 } }])); }
   if (req.method === 'POST' && path.startsWith('/quests')) { let b = ''; req.on('data', c => b += c); req.on('end', () => { questPosts.push({ path, body: JSON.parse(b || '{}') }); res.end('{}'); }); return; }
   res.statusCode = 404; res.end();
@@ -824,6 +825,15 @@ try {
     return [d.textContent, q.getAttribute('last'), q.getAttribute('data-scv-emits')];
   })()`);
   ok(qin && qin[0] === '7' && qin[1] === '7' && qin[2] === 'q_in', `quest input polls, emits and keeps last (${qin})`);
+
+  const qc = await js(`(async () => {
+    const pb = document.querySelector('scv-patchbay'), q = document.createElement('scv-logic');
+    q.dataset.type = 'quest'; q.setAttribute('mode', 'component'); q.setAttribute('value', 'q_comp'); q.style.left = '40px'; q.style.top = '40px'; pb.append(q);
+    await new Promise(r => setTimeout(r, 400));
+    const it = pb.querySelector('scv-item[data-scv-quest-channel="q_comp"]'), p = it?.firstElementChild?.shadowRoot?.querySelector('p'); p?.click();
+    return [it?.style.top, p?.textContent, window.__ran ?? null];
+  })()`);
+  ok(qc && qc[0] === '80px' && qc[1] === 'live' && qc[2] === null, `quest component renders below node, its def code never runs (${qc})`);
 
   const perPb = await js(`(async () => {
     const make = api => {

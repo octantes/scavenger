@@ -1,6 +1,7 @@
 // next studio tier - real pointer and key events
 
 import { launchChrome, connect } from './_cdp.mjs';
+import { createServer } from 'http';
 import { pathToFileURL, fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -8,6 +9,11 @@ let fails = 0;
 const ok = (c, m) => { if (!c) { fails++; console.log('  ✗', m); } };
 const here = dirname(fileURLToPath(import.meta.url));
 const pbUrl = pathToFileURL(join(here, '..', 'patchbay-next.html')).href;
+
+const unfurls = []; // mock quest server: link cards ask it for page meta
+const qs = createServer((req, res) => { res.setHeader('access-control-allow-origin', '*'); if (req.url.startsWith('/unfurl')) { unfurls.push(req.url); res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ title: 'Example Page', description: 'about it' })); } res.statusCode = 404; res.end(); });
+await new Promise(r => qs.listen(0, '127.0.0.1', r));
+const qsBase = `http://127.0.0.1:${qs.address().port}`;
 
 const { pageWsUrl, cleanup } = await launchChrome();
 const { ws, send, waitEvent } = await connect(pageWsUrl);
@@ -464,10 +470,144 @@ try {
     return [r.join() === 'false,false', r];
   });
 
+  // import - paste, drop, duplicate share one path
+
+  await fresh();
+  const copied = await js(`(async () => {
+    const t = document.createElement('template'); t.setAttribute('data-scv-comp', 'meter'); t.innerHTML = '<b data-scv-slot="n">0</b><script>host.ok = 1;<\\/script>'; T.kit.defineComponent(t);
+    T.kit.runNodeSource("defineNode({ name: 'twice', icon: '2', onReceive(v, ctx) { ctx.emit(v * 2); } })");
+    const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), c => c.charCodeAt(0));
+    const ref = await T.kit.asset.put(new Blob([png], { type: 'image/png' }));
+    const m = T.item('<scv-meter data-scv-id="m"></scv-meter>', 100, 100), i1 = T.item('<img data-scv-id="a" data-scv-src="' + ref + '">', 200, 100), i2 = T.item('<img data-scv-id="b" data-scv-src="' + ref + '">', 250, 100);
+    const n = T.node('twice', 300, 300), out = T.node('accumulator', 500, 300), far = T.node('accumulator', 700, 300);
+    await T.frame(); m.firstElementChild.shadowRoot.querySelector('b').textContent = '7';
+    T.pb.wire(m.firstElementChild, n); T.pb.wire(n, out); far.setAttribute('data-scv-receives', 'btc'); n.setAttribute('data-scv-emits', n.getAttribute('data-scv-emits') + ' btc');
+    T.pb.select([m, i1, i2, n, out]);
+    return (await T.pb.copy()).text();
+  })()`);
+  await run('copy is mini save: items, defs and each asset once', async () => {
+    const c = copied;
+    return [c.includes('<scv-patchbay>') && c.includes('data-scv-comp="meter"') && c.includes("name: 'twice'") && (c.match(/type="scv\/asset"/g) || []).length === 1 && c.includes('shadowrootmode') && !c.includes('blob:'), c.length];
+  });
+  await fresh();
+  await js(`(() => { const a = T.node('accumulator', 50, 50); a.setAttribute('data-scv-receives', 'clash'); })()`);
+  await run('paste in another window brings defs, slot data and assets', async () => {
+    const r = await js(`(async () => { T.pb.import(${JSON.stringify(copied)}, { at: { x: 600, y: 400 } }); await T.frame(); await T.frame();
+      const m = T.pb.querySelector('scv-meter'), img = T.pb.querySelector('img');
+      return [m?.shadowRoot?.querySelector('b')?.textContent, m?.ok, T.pb.querySelector('scv-logic[data-type=twice]')?.shadowRoot.querySelector('.dot').textContent, img?.src.slice(0, 5)]; })()`);
+    return [r.join() === '7,1,2,blob:', r];
+  });
+  await run('pasted wires keep their pairs, one-ended named channel kept', async () => {
+    const r = await js(`(() => { const m = T.pb.querySelector('scv-meter'), n = T.pb.querySelector('scv-logic[data-type=twice]'), out = T.nodes().at(-1);
+      return [m.getAttribute('data-scv-emits') === n.getAttribute('data-scv-receives'), 0, n.getAttribute('data-scv-emits').split(' ').includes('btc'), n.getAttribute('data-scv-emits').split(' ')[0] === out.getAttribute('data-scv-receives')]; })()`);
+    return [r[0] === true && r[2] === true && r[3] === true, r];
+  });
+  await run('paste lands centred on pointer, selected, one undo step', async () => {
+    const r = await js(`[T.pb.selection().length, (() => { const us = T.pb.selection(); return [us.reduce((s, u) => s + parseFloat(u.style.left), 0) / us.length, us.reduce((s, u) => s + parseFloat(u.style.top), 0) / us.length].map(Math.round); })()]`);
+    await key('z', CTRL); const after = await js(`T.pb.querySelectorAll('scv-item, scv-logic').length`);
+    await key('y', CTRL);
+    return [r[0] === 5 && r[1].join() === '600,400' && after === 1, { r, after }];
+  });
+  await run('colliding channel re-minted on paste', async () => {
+    const r = await js(`(() => { T.pb.import('<scv-patchbay><scv-logic data-type="gate" data-scv-emits="clash" style="left:0px;top:0px"></scv-logic></scv-patchbay>', { at: { x: 50, y: 600 } }); return T.nodes().at(-1).getAttribute('data-scv-emits'); })()`);
+    return [r && r !== 'clash', r];
+  });
+  await run('pasted harvest runs no pasted code, saves executable def', async () => {
+    const r = await js(`(async () => {
+      const def = "window.__ran = 1;\\nif(!customElements.get('scv-hx1')){\\ncustomElements.define('scv-hx1', class extends HTMLElement {\\nconstructor() {\\nsuper();\\nif (this.shadowRoot) return;\\nthis.attachShadow({mode: 'open'}).innerHTML = \\\`<p onclick=\\"window.__ran=2\\">harvested</p><script>window.__ran=3<\\\\/script>\\\`;\\n}\\n});\\n}";
+      T.pb.import('<scv-hx1 data-scv-component></scv-hx1><script data-scv-def>' + def + '<\\/script>', { at: { x: 100, y: 600 } }); await T.frame();
+      const el = T.pb.querySelector('scv-hx1'); el.shadowRoot.querySelector('p')?.click();
+      const saved = await (await T.pb.save('publish')).text();
+      return [window.__ran ?? null, el.shadowRoot.textContent, /<script data-scv-def>[\\s\\S]*scv-hx1/.test(saved)];
+    })()`);
+    return [r[0] === null && r[1] === 'harvested' && r[2] === true, r];
+  });
+  await run('duplicate leaves other instances of its type running', async () => {
+    const r = await js(`(async () => {
+      window.__runs = 0; window.__inits = 0;
+      const t = document.createElement('template'); t.setAttribute('data-scv-comp', 'live1'); t.innerHTML = '<b>x</b><script>window.__runs++;<\\/script>'; T.kit.defineComponent(t);
+      T.kit.runNodeSource("defineNode({ name: 'live2', init() { window.__inits++; } })");
+      const a = T.item('<scv-live1 data-scv-id="la"></scv-live1>', 100, 700), b = T.item('<scv-live1 data-scv-id="lb"></scv-live1>', 200, 700), n1 = T.node('live2', 300, 700), n2 = T.node('live2', 400, 700);
+      await T.frame(); const bInner = b.firstElementChild.shadowRoot.firstElementChild, runs = window.__runs, inits = window.__inits;
+      T.pb.select([a, n1]); await T.pb.duplicate(); await T.frame();
+      return [window.__runs - runs, window.__inits - inits, b.firstElementChild.shadowRoot.firstElementChild === bInner];
+    })()`);
+    return [r.join() === '1,1,true', r];
+  });
+  await run('pasted markup drops srcdoc, disguised javascript urls and meta refresh', async () => {
+    const r = await js(`(async () => {
+      T.pb.import('<scv-patchbay><scv-item style="left:0px;top:0px"><div data-scv-id="d"><iframe srcdoc="<script>parent.__ran = 4<\\/script>"></iframe><a href="jav&#x09;ascript:parent.__ran = 5">x</a><meta http-equiv="refresh" content="0;url=#refreshed"></div></scv-item></scv-patchbay>', { at: { x: 900, y: 700 } });
+      await new Promise(r => setTimeout(r, 300));
+      const d = T.pb.selection()[0].firstElementChild;
+      return [d.querySelector('iframe').hasAttribute('srcdoc'), d.querySelector('a').hasAttribute('href'), !!d.querySelector('meta'), location.hash, window.__ran ?? null];
+    })()`);
+    return [r.join() === 'false,false,false,,', r];
+  });
+  await run('unrecognized harvest places nothing, says so', async () => {
+    const r = await js(`(() => { const n = T.pb.children.length, out = T.pb.import('<scv-odd data-scv-component></scv-odd><script data-scv-def>customElements.define("scv-odd", class extends HTMLElement {})<\\/script>'); return [out.length, T.pb.children.length === n, T.shadow('.tip').textContent]; })()`);
+    return [r[0] === 0 && r[1] && r[2] === 'harvest not recognized', r];
+  });
+  await run('1.x file refused with note', async () => {
+    const r = await js(`(() => { const n = T.pb.children.length, out = T.pb.import('<html data-scv-runtime="1.0.0"><body><div class="comp-wrapper"></div></body></html>'); return [out.length, T.pb.children.length === n, T.shadow('.tip').textContent]; })()`);
+    return [r[0] === 0 && r[1] && r[2] === '1.x file, open it directly', r];
+  });
+  await run('ctrl+d duplicates selection one cell off, wires fresh', async () => {
+    await js(`(() => { const [n, out] = [T.pb.querySelector('scv-logic[data-type=twice]'), T.nodes().find(x => x.dataset.type === 'accumulator' && x.getAttribute('data-scv-receives') !== 'clash')]; T.pb.select([n, out]); T.pb.shadowRoot.querySelector('.layer').focus(); })()`);
+    const before = await js(`[T.nodes().length, T.pb.querySelector('scv-logic[data-type=twice]').style.left]`);
+    await key('d', CTRL); await js('new Promise(r => setTimeout(r, 100))');
+    const r = await js(`(() => { const all = T.nodes(), [n2, o2] = all.slice(-2), n = T.pb.querySelector('scv-logic[data-type=twice]'); return [all.length, n2.style.left, n2.getAttribute('data-scv-emits').split(' ')[0] === o2.getAttribute('data-scv-receives'), n2.getAttribute('data-scv-emits').split(' ')[0] !== n.getAttribute('data-scv-emits').split(' ')[0]]; })()`);
+    return [r[0] === before[0] + 2 && parseFloat(r[1]) === parseFloat(before[1]) + 24 && r[2] && r[3], { before, r }];
+  });
+  await run('pasted image goes through asset table', async () => {
+    const r = await js(`(async () => { const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), c => c.charCodeAt(0)); const dt = new DataTransfer(); dt.items.add(new File([png, new Uint8Array([1])], 'a.png', { type: 'image/png' }));
+      T.pb.shadowRoot.querySelector('.layer').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, composed: true, cancelable: true })); await new Promise(r => setTimeout(r, 100));
+      const img = T.pb.selection()[0]?.querySelector('img'); return [img?.dataset.scvSrc?.startsWith('scv-asset:'), img?.src.slice(0, 5)]; })()`);
+    return [r.join() === 'true,blob:', r];
+  });
+  await run('pasted link becomes card, quest server fills it', async () => {
+    const r = await js(`(async () => { T.pb.questApi = '${qsBase}'; const dt = new DataTransfer(); dt.setData('text/plain', 'https://example.com/docs/intro.');
+      T.pb.shadowRoot.querySelector('.layer').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, composed: true, cancelable: true })); await new Promise(r => setTimeout(r, 300));
+      const c = T.pb.querySelector('.scv-link-card'); return [c?.querySelector('.scv-lc-title').textContent, c?.querySelector('.scv-lc-open').getAttribute('href'), c?.hasAttribute('data-scv-lc')]; })()`);
+    return [r[0] === 'Example Page' && r[1] === 'https://example.com/docs/intro' && r[2] === true && unfurls.length === 1, { r, unfurls }];
+  });
+  await run('paste into a typed field stays text', async () => {
+    const r = await js(`(() => { const n = T.pb.spawn('clock', 900, 100), i = n.shadowRoot.querySelector('.input'), before = T.pb.children.length; const dt = new DataTransfer(); dt.setData('text/plain', 'https://example.com');
+      const e = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, composed: true, cancelable: true }); i.dispatchEvent(e); return [e.defaultPrevented, T.pb.children.length === before]; })()`);
+    return [r.join() === 'false,true', r];
+  });
+
+  await fresh();
+  await run('dropped component file defines type and places first instance', async () => {
+    const r = await js(`(async () => { const f = new File(['<template data-scv-comp="dropped"><i>hi</i></template>'], 'dropped.html', { type: 'text/html' }); const dt = new DataTransfer(); dt.items.add(f);
+      T.pb.shadowRoot.querySelector('.layer').dispatchEvent(new DragEvent('drop', { dataTransfer: dt, clientX: 300, clientY: 300, bubbles: true, composed: true, cancelable: true })); await new Promise(r => setTimeout(r, 100));
+      const el = T.pb.querySelector('scv-dropped'); return [!!el, el?.shadowRoot?.textContent, el?.parentElement.style.left]; })()`);
+    return [r[0] === true && r[1] === 'hi' && r[2] === '300px', r];
+  });
+  await run('dropped node file defines type and spawns it', async () => {
+    const r = await js(`(async () => { const f = new File(["<script data-scv-node>defineNode({ name: 'dropnode', icon: 'D' })<\\/script>"], 'n.html', { type: 'text/html' }); const dt = new DataTransfer(); dt.items.add(f);
+      T.pb.shadowRoot.querySelector('.layer').dispatchEvent(new DragEvent('drop', { dataTransfer: dt, clientX: 500, clientY: 300, bubbles: true, composed: true, cancelable: true })); await new Promise(r => setTimeout(r, 100));
+      const n = T.pb.querySelector('scv-logic[data-type=dropnode]'); return [!!n, n?.shadowRoot.querySelector('.dot').textContent]; })()`);
+    return [r.join() === 'true,D', r];
+  });
+
+  // real clipboard - copy and paste editing commands
+
+  await send('Browser.grantPermissions', { permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] });
+  await run('real copy and paste round-trip through system clipboard', async () => {
+    await js(`(() => { T.pb.select([T.pb.querySelector('scv-logic[data-type=dropnode]')]); T.pb.shadowRoot.querySelector('.layer').focus(); })()`);
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'c', code: 'KeyC', windowsVirtualKeyCode: 67, modifiers: CTRL, commands: ['copy'] });
+    await js('new Promise(r => setTimeout(r, 300))');
+    await hover(700, 500);
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'v', code: 'KeyV', windowsVirtualKeyCode: 86, modifiers: CTRL, commands: ['paste'] });
+    await js('new Promise(r => setTimeout(r, 300))');
+    const r = await js(`[...T.pb.querySelectorAll('scv-logic[data-type=dropnode]')].map(n => n.style.left)`);
+    return [r.length === 2 && r[1] === '700px', r];
+  });
+
   ok(uncaught.length === 0, `no uncaught errors (${uncaught})`);
 } catch (e) {
   fails++; console.log('  ✗ next studio tier threw:', e.message);
-} finally { try { ws.close(); } catch {} cleanup(); }
+} finally { try { ws.close(); } catch {} cleanup(); qs.close(); }
 
 console.log(fails ? `✗ next-studio: ${fails} failure(s)` : '✓ next-studio');
 process.exit(fails ? 1 : 0);

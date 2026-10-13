@@ -264,7 +264,7 @@ async function benchNext(payloads, fulls, pastedImg) { // same fixture through n
   results.clock = { routed, layouts: dc.LayoutCount, styleRecalcs: dc.RecalcStyleCount, layoutsPerRouted: routed ? +(dc.LayoutCount / routed).toFixed(3) : null, layoutMs: +(dc.LayoutDuration * 1000).toFixed(1), styleMs: +(dc.RecalcStyleDuration * 1000).toFixed(1), scriptMs: +(dc.ScriptDuration * 1000).toFixed(1) };
   console.log('clock  ', JSON.stringify(results.clock));
 
-  // same clock into wired element inside a component - text changes must not re-measure its cable end
+  // same clock to wired el inside component - text changes must not re-measure cable end
   await js(`(() => { const acc = document.querySelector('scv-logic[data-scv-emits="w0"]'); acc.setAttribute('data-scv-receives', 'k0'); window.__clock.setAttribute('data-scv-emits', 'k0'); window.__routed = 0; return true; })()`);
   await delay(300);
   const n0 = await metrics();

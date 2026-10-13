@@ -8,7 +8,7 @@ let fails = 0;
 const ok = (c, m) => { if (!c) { fails++; console.log('  ✗', m); } };
 const delay = ms => new Promise(r => setTimeout(r, ms));
 const here = dirname(fileURLToPath(import.meta.url));
-const pbUrl = pathToFileURL(join(here, '..', 'patchbay.html')).href;
+const pbUrl = pathToFileURL(join(here, '..', 'patchbay-next.html')).href;
 
 const { pageWsUrl, cleanup } = await launchChrome();
 const { ws, send, waitEvent } = await connect(pageWsUrl);
@@ -18,106 +18,85 @@ ws.addEventListener('message', e => {
   const m = JSON.parse(e.data);
   if (m.method === 'Runtime.exceptionThrown') uncaught.push(m.params.exceptionDetails?.exception?.description || m.params.exceptionDetails?.text);
 });
-const js = async (e, aw = false) => (await send('Runtime.evaluate', { expression: e, returnByValue: true, awaitPromise: aw }))?.result?.result?.value;
+const js = async (e, aw = true) => (await send('Runtime.evaluate', { expression: e, returnByValue: true, awaitPromise: aw }))?.result?.result?.value;
 const done = () => { try { ws.close(); } catch {} cleanup(); };
 
 try {
-  await send('Page.navigate', { url: pbUrl }); await waitEvent('Page.loadEventFired'); await delay(400);
-  await js(`setMode('edit'); true`);
+  await send('Page.navigate', { url: pbUrl }); await waitEvent('Page.loadEventFired'); await delay(300);
+  await js(`(() => { const pb = document.querySelector('scv-patchbay'); window.pb = pb; window.node = (type, x, y, attrs = {}) => { const n = document.createElement('scv-logic'); n.dataset.type = type; n.style.left = x + 'px'; n.style.top = y + 'px'; for (const k in attrs) n.setAttribute(k, attrs[k]); pb.append(n); return n; }; window.sink = ch => { const d = document.createElement('div'); d.setAttribute('data-scv-receives', ch); pb.append(d); return d; }; return true; })()`);
 
-  // routeSend to channel with no receivers > no-op, no throw
-  ok(await js(`(() => { try { routeSend('nope_channel', 42); return true; } catch (e) { return false; } })()`), 'routeSend to nonexistent channel is safe no-op');
+  ok(await js(`(() => { try { pb.routeSend('nope_channel', 42); return true; } catch (e) { return false; } })()`), 'routeSend to nonexistent channel is safe no-op');
+  ok(await js(`(() => { const n = node('accumulator', 100, 100); pb.wire(n, n); return !n.hasAttribute('data-scv-emits'); })()`), 'self-wire is refused (no self-cable)');
 
-  // node cannot wire to itself
-  ok(await js(`(() => { const n = spawnLogicNode('accumulator', 100, 100); autoWire(n, n); return (n.getAttribute('data-scv-emits') || '') === '' || !n.getAttribute('data-scv-receives'); })()`), 'self-wire is refused (no self-cable)');
-
-  // cycle terminates via hop guard instead of hanging / overflowing stack
   const cycle = await js(`(() => {
-    const a = spawnLogicNode('accumulator', 200, 100), b = spawnLogicNode('accumulator', 400, 100);
-    autoWire(a, b); autoWire(b, a); // A > B > A
+    const a = node('accumulator', 200, 100), b = node('accumulator', 400, 100);
+    pb.wire(a, b); pb.wire(b, a);
+    const warn = console.warn; console.warn = () => {};
     const t0 = performance.now();
-    try { a.dispatchEvent(new CustomEvent('scv-receive', { detail: 1 })); } catch (e) { return { threw: e.message }; }
+    try { a.receive(1, 'x'); } catch (e) { return { threw: e.message }; } finally { console.warn = warn; }
     return { ms: performance.now() - t0 };
   })()`);
   ok(cycle && !cycle.threw && cycle.ms < 1000, `wiring cycle terminates (hop guard), no hang/overflow (${JSON.stringify(cycle)})`);
 
-  // throwing / undefined-referencing mutator caught and doesn't halt sibling receivers
   const mutThrow = await js(`(() => {
-    const m = spawnLogicNode('mutator', 200, 300); m.querySelector('.scv-logic-input').value = 'undefined_variable_xyz + 1';
-    m.setAttribute('data-scv-receives', 'adv_ch');
-    const sib = document.createElement('div'); sib.id = 'adv_sib'; sib.setAttribute('data-scv-receives', 'adv_ch'); zoomLayer.appendChild(sib);
-    invalidateCache();
-    routeSend('adv_ch', 5); // mutator throws (caught), sibling must still receive
-    return document.getElementById('adv_sib').textContent;
+    const m = node('mutator', 200, 300, { value: 'undefined_variable_xyz + 1', 'data-scv-receives': 'adv_ch' }), sib = sink('adv_ch');
+    const warn = console.warn; console.warn = () => {};
+    try { pb.invalidate(); pb.routeSend('adv_ch', 5); } finally { console.warn = warn; }
+    return sib.textContent;
   })()`);
   ok(mutThrow === '5', `throwing mutator is caught and does not halt sibling receiver (got ${JSON.stringify(mutThrow)})`);
 
-  // emitting-variable feedback loop (V > mutator > V) terminates via same hop guard
   const varLoop = await js(`(() => {
-    const v = spawnLogicNode('variable', 200, 450); v.querySelector('.scv-logic-input').value = 'loopv';
-    const vch = v.getAttribute('data-scv-emits');
-    const m = spawnLogicNode('mutator', 400, 450); m.querySelector('.scv-logic-input').value = 'v';
-    m.setAttribute('data-scv-receives', vch); m.setAttribute('data-scv-emits', 'loop_back');
-    v.setAttribute('data-scv-receives', 'loop_back'); // close the loop back into the variable
-    invalidateCache();
+    const v = node('variable', 200, 450, { value: 'loopv', 'data-scv-emits': 'loop_a', 'data-scv-receives': 'loop_b' });
+    node('mutator', 400, 450, { value: 'v + 1', 'data-scv-receives': 'loop_a', 'data-scv-emits': 'loop_b' });
+    pb.invalidate();
+    const warn = console.warn; console.warn = () => {};
     const t0 = performance.now();
-    try { v.dispatchEvent(new CustomEvent('scv-receive', { detail: 1 })); } catch (e) { return { threw: e.message }; }
+    try { v.receive(1, 'x'); } catch (e) { return { threw: e.message }; } finally { console.warn = warn; }
     return { ms: performance.now() - t0 };
   })()`);
   ok(varLoop && !varLoop.threw && varLoop.ms < 1000, `emitting-variable feedback loop terminates via hop guard (${JSON.stringify(varLoop)})`);
 
-  // xss: routed string applied as text, never parsed as markup / executed
   const xss = await js(`(() => {
     window.__xss = false;
-    const r = document.createElement('div'); r.id = 'adv_xss'; r.setAttribute('data-scv-receives', 'xss_ch'); zoomLayer.appendChild(r);
-    invalidateCache();
-    routeSend('xss_ch', '<img src=x onerror="window.__xss=true">');
-    const el = document.getElementById('adv_xss');
-    return { childImgs: el.querySelectorAll('img').length, executed: window.__xss, text: el.textContent.slice(0, 8) };
+    const r = sink('xss_ch'); pb.invalidate();
+    pb.routeSend('xss_ch', '<img src=x onerror="window.__xss=true">');
+    return { childImgs: r.querySelectorAll('img').length, executed: window.__xss };
   })()`);
   ok(xss && xss.childImgs === 0 && xss.executed === false, `routed markup is inert text, not executed (${JSON.stringify(xss)})`);
 
-  // malformed paste / .scv handled gracefully (return null-ish, no throw)
-  ok(await js(`(() => { try { handlePasteData('<div>totally not a scavenger payload</div>'); return true; } catch (e) { return false; } })()`), 'garbage paste does not throw');
-  ok(await js(`(() => { try { const r = registerScvNodeFile('<html><body>no node here</body></html>'); return r === null; } catch (e) { return false; } })()`), 'malformed .scv returns null, no throw');
-  ok(await js(`(() => { try { registerScvNodeFile('<script data-scv-node>defineNode({ /* missing name */ icon: "x" })</scr'+'ipt>'); return true; } catch (e) { return false; } })()`), '.scv whose def is invalid is caught');
+  ok(await js(`(() => { try { const n = pb.children.length; pb.import('<div>totally not a scavenger payload</div>'); return pb.children.length === n; } catch (e) { return false; } })()`), 'garbage paste does not throw, adds nothing');
+  ok(await js(`(() => { try { return pb.import('<html><body>no node here</body></html>').length === 0; } catch (e) { return false; } })()`), 'file with no def imports nothing, no throw');
+  ok(await js(`(() => { const warn = console.warn; console.warn = () => {}; try { pb.import('<script data-scv-node>defineNode({ /* missing name */ icon: "x" })<\\/script>'); return true; } catch (e) { return false; } finally { console.warn = warn; } })()`), 'node file whose def is invalid is caught');
+  ok(await js(`(() => { const warn = console.warn; console.warn = () => {}; try { pb.import('<script data-scv-node>this is not javascript (<\\/script>'); return true; } catch (e) { return false; } finally { console.warn = warn; } })()`), 'node file that does not parse is caught');
+  ok(await js(`(() => { const warn = console.warn; console.warn = () => {}; try { pb.import('<template data-scv-comp="brk"><b>x</b><script>this is ( broken<\\/script></template>'); return !!customElements.get('scv-brk'); } catch (e) { return false; } finally { console.warn = warn; } })()`), 'component whose script does not parse still defines, no throw');
 
-  // undo/redo underflow/overflow safe
-  ok(await js(`(() => { try { for (let i=0;i<200;i++) undo(); for (let i=0;i<200;i++) redo(); return true; } catch (e) { return false; } })()`), 'undo/redo past stack bounds never throws');
+  ok(await js(`(() => { try { for (let i = 0; i < 200; i++) pb.undo(); for (let i = 0; i < 200; i++) pb.redo(); return true; } catch (e) { return false; } })()`), 'undo/redo past stack bounds never throws');
+  ok(await js(`(() => { try { const r = sink('big_ch'); pb.invalidate(); pb.routeSend('big_ch', 'z'.repeat(1000000)); return r.textContent.length === 1000000; } catch (e) { return false; } })()`), '1MB routed value is handled');
 
-  // huge value routes without crashing
-  ok(await js(`(() => { try { const r = document.createElement('div'); r.id='adv_big'; r.setAttribute('data-scv-receives','big_ch'); zoomLayer.appendChild(r); invalidateCache(); routeSend('big_ch', 'z'.repeat(1000000)); return document.getElementById('adv_big').textContent.length === 1000000; } catch(e){ return false; } })()`), '1MB routed value is handled');
+  const nan = await js(`(() => { const a = node('accumulator', 600, 300); a.receive('not-a-number', 'x'); return a.getAttribute('value'); })()`);
+  ok(nan === '0', `accumulator treats non-numeric received value as 0, not NaN (got ${JSON.stringify(nan)})`);
 
-  // non-numeric value into accumulator degrades to 0, not thrown crash
-  const nan = await js(`(() => { const a = spawnLogicNode('accumulator', 600, 300); a.querySelector('.scv-logic-input').value='0'; a.dispatchEvent(new CustomEvent('scv-receive', { detail: 'not-a-number' })); const v = a.querySelector('.scv-logic-input').value; return v; })()`);
-  ok(nan === '0', `accumulator treats non-numeric received value as 0, not NaN (got ${JSON.stringify(nan)})`); // _setupAccumulator's num() coerces non-finite to 0
-
-  // spawn/delete storm: create many nodes then delete them all - no crash, cables consistent
-  const storm = await js(`(() => {
+  const storm = await js(`(async () => {
     try {
-      const baselineCables = document.querySelectorAll('#static-cables .cable-path').length; // earlier sections in this file leave their own wired nodes standing
+      const frame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      await frame(); const baseline = pb.cables().length;
       const nodes = [];
-      for (let i = 0; i < 40; i++) nodes.push(spawnLogicNode('gate', 50 + i, 600));
-      for (let i = 1; i < nodes.length; i++) autoWire(nodes[i-1], nodes[i]);
-      renderCables();
+      for (let i = 0; i < 40; i++) nodes.push(node('gate', 50 + i, 600));
+      for (let i = 1; i < nodes.length; i++) pb.wire(nodes[i - 1], nodes[i]);
+      await frame(); const peak = pb.cables().length;
       nodes.forEach(n => n.remove());
-      invalidateCache(); renderCables();
-      return { baselineCables, remainingCables: document.querySelectorAll('#static-cables .cable-path').length };
+      await frame();
+      return { baseline, peak, remaining: pb.cables().length, paths: pb.shadowRoot.querySelectorAll('.cable').length };
     } catch (e) { return { threw: e.message }; }
   })()`);
-  ok(storm && !storm.threw, `40-node spawn+wire+delete storm doesn't crash (${JSON.stringify(storm)})`);
-  ok(storm && storm.remainingCables === storm.baselineCables, `deleting every node also clears cables it added (${JSON.stringify(storm)})`);
+  ok(storm && !storm.threw && storm.peak === storm.baseline + 39, `40-node spawn+wire+delete storm doesn't crash (${JSON.stringify(storm)})`);
+  ok(storm && storm.remaining === storm.baseline && storm.paths === storm.baseline, `deleting every node also clears cables it added (${JSON.stringify(storm)})`);
 
-  // after all abuse, board still routes normally
-  const stillWorks = await js(`(() => {
-    const r = document.createElement('div'); r.id = 'adv_ok'; r.setAttribute('data-scv-receives', 'ok_ch'); zoomLayer.appendChild(r);
-    invalidateCache();
-    routeSend('ok_ch', 'healthy');
-    return document.getElementById('adv_ok').textContent;
-  })()`);
+  const stillWorks = await js(`(() => { const r = sink('ok_ch'); pb.invalidate(); pb.routeSend('ok_ch', 'healthy'); return r.textContent; })()`);
   ok(stillWorks === 'healthy', `patchbay still routes normally after all abuse (got ${JSON.stringify(stillWorks)})`);
 
-  await delay(300); // grace period - late async/timer exception may still be in flight over cdp ws, not just snapshot
+  await delay(300); // late async or timer exception may still be in flight over cdp
   ok(uncaught.length === 0, `no uncaught exceptions across all adversarial cases (${uncaught.slice(0, 3).join(' | ')})`);
 } catch (e) {
   fails++; console.log('  ✗ adversarial tier threw:', e.message);

@@ -1010,16 +1010,20 @@ class ScvLogic extends HTMLElement {
     const t = this._parts.input.value;
     if (t === this._parts.shown) return;
     this._parts.shown = t;
+    const name = this._def.onInput ? 'last' : 'value', old = this.getAttribute(name);
     if (this._def.onInput) this._call('onInput', () => this._def.onInput(t, this._ctx));
     else this.setAttribute('value', t);
+    this.dispatchEvent(new CustomEvent('scv-commit', { bubbles: true, detail: { name, old } })); // studio makes it one undo step
   }
   _syncInput(force) {
     const { input, root } = this._parts;
     if (!force && root.activeElement === input) return; // never clobber draft
-    input.value = this._parts.shown = floatText(this._def.onInput ? (this._ctx.last ?? '') : this._ctx.value); // sample shows held value
+    const t = floatText(this._def.onInput ? (this._ctx.last ?? '') : this._ctx.value); // sample shows held value
+    if (input.value === t && this._parts.shown === t) return;
+    input.value = this._parts.shown = t;
     this._fit();
   }
-  _fit() { const i = this._parts.input; i.style.setProperty('--w', (this._def.openWidth || inputWidth(i.value || ' ')) + 'px'); }
+  _fit() { const i = this._parts.input, w = (this._def.openWidth || inputWidth(i.value || ' ')) + 'px'; if (this._parts.w !== w) i.style.setProperty('--w', this._parts.w = w); } // unchanged writes still restyle
   _paint() {
     const def = this._def, m = this._modeDef(), p = this._parts;
     const g = def.glyph?.(this._ctx) ?? m?.icon ?? def.icon ?? '◆';
@@ -1027,7 +1031,8 @@ class ScvLogic extends HTMLElement {
     const color = m?.color || def.color;
     if (color) { p.dot.style.setProperty('--node', color); p.input.style.setProperty('--node', color); }
     else if (def.custom) { p.dot.style.removeProperty('--node'); p.input.style.removeProperty('--node'); }
-    p.input.placeholder = m?.placeholder ?? def.placeholder ?? '';
+    const ph = m?.placeholder ?? def.placeholder ?? '';
+    if (p.input.placeholder !== ph) p.input.placeholder = ph;
   }
 
   _makeCtx(def) {
@@ -1136,9 +1141,10 @@ scv-patchbay { display: block; position: relative; }
 scv-item { position: absolute; display: block; width: max-content; transform-origin: top left; contain: layout style; } /* own content sizes it, never canvas edge */
 scv-item > [data-scv-id] { display: block; min-height: 10px; }
 scv-logic { display: none; }
+scv-item:state(far) { content-visibility: hidden; contain-intrinsic-size: auto 1px auto 1px; } /* keeps last rendered size */
 `;
 const SHADOW_CSS = `
-:host { display: block; position: relative; }
+:host { display: block; position: relative; background: var(--background-sunk); }
 .layer { position: relative; }
 `;
 const sheet = css => { const s = new CSSStyleSheet(); s.replaceSync(css); return s; };
@@ -1164,7 +1170,7 @@ class ScvPatchbay extends HTMLElement {
     super();
     this._internals = this.attachInternals();
     this._questApi = '';
-    const root = this.attachShadow({ mode: 'open' });
+    const root = this.attachShadow({ mode: 'open', delegatesFocus: true }); // click on canvas focuses chrome, so keys reach patchbay
     root.adoptedStyleSheets = [_shadowSheet ??= sheet(SHADOW_CSS), _assetSheet];
     root.innerHTML = '<div class="layer" part="layer"><slot></slot></div>';
     this.layer = root.firstElementChild;
@@ -1230,8 +1236,11 @@ if (!PB) return;
 
 // infinite pan and zoom - view never saved
 
+const PAGE_CSS = new CSSStyleSheet(); // page level - beats runtime's own scv-patchbay rule, a :host rule wouldn't
+PAGE_CSS.replaceSync('scv-patchbay:state(canvas) { position: fixed; inset: 0; overflow: hidden; user-select: none; touch-action: none; }');
+document.adoptedStyleSheets = [...document.adoptedStyleSheets, PAGE_CSS];
 const CANVAS_CSS = `
-:host { position: fixed; inset: 0; overflow: hidden; user-select: none; touch-action: none; }
+.layer:focus { outline: none; }
 .grid { position: absolute; inset: 0; pointer-events: none;
   background-image: radial-gradient(circle, var(--background-grid) var(--dot, 1px), transparent var(--dot, 1px));
   background-size: var(--cell, 24px) var(--cell, 24px); background-position: var(--grid-x, 0px) var(--grid-y, 0px); }
@@ -1241,6 +1250,7 @@ let _sheet = null;
 
 PB.use(pb => {
   const root = pb.shadowRoot;
+  pb.states.add('canvas');
   if (!_sheet) { _sheet = new CSSStyleSheet(); _sheet.replaceSync(CANVAS_CSS); }
   root.adoptedStyleSheets = [...root.adoptedStyleSheets, _sheet];
   const grid = document.createElement('div'); grid.className = 'grid';
@@ -1249,18 +1259,23 @@ PB.use(pb => {
 
   const apply = () => { // chrome only, host never written
     pb.layer.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`;
+    pb.layer.style.setProperty('--zoom', view.zoom);
     grid.style.setProperty('--cell', 24 * view.zoom + 'px');
     grid.style.setProperty('--dot', view.zoom + 'px');
     grid.style.setProperty('--grid-x', view.x + 'px');
     grid.style.setProperty('--grid-y', view.y + 'px');
   };
   pb.setView = (x, y, zoom = view.zoom) => { view.x = x; view.y = y; view.zoom = Math.max(0.1, Math.min(5, zoom)); apply(); };
+  let rect = null; // read once per resize or scroll - never per pointer move
+  pb.rect = () => rect ??= pb.getBoundingClientRect();
+  addEventListener('resize', () => { rect = null; });
+  addEventListener('scroll', () => { rect = null; }, { capture: true, passive: true });
   pb.setZoom = (zoom, cx, cy) => { // keeps client point fixed
-    const z = Math.max(0.1, Math.min(5, zoom)), r = pb.getBoundingClientRect();
+    const z = Math.max(0.1, Math.min(5, zoom)), r = pb.rect();
     const px = cx - r.left, py = cy - r.top, k = z / view.zoom;
     pb.setView(px - (px - view.x) * k, py - (py - view.y) * k, z);
   };
-  pb.toCanvas = (cx, cy) => { const r = pb.getBoundingClientRect(); return { x: (cx - r.left - view.x) / view.zoom, y: (cy - r.top - view.y) / view.zoom }; };
+  pb.toCanvas = (cx, cy) => { const r = pb.rect(); return { x: (cx - r.left - view.x) / view.zoom, y: (cy - r.top - view.y) / view.zoom }; };
   Object.defineProperty(pb, 'zoom', { get: () => view.zoom, configurable: true });
   Object.defineProperty(pb, 'view', { get: () => ({ ...view }), configurable: true });
 
@@ -1282,6 +1297,11 @@ PB.use(pb => {
   pb.addEventListener('pointerup', endPan);
   pb.addEventListener('pointercancel', endPan);
   apply();
+
+  const far = new IntersectionObserver(es => es.forEach(e => e.target.states?.[e.isIntersecting ? 'delete' : 'add']('far')), { root: pb, rootMargin: '100%' }); // a viewport each side - restored before it can reach screen
+  const watch = n => { if (n.localName === 'scv-item') far.observe(n); };
+  [...pb.children].forEach(watch);
+  new MutationObserver(rs => rs.forEach(r => r.addedNodes.forEach(watch))).observe(pb, { childList: true });
 });
 })();
 </script>
@@ -1291,10 +1311,677 @@ PB.use(pb => {
 const PB = customElements.get('scv-patchbay');
 if (!PB) return;
 const kit = PB.kit;
+const { ATTR_EMITS, ATTR_RECEIVES, ATTR_ACTION, splitWords, uid, px, itemOf, onFrame, isPulse } = kit;
 
 const LOCAL_QUESTS = 'http://127.0.0.1:9876'; // publish falls back to page origin
-const _doc = new CSSStyleSheet(); _doc.replaceSync('scv-patchbay:state(edit) scv-logic { display: flex; }'); // runtime hides nodes
-document.adoptedStyleSheets = [...document.adoptedStyleSheets, _doc];
+const GRID = 24, HALF = GRID / 2, DRAG = 5, UNDO_MAX = 50, RING = 10; // 2px gap + 3px ring, each side
+const OPENS = new Set(['clock', 'mutator', 'delay', 'quest']); // spawn opens what needs filling
+const isMac = /mac/i.test(navigator.userAgentData?.platform || navigator.platform || '');
+const mod = e => isMac ? e.metaKey : e.ctrlKey; // ctrl is cmd on macos
+const snap = v => Math.round((v - HALF) / GRID) * GRID + HALF; // dot centres sit half a cell in
+const sheet = css => { const s = new CSSStyleSheet(); s.replaceSync(css); return s; };
+const svgEl = (tag, cls) => { const n = document.createElementNS('http://www.w3.org/2000/svg', tag); if (cls) n.setAttribute('class', cls); return n; };
+
+const DOC_CSS = sheet(`
+scv-patchbay:state(edit) scv-logic { display: flex; cursor: pointer; }
+scv-patchbay:state(edit) scv-item { cursor: crosshair; }
+scv-item:state(dimmed) { opacity: .5; }
+scv-item:state(dragging) { box-shadow: 0 0 28px rgba(0,0,0,.5); }
+`); // runtime hides nodes
+document.adoptedStyleSheets = [...document.adoptedStyleSheets, DOC_CSS];
+const HOVER_TAGS = 'div, a, span, p, h1, h2, h3, h4, h5, h6, img, button, input, textarea, select, label, li, td, th, video, canvas, svg';
+const HOVER_CSS = sheet(`
+:is(${HOVER_TAGS}):hover { outline: 1px dashed var(--output) !important; background: var(--selection) !important; cursor: crosshair !important; }
+:is(${HOVER_TAGS}):has(:is(${HOVER_TAGS}):hover) { background: none !important; }
+`); // component shadows, edit mode only - innermost wire end lights up
+const CHROME_CSS = sheet(`
+.cables { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; z-index: 101; }
+.cable { fill: none; stroke: var(--cs, var(--cable)); stroke-width: 3px; stroke-linecap: round; pointer-events: visibleStroke; cursor: pointer; transition: stroke var(--duration-base); }
+.cable:hover { stroke: var(--danger); stroke-width: 4px; }
+.cable.dim { --cs: var(--dim); }
+.temp { fill: none; stroke: var(--input); stroke-width: 3px; stroke-dasharray: 6 6; opacity: .8; pointer-events: none; animation: dash .5s linear infinite; }
+.temp.rev { animation-direction: reverse; }
+@keyframes dash { to { stroke-dashoffset: -12; } }
+.box { position: absolute; z-index: 102; pointer-events: none; outline: calc(1px / var(--zoom, 1)) solid var(--output); }
+.corner { position: absolute; width: calc(8px / var(--zoom, 1)); height: calc(8px / var(--zoom, 1)); background: var(--text-dim); pointer-events: auto;
+  transform: translate(-50%, -50%) rotate(45deg); }
+.corner[data-c="nw"] { left: 0; top: 0; cursor: nwse-resize; } .corner[data-c="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
+.corner[data-c="ne"] { left: 100%; top: 0; cursor: nesw-resize; } .corner[data-c="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
+.lasso { position: absolute; border: 1px dashed var(--input); background: var(--selection); pointer-events: none; z-index: 9998; }
+.tip { position: absolute; z-index: 600; pointer-events: none; background: var(--output); color: var(--background-sunk); padding: 2px 6px;
+  font-size: 10px; font-weight: bold; border-radius: var(--corner-low); text-transform: uppercase; white-space: nowrap; }
+.menu { position: absolute; z-index: 700; display: flex; flex-direction: column; padding: 4px; min-width: 150px; background: var(--background-raised);
+  border-radius: var(--corner-low); box-shadow: 0 4px 16px rgba(0,0,0,.5); }
+.menu button { display: flex; justify-content: space-between; gap: 16px; padding: 4px 8px; border: none; border-radius: var(--corner-low); background: none;
+  color: var(--text-base); font: var(--fs-a) var(--font-mono); text-align: left; cursor: pointer; }
+.menu button:hover { background: var(--background-sunk); color: var(--input); }
+.menu .key { color: var(--text-faint); }
+.intro { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 401; background: var(--background-sunk); border-radius: var(--corner-high);
+  padding: 18px 24px; color: var(--text-dim); pointer-events: none; opacity: 0; transition: opacity var(--duration-slow) var(--ease-out); }
+.intro.on { opacity: 1; } .intro.open { pointer-events: auto; }
+.intro h1 { margin: 0 0 10px; font-weight: normal; font-size: var(--fs-d); letter-spacing: 1px; text-align: center; color: var(--input); }
+.intro h1 .wm { color: var(--output); }
+.intro h4 { margin: 0 0 32px; font-weight: normal; font-size: var(--fs-c); letter-spacing: .08em; text-align: center; }
+.intro .cols { display: flex; gap: 64px; }
+.intro dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 7px 16px; font-size: var(--fs-b); align-content: start; }
+.intro dt { color: var(--input); text-align: right; white-space: nowrap; } .intro .nodes dt { color: var(--output); }
+.intro dd { margin: 0; color: var(--text-faint); }
+.bg { position: absolute; top: 16px; right: 16px; z-index: 500; display: flex; align-items: center; }
+.bg button { width: 16px; height: 16px; border-radius: 50%; padding: 0; background: var(--background-sunk); border: 1px solid var(--border); cursor: pointer; }
+.bg input { width: 0; opacity: 0; padding: 0; margin: 0; height: 22px; border: 1px solid transparent; outline: none; pointer-events: none;
+  background: var(--background-raised); color: var(--text-base); border-radius: var(--corner-low); font: var(--fs-a) var(--font-mono); text-align: center; text-transform: uppercase;
+  transition: width var(--duration-base) var(--ease-out), opacity var(--duration-base) var(--ease-out); }
+.bg.open input { width: 84px; opacity: 1; padding: 0 8px; margin-right: 12px; border-color: var(--border); pointer-events: auto; }
+.bg input.bad { border-color: var(--danger); }
+:host(:not(:state(edit))) :is(.cables, .box, .bg) { display: none; }
+`);
+
+// bezier leaves source radially, bows along target's dominant axis
+
+const edgePt = (x, y, w, h, dx, dy) => { // where ray meets rounded box + outward normal
+  const hw = w / 2, hh = h / 2, r = Math.min(hw, hh), len = Math.hypot(dx, dy) || 1;
+  if (hw === 0 && hh === 0) return { x, y, nx: dx / len, ny: dy / len };
+  const adx = Math.abs(dx) || 1e-9, ady = Math.abs(dy) || 1e-9;
+  const t = Math.min(hw / adx, hh / ady);
+  let ptX = dx * t, ptY = dy * t, nx, ny;
+  const cx = hw - r, cy = hh - r;
+  if (Math.abs(ptX) > cx && Math.abs(ptY) > cy) {
+    const kx = Math.sign(ptX) * cx, ky = Math.sign(ptY) * cy, ox = ptX - kx, oy = ptY - ky, ol = Math.hypot(ox, oy) || 1;
+    nx = ox / ol; ny = oy / ol; ptX = kx + nx * r; ptY = ky + ny * r;
+  } else if (hw / adx < hh / ady) { nx = Math.sign(ptX) || 1; ny = 0; }
+  else { nx = 0; ny = Math.sign(ptY) || 1; }
+  return { x: x + ptX, y: y + ptY, nx, ny };
+};
+const edgeBox = (cx, cy, b, dx, dy) => { // open node aims at glyph, exits at body edge
+  const hw = b.w / 2, hh = b.h / 2, ox = cx - b.x, oy = cy - b.y;
+  const tx = dx > 0 ? (hw - ox) / dx : dx < 0 ? (-hw - ox) / dx : Infinity;
+  const ty = dy > 0 ? (hh - oy) / dy : dy < 0 ? (-hh - oy) / dy : Infinity;
+  const t = Math.min(tx, ty);
+  if (!isFinite(t)) return { x: cx, y: cy, nx: 0, ny: 0 };
+  return { x: cx + dx * t, y: cy + dy * t, nx: tx < ty ? Math.sign(dx) : 0, ny: tx < ty ? 0 : Math.sign(dy) };
+};
+const axis = (nx, ny) => { const bx = nx * Math.abs(nx), by = ny * Math.abs(ny), l = Math.hypot(bx, by) || 1; return { x: bx / l, y: by / l }; };
+const handles = (p0, p3, dx, dy) => {
+  const dl = Math.hypot(dx, dy) || 1, v2 = axis(p3.nx, p3.ny);
+  const off = Math.max((Math.hypot(p3.x - p0.x, p3.y - p0.y) || 1) * 0.5, 50);
+  return { ax: p0.x + dx / dl * off * 0.25, ay: p0.y + dy / dl * off * 0.25, bx: p3.x + v2.x * off, by: p3.y + v2.y * off };
+};
+const bez = (p0, h, p3, t) => { const u = 1 - t; return [u*u*u*p0.x + 3*u*u*t*h.ax + 3*u*t*t*h.bx + t*t*t*p3.x, u*u*u*p0.y + 3*u*u*t*h.ay + 3*u*t*t*h.by + t*t*t*p3.y]; };
+const curve = (a, x, y) => {
+  const dx = x - a.x, dy = y - a.y, p0 = edgePt(a.x, a.y, a.w, a.h, dx, dy), p3 = { x, y, nx: -dx, ny: -dy }, h = handles(p0, p3, dx, dy);
+  return `M ${p0.x} ${p0.y} C ${h.ax} ${h.ay}, ${h.bx} ${h.by}, ${x} ${y}`;
+};
+const arrow = (a, b) => { // stops short of target, with arrowhead - null when ends overlap
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const p0 = a.fb ? edgeBox(a.x, a.y, a.fb, dx, dy) : edgePt(a.x, a.y, a.w, a.h, dx, dy);
+  const p3 = b.fb ? edgeBox(b.x, b.y, b.fb, -dx, -dy) : edgePt(b.x, b.y, b.w, b.h, -dx, -dy);
+  const h = handles(p0, p3, dx, dy), gap = Math.min(35, (Math.hypot(p3.x - p0.x, p3.y - p0.y) || 1) * 0.35);
+  if (gap < 2) return null;
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 16; i++) { const m = (lo + hi) / 2, [qx, qy] = bez(p0, h, p3, m); (qx - p3.x) ** 2 + (qy - p3.y) ** 2 > gap * gap ? lo = m : hi = m; }
+  const t = (lo + hi) / 2, L = (p, q) => p + t * (q - p);
+  const p01 = [L(p0.x, h.ax), L(p0.y, h.ay)], p12 = [L(h.ax, h.bx), L(h.ay, h.by)], p23 = [L(h.bx, p3.x), L(h.by, p3.y)];
+  const p012 = [L(p01[0], p12[0]), L(p01[1], p12[1])], p123 = [L(p12[0], p23[0]), L(p12[1], p23[1])], e = [L(p012[0], p123[0]), L(p012[1], p123[1])];
+  const ang = Math.atan2(e[1] - p012[1], e[0] - p012[0]), c = Math.cos(ang), s = Math.sin(ang);
+  let len = 0, prev = [p0.x, p0.y]; // draw-in length from curve, no layout read
+  for (let i = 1; i <= 12; i++) { const k = i / 12, u = 1 - k, q = [u*u*u*p0.x + 3*u*u*k*p01[0] + 3*u*k*k*p012[0] + k*k*k*e[0], u*u*u*p0.y + 3*u*u*k*p01[1] + 3*u*k*k*p012[1] + k*k*k*e[1]]; len += Math.hypot(q[0] - prev[0], q[1] - prev[1]); prev = q; }
+  return { len, d: `M ${p0.x} ${p0.y} C ${p01[0]} ${p01[1]}, ${p012[0]} ${p012[1]}, ${e[0]} ${e[1]}M ${e[0]} ${e[1]} L ${e[0] - 5 * c - 5 * s} ${e[1] - 5 * s + 5 * c} M ${e[0]} ${e[1]} L ${e[0] - 5 * c + 5 * s} ${e[1] - 5 * s - 5 * c}` };
+};
+
+const INTRO = keys => '<h1>s<span class="wm">&lt;</span>av<span class="wm">&gt;</span> <span class="wm">{</span> patchbay <span class="wm">}</span></h1>'
+  + '<h4>nothing here yet, right click to see the menu</h4><div class="cols"><dl class="nodes">' + keys + '</dl><dl>'
+  + '<dt>space</dt><dd>chain last node into next</dd><dt>tab</dt><dd>switch edit / use mode</dd><dt>ctrl drag</dt><dd>move</dd>'
+  + '<dt>alt</dt><dd>hold to snap to dot grid</dd><dt>del</dt><dd>remove selection</dd><dt>ctrl + z</dt><dd>undo</dd><dt>ctrl + y</dt><dd>redo</dd>'
+  + '<dt>ctrl + s</dt><dd>save quine</dd><dt>ctrl + p</dt><dd>publish</dd><dt>?</dt><dd>show or hide this menu</dd></dl></div>';
+
+const studio = pb => {
+  if (!pb.questApi) pb.questApi = LOCAL_QUESTS;
+  const root = pb.shadowRoot, layer = pb.layer;
+  root.adoptedStyleSheets = [...root.adoptedStyleSheets, CHROME_CSS];
+  layer.tabIndex = -1;
+  const svg = svgEl('svg', 'cables'), temp = svgEl('path', 'temp');
+  temp.style.display = 'none';
+  svg.append(temp);
+  const box = document.createElement('div'); box.className = 'box'; box.hidden = true;
+  box.innerHTML = '<i class="corner" data-c="nw"></i><i class="corner" data-c="ne"></i><i class="corner" data-c="sw"></i><i class="corner" data-c="se"></i>';
+  layer.append(svg, box);
+  const lasso = document.createElement('div'); lasso.className = 'lasso'; lasso.hidden = true;
+  const tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true;
+  const intro = document.createElement('div'); intro.className = 'intro';
+  intro.innerHTML = INTRO([...kit.NODE_TYPES.values()].filter(d => d.key).sort((a, b) => ((+a.key || 10) - (+b.key || 10))).map(d => `<dt>${d.key}</dt><dd>${d.name}</dd>`).join(''));
+  const bg = document.createElement('div'); bg.className = 'bg';
+  bg.innerHTML = '<input spellcheck="false" autocomplete="off"><button type="button" aria-label="background"></button>';
+  root.append(lasso, tip, intro, bg);
+
+  const st = { last: null, chain: false, lock: null, hover: null, introOpen: false, pointer: { x: 0, y: 0 }, menu: null };
+  const rectOf = () => pb.rect?.() || pb.getBoundingClientRect();
+  const toCanvas = (cx, cy) => pb.toCanvas ? pb.toCanvas(cx, cy) : (r => ({ x: cx - r.left, y: cy - r.top }))(rectOf());
+  const zoom = () => pb.zoom || 1;
+
+  const hist = { list: [], pos: -1 };
+  const record = (redo, undo, label) => {
+    hist.list.length = hist.pos + 1;
+    hist.list.push({ redo, undo, label });
+    if (hist.list.length > UNDO_MAX) hist.list.shift(); else hist.pos++;
+  };
+  pb.undo = () => { if (hist.pos >= 0) hist.list[hist.pos--].undo(); };
+  pb.redo = () => { const n = hist.list[hist.pos + 1]; if (n) { n.redo(); hist.pos++; } };
+  const attrsOf = el => Object.fromEntries([...el.attributes].map(a => [a.name, a.value]));
+  const setAttrs = (el, a) => { for (const at of [...el.attributes]) if (!(at.name in a)) el.removeAttribute(at.name); for (const k in a) if (el.getAttribute(k) !== a[k]) el.setAttribute(k, a[k]); };
+  const recordAttrs = (els, before, label) => { // one step for all changed elements
+    const after = els.map(attrsOf), changed = els.filter((el, i) => JSON.stringify(before[i]) !== JSON.stringify(after[i]));
+    if (!changed.length) return;
+    record(() => els.forEach((el, i) => setAttrs(el, after[i])), () => els.forEach((el, i) => setAttrs(el, before[i])), label);
+  };
+  const withUndo = (els, label, fn) => { const before = els.map(attrsOf); fn(); recordAttrs(els, before, label); };
+
+  pb.addEventListener('scv-commit', e => {
+    const node = e.target, { name, old } = e.detail, now = node.getAttribute(name);
+    const put = v => v == null ? node.removeAttribute(name) : node.setAttribute(name, v);
+    if (now !== old) record(() => put(now), () => put(old), 'edit');
+  });
+
+  // items and nodes - selection and looks are custom states
+
+  const units = () => [...pb.querySelectorAll('scv-item, scv-logic')];
+  const isUnit = n => n?.localName === 'scv-item' || n?.localName === 'scv-logic';
+  const selection = () => units().filter(u => u.states.has('selected'));
+  const movable = list => list.filter(u => !list.some(o => o !== u && o.contains(u))); // nested node rides its item
+  const select = (list, keep) => { if (!keep) selection().forEach(u => u.states.delete('selected')); list.forEach(u => u.states.add('selected')); paint(); };
+  const toggle = u => { u.states.has('selected') ? u.states.delete('selected') : u.states.add('selected'); paint(); };
+  pb.selection = selection;
+  pb.select = list => select(list);
+
+  // positions are state, sizes from resize observer - no layout read in a loop
+
+  const sizes = new WeakMap(), inner = new WeakMap(), innerBy = new WeakMap(); // unit > ends measured inside it
+  const dropInner = u => { innerBy.get(u)?.forEach(el => inner.delete(el)); innerBy.delete(u); };
+  const ro = new ResizeObserver(es => { for (const e of es) { const b = e.borderBoxSize[0]; sizes.set(e.target, { w: b.inlineSize, h: b.blockSize }); dropInner(e.target); } draw(); });
+  const place = u => { // canvas position and scale, through parent items
+    let x = px(u, 'left'), y = px(u, 'top'), s = parseFloat(u.style.scale) || 1;
+    for (let p = u.parentElement; p && p !== pb; p = p.parentElement) if (p.localName === 'scv-item') { const ps = parseFloat(p.style.scale) || 1; x = px(p, 'left') + x * ps; y = px(p, 'top') + y * ps; s *= ps; }
+    return { x, y, s };
+  };
+  const cropOf = item => { const m = (item.firstElementChild?.style.clipPath || '').match(/inset\(([^)]*)\)/), v = m ? m[1].split(/\s+/).map(parseFloat) : []; return { t: v[0] || 0, r: v[1] ?? v[0] ?? 0, b: v[2] ?? v[0] ?? 0, l: v[3] ?? v[1] ?? v[0] ?? 0 }; };
+  const boxOf = u => { // visible box on canvas
+    const { x, y, s } = place(u), z = sizes.get(u) || { w: u.localName === 'scv-logic' ? 32 : 0, h: u.localName === 'scv-logic' ? 32 : 0 };
+    const c = u.localName === 'scv-item' ? cropOf(u) : { t: 0, r: 0, b: 0, l: 0 };
+    return { x: x + c.l * s, y: y + c.t * s, w: (z.w - c.l - c.r) * s, h: (z.h - c.t - c.b) * s };
+  };
+  const unitOf = el => el.localName === 'scv-logic' ? el : itemOf(el);
+  const endOf = el => { // node glyph, item centre, or measured inner element
+    if (el.localName === 'scv-logic') {
+      const { x, y, s } = place(el), cx = x + 16 * s, cy = y + 16 * s, r = { x: cx, y: cy, w: 32 * s + RING, h: 32 * s + RING };
+      if (el.states.has('expanded')) { const w = (sizes.get(el)?.w || 32) * s; r.fb = { x: x + w / 2, y: cy, w: w + RING, h: 32 * s + RING }; }
+      return r;
+    }
+    const u = itemOf(el); if (!u) return null;
+    const port = el === u.firstElementChild ? el.shadowRoot?.querySelector('[data-scv-port]') : null;
+    if ((el === u || el === u.firstElementChild) && !port) { const b = boxOf(u); return { x: b.x + b.w / 2, y: b.y + b.h / 2, w: 0, h: 0 }; }
+    const o = inner.get(port || el); if (!o) return null;
+    const { x, y, s } = place(u);
+    return { x: x + (o.x + o.w / 2) * s, y: y + (o.y + o.h / 2) * s, w: 0, h: 0 };
+  };
+  const measure = els => { // reads first, writes after - one layout for every new inner end
+    const rects = els.map(el => { const u = itemOf(el); return [el, u, el.getBoundingClientRect(), u.getBoundingClientRect()]; });
+    for (const [el, u, r, ur] of rects) {
+      const k = zoom() * place(u).s;
+      inner.set(el, r.width || r.height ? { x: (r.left - ur.left) / k, y: (r.top - ur.top) / k, w: r.width / k, h: r.height / k } : { x: 0, y: 0, w: (sizes.get(u)?.w || 0), h: (sizes.get(u)?.h || 0) }); // hidden end anchors at item centre
+      let set = innerBy.get(u); if (!set) innerBy.set(u, set = new Set()); set.add(el);
+    }
+  };
+  pb.geometry = u => boxOf(u);
+
+  // wire index rebuilt when wiring changes - cables only re-derive geometry
+
+  const cables = new Map(); // key > { ch, src, tgt, path }
+  let wiresDirty = true;
+  const ids = new WeakMap(); let idN = 0;
+  const idOf = el => { let i = ids.get(el); if (!i) ids.set(el, i = ++idN); return i; };
+  const shadowMo = new MutationObserver(rs => { for (const r of rs) { if (r.type === 'attributes' && r.attributeName.startsWith('data-scv-')) wiresDirty = true; const u = itemOf(r.target); if (u) dropInner(u); } draw(); });
+  const watched = new WeakSet();
+  const watchShadow = sr => { // content or scroll moves inner ends
+    if (watched.has(sr)) return;
+    watched.add(sr);
+    shadowMo.observe(sr, { subtree: true, childList: true, attributes: true, characterData: true });
+    sr.addEventListener('scroll', e => { const u = itemOf(e.target); if (u) { dropInner(u); draw(); } }, { capture: true, passive: true });
+  };
+  const walk = (r, sel, fn) => {
+    r.querySelectorAll(sel).forEach(fn);
+    r.querySelectorAll('*').forEach(n => { if (n.shadowRoot && n.localName !== 'scv-logic') { watchShadow(n.shadowRoot); walk(n.shadowRoot, sel, fn); } });
+  };
+  const rebuild = () => {
+    wiresDirty = false;
+    const byCh = new Map(), next = new Map();
+    walk(pb, `[${ATTR_RECEIVES}],[${ATTR_ACTION}]`, n => { const chs = new Set(); kit.collectChannels(n, new Set(), chs); chs.forEach(c => { if (!byCh.has(c)) byCh.set(c, []); byCh.get(c).push(n); }); });
+    walk(pb, `[${ATTR_EMITS}]`, src => splitWords(src.getAttribute(ATTR_EMITS)).forEach(ch => (byCh.get(ch) || []).forEach(tgt => {
+      if (tgt === src) return;
+      const key = ch + ' ' + idOf(src) + ' ' + idOf(tgt);
+      next.set(key, cables.get(key) || { key, ch, src, tgt, fresh: true });
+    })));
+    for (const [k, c] of cables) if (!next.has(k)) { c.path?.remove(); c.src.states?.delete('danger'); }
+    cables.clear(); next.forEach((c, k) => cables.set(k, c));
+    const sources = new Set([...cables.values()].map(c => c.src));
+    pb.querySelectorAll('scv-logic').forEach(n => sources.has(n) ? n.states.add('wired') : n.states.delete('wired'));
+  };
+  const render = () => {
+    if (!pb.editing) return;
+    if (wiresDirty) rebuild();
+    const need = [];
+    for (const c of cables.values()) for (const el of [c.src, c.tgt]) {
+      const u = el.localName === 'scv-logic' ? null : itemOf(el), m = u && (el === u.firstElementChild ? el.shadowRoot?.querySelector('[data-scv-port]') : el);
+      if (m && !inner.has(m)) need.push(m);
+    }
+    if (need.length) measure([...new Set(need)]);
+    for (const c of cables.values()) {
+      const a = endOf(c.src), b = endOf(c.tgt), r = a && b && arrow(a, b);
+      if (!c.path) { c.path = svgEl('path', 'cable'); c.path._cable = c; c.path.dataset.ch = c.ch; svg.append(c.path); }
+      const d = r ? r.d : '';
+      if (c.d === d) continue;
+      c.d = d; c.path.setAttribute('d', d);
+      if (c.fresh && r) { c.fresh = false; c.path.animate([{ strokeDasharray: `${r.len} ${r.len}`, strokeDashoffset: r.len }, { strokeDasharray: `${r.len} ${r.len}`, strokeDashoffset: 0 }], { duration: 350, easing: 'ease-out' }); }
+    }
+    tint();
+  };
+  const draw = () => onFrame(render, render);
+  pb.cables = () => { render(); return [...cables.values()].map(c => ({ ch: c.ch, src: c.src, tgt: c.tgt, d: c.d })); };
+
+  const flashed = new Map(); // channel > carried pulse
+  const running = new WeakMap(); // el > its flash - restarted, never stacked
+  const flash = (el, frames) => { running.get(el)?.cancel(); running.set(el, el.animate(frames, { duration: 400, easing: 'ease-out' })); };
+  pb.onRoute((ch, v) => {
+    if (!pb.editing) return;
+    flashed.set(ch, flashed.get(ch) || isPulse(v));
+    onFrame(flashed, () => { // one animation pass per frame, whatever the cascade
+      const rings = new Set();
+      for (const c of cables.values()) if (flashed.has(c.ch) && c.path) {
+        flash(c.path, flashed.get(c.ch)
+          ? [{ stroke: 'var(--input)', strokeDasharray: '6 6' }, { stroke: 'var(--input)', strokeDasharray: '6 6', offset: .7 }, { strokeDasharray: 'none' }]
+          : [{ stroke: 'var(--input)' }, {}]);
+        if (c.src.localName === 'scv-logic') rings.add(c.src);
+      }
+      rings.forEach(n => flash(n, [{ boxShadow: '0 0 0 2px var(--background-sunk), 0 0 0 5px var(--input)' }, {}])); // ring speaks for its cable
+      flashed.clear();
+    });
+  });
+
+  // selection box, dimming and cable tint follow state, written once per frame
+
+  const paint = () => onFrame(paintKey, () => {
+    const sel = selection();
+    box.hidden = !sel.length || !pb.editing;
+    if (!box.hidden) {
+      const bs = sel.map(boxOf), x = Math.min(...bs.map(b => b.x)), y = Math.min(...bs.map(b => b.y));
+      Object.assign(box.style, { left: x + 'px', top: y + 'px', width: Math.max(...bs.map(b => b.x + b.w)) - x + 'px', height: Math.max(...bs.map(b => b.y + b.h)) - y + 'px' });
+      box.querySelectorAll('.corner').forEach(c => { c.hidden = !sel.some(u => u.localName === 'scv-item'); });
+    }
+    const lit = sel.length ? new Set(sel) : st.hover ? connected(st.hover) : null;
+    units().forEach(u => lit && !lit.has(u) && !(u.localName === 'scv-logic' && lit.has(u.parentElement)) ? u.states.add('dimmed') : u.states.delete('dimmed'));
+    tint();
+  });
+  const paintKey = {};
+  const tint = () => {
+    const sel = new Set(selection()), hv = st.hover;
+    for (const c of cables.values()) if (c.path) {
+      const su = unitOf(c.src), tu = unitOf(c.tgt);
+      c.path.classList.toggle('dim', !!(hv && su !== hv && tu !== hv) || (sel.size > 0 && !sel.has(su) && !sel.has(tu)));
+      su === hv || sel.has(su) ? c.path.style.setProperty('--cs', 'var(--input)') : c.path.style.removeProperty('--cs');
+    }
+  };
+  const connected = u => { const s = new Set([u]); for (const c of cables.values()) { const a = unitOf(c.src), b = unitOf(c.tgt); if (a === u) s.add(b); if (b === u) s.add(a); } return s; };
+
+  // channel minted per source, receives on target
+
+  const inUse = ch => { let hit = false; walk(pb, `[${ATTR_EMITS}~="${CSS.escape(ch)}"],[${ATTR_RECEIVES}~="${CSS.escape(ch)}"]`, () => { hit = true; }); return hit; };
+  const mint = () => { let c; do c = 'ch_' + uid(8); while (inUse(c)); return c; };
+  const addWord = (el, attr, w) => { const l = splitWords(el.getAttribute(attr)); if (!l.includes(w)) l.push(w); el.setAttribute(attr, l.join(' ')); };
+  const wire = (src, tgt) => {
+    if (!src || !tgt || src === tgt) return null;
+    const ch = splitWords(src.getAttribute(ATTR_EMITS))[0] || mint();
+    withUndo([src, tgt], 'wire', () => { addWord(src, ATTR_EMITS, ch); addWord(tgt, ATTR_RECEIVES, ch); });
+    return ch;
+  };
+  pb.wire = wire;
+  const cut = c => withUndo([c.tgt], 'cut', () => { // one layer per click - receives first, then action token
+    const r = splitWords(c.tgt.getAttribute(ATTR_RECEIVES));
+    if (r.includes(c.ch)) { const k = r.filter(x => x !== c.ch); k.length ? c.tgt.setAttribute(ATTR_RECEIVES, k.join(' ')) : c.tgt.removeAttribute(ATTR_RECEIVES); return; }
+    const a = splitWords(c.tgt.getAttribute(ATTR_ACTION)).filter(t => kit.channelOf(t) !== c.ch);
+    a.length ? c.tgt.setAttribute(ATTR_ACTION, a.join(' ')) : c.tgt.removeAttribute(ATTR_ACTION);
+  });
+
+  const spawn = (type, x, y) => {
+    const n = document.createElement('scv-logic');
+    n.dataset.type = type; n.style.left = x + 'px'; n.style.top = y + 'px';
+    pb.append(n);
+    record(() => pb.append(n), () => n.remove(), 'spawn');
+    st.last = n;
+    if (OPENS.has(type)) n.expand(true);
+    return n;
+  };
+  pb.spawn = spawn;
+  const remove = list => {
+    const recs = movable(list).map(el => ({ el, parent: el.parentNode, next: el.nextSibling }));
+    if (!recs.length) return;
+    recs.forEach(r => { r.el.states.delete('selected'); if (r.el === st.last) disarm(); r.el.remove(); });
+    record(() => recs.forEach(r => r.el.remove()), () => { for (let i = recs.length - 1; i >= 0; i--) { const r = recs[i]; r.parent.insertBefore(r.el, r.next?.parentNode === r.parent ? r.next : null); } }, 'delete');
+    paint();
+  };
+  pb.removeSelection = () => remove(selection());
+  const zorder = d => { const sel = movable(selection()); withUndo(sel, 'z-order', () => sel.forEach(u => { u.style.zIndex = Math.max(0, (parseInt(u.style.zIndex) || (u.localName === 'scv-logic' ? 100 : 1)) + d); })); };
+  const nudge = (dx, dy, cells) => {
+    const sel = movable(selection()); if (!sel.length) return;
+    withUndo(sel, 'nudge', () => sel.forEach((u, i) => {
+      const x = px(u, 'left'), y = px(u, 'top');
+      u.style.left = (cells && dx ? snap(x + dx) : x + dx) + 'px'; u.style.top = (cells && dy ? snap(y + dy) : y + dy) + 'px';
+    }));
+    paint(); draw();
+  };
+
+  const shadowsIn = r => { const out = []; r.querySelectorAll('*').forEach(n => { if (n.shadowRoot && n.localName !== 'scv-logic') out.push(n.shadowRoot, ...shadowsIn(n.shadowRoot)); }); return out; };
+  const hover = (sr, on) => { const has = sr.adoptedStyleSheets.includes(HOVER_CSS); if (on && !has) sr.adoptedStyleSheets = [...sr.adoptedStyleSheets, HOVER_CSS]; else if (!on && has) sr.adoptedStyleSheets = sr.adoptedStyleSheets.filter(s => s !== HOVER_CSS); };
+  const setMode = m => {
+    const was = pb.mode;
+    pb.mode = m;
+    if (was !== m) { disarm(); select([]); }
+    shadowsIn(pb).forEach(sr => hover(sr, m === 'edit'));
+    tip.hidden = true; st.hover = null;
+    if (m !== 'edit') { st.introOpen = false; bg.classList.remove('open'); }
+    chrome(); draw(); paint();
+  };
+  pb.setMode = setMode;
+  const chrome = () => {
+    const empty = !pb.querySelector('scv-item, scv-logic');
+    intro.classList.toggle('on', pb.editing && (st.introOpen || empty));
+    intro.classList.toggle('open', st.introOpen);
+  };
+
+  const mo = new MutationObserver(rs => {
+    for (const r of rs) {
+      if (r.type === 'childList') {
+        wiresDirty = true;
+        r.addedNodes.forEach(n => { if (n.nodeType !== 1) return; [n, ...n.querySelectorAll('scv-item, scv-logic')].filter(isUnit).forEach(u => ro.observe(u)); if (pb.editing) shadowsIn(n).concat(n.shadowRoot && n.localName !== 'scv-logic' ? [n.shadowRoot] : []).forEach(sr => hover(sr, true)); });
+      } else if (r.attributeName !== 'style') wiresDirty = true;
+    }
+    chrome(); draw(); paint();
+  });
+  mo.observe(pb, { subtree: true, childList: true, attributes: true, attributeFilter: [ATTR_EMITS, ATTR_RECEIVES, ATTR_ACTION, 'style'] });
+  units().forEach(u => ro.observe(u));
+
+  // space arms wire from last spawned node, ctrl reverses
+
+  const disarm = () => { st.chain = false; st.lock = null; temp.style.display = 'none'; };
+  const reversed = e => st.lock ?? mod(e);
+  const showTemp = (from, e) => {
+    const a = endOf(from); if (!a) return;
+    const p = toCanvas(e.clientX, e.clientY);
+    temp.style.display = ''; temp.classList.toggle('rev', reversed(e));
+    temp.setAttribute('d', curve(a, p.x, p.y));
+  };
+  const chainTo = (tgt, e) => { if (!tgt || tgt === st.last) return false; reversed(e) ? wire(tgt, st.last) : wire(st.last, tgt); disarm(); return true; };
+
+  // one object per gesture - start on pointerdown, then move, end or cancel
+
+  let g = null;
+  const endOf2 = (path, u) => { // innermost element under pointer inside item - any element can be a wire end
+    const el = path.find(n => n.nodeType === 1);
+    return el === u ? u.firstElementChild || u : el;
+  };
+  const targetAt = path => { // wire drop target
+    const node = path.find(n => n.localName === 'scv-logic');
+    if (node) return pb.contains(node) ? node : null;
+    const u = path.find(n => n.localName === 'scv-item');
+    return u && pb.contains(u) ? endOf2(path, u) : null;
+  };
+  const moved = (e, s) => Math.abs(e.clientX - s.x) > DRAG || Math.abs(e.clientY - s.y) > DRAG;
+
+  const moveGesture = (e, u) => { // click toggles selection, drag moves it
+    const s = { x: e.clientX, y: e.clientY };
+    let list = null;
+    return {
+      move(ev) {
+        if (!list && !moved(ev, s)) return;
+        if (!list) {
+          if (!u.states.has('selected')) select([u]);
+          list = movable(selection()).map(m => ({ m, x: px(m, 'left'), y: px(m, 'top'), before: attrsOf(m) }));
+          list.forEach(t => t.m.states.add('dragging'));
+        }
+        let dx = Math.round((ev.clientX - s.x) / zoom()), dy = Math.round((ev.clientY - s.y) / zoom());
+        if (ev.altKey) { const f = list[0], ax = f.m.localName === 'scv-logic' ? 16 : 0; dx = snap(f.x + ax + dx) - f.x - ax; dy = snap(f.y + ax + dy) - f.y - ax; } // node rides dot by its glyph
+        list.forEach(t => { t.m.style.left = t.x + dx + 'px'; t.m.style.top = t.y + dy + 'px'; });
+      },
+      end() {
+        if (!list) return toggle(u);
+        list.forEach(t => t.m.states.delete('dragging'));
+        recordAttrs(list.map(t => t.m), list.map(t => t.before), 'move');
+      },
+      cancel() { list?.forEach(t => { t.m.states.delete('dragging'); setAttrs(t.m, t.before); }); },
+    };
+  };
+  const wireGesture = (e, from, click) => {
+    const s = { x: e.clientX, y: e.clientY };
+    let on = false;
+    return {
+      move(ev) { if (!on && !moved(ev, s)) return; on = true; tip.hidden = true; showTemp(from, ev); },
+      end(ev) {
+        if (!on) return click();
+        const tgt = targetAt(ev.composedPath());
+        temp.style.display = 'none';
+        if (tgt) { if (tgt !== from) mod(ev) ? wire(tgt, from) : wire(from, tgt); return; }
+        const p = toCanvas(ev.clientX, ev.clientY), rev = mod(ev);
+        showTemp(from, ev);
+        menu(nodeItems((type) => { const n = spawn(type, p.x - 16, p.y - 16); rev ? wire(n, from) : wire(from, n); }), ev.clientX, ev.clientY, () => { temp.style.display = 'none'; });
+      },
+      cancel() { temp.style.display = 'none'; },
+    };
+  };
+  const lassoGesture = (e, add) => {
+    const r0 = rectOf(), s = { x: e.clientX, y: e.clientY };
+    let on = false;
+    return {
+      move(ev) {
+        if (!on && !moved(ev, s)) return;
+        on = true; lasso.hidden = false;
+        Object.assign(lasso.style, { left: Math.min(s.x, ev.clientX) - r0.left + 'px', top: Math.min(s.y, ev.clientY) - r0.top + 'px', width: Math.abs(ev.clientX - s.x) + 'px', height: Math.abs(ev.clientY - s.y) + 'px' });
+      },
+      end(ev) {
+        lasso.hidden = true;
+        if (!on) return add || select([]);
+        const a = toCanvas(Math.min(s.x, ev.clientX), Math.min(s.y, ev.clientY)), b = toCanvas(Math.max(s.x, ev.clientX), Math.max(s.y, ev.clientY));
+        select(units().filter(u => { const k = boxOf(u); return !(k.x + k.w < a.x || k.x > b.x || k.y + k.h < a.y || k.y > b.y); }), add);
+      },
+      cancel() { lasso.hidden = true; },
+    };
+  };
+  const scaleGesture = (e, corner) => {
+    const items = movable(selection()).filter(u => u.localName === 'scv-item'), bs = items.map(boxOf);
+    const x0 = Math.min(...bs.map(b => b.x)), y0 = Math.min(...bs.map(b => b.y)), x1 = Math.max(...bs.map(b => b.x + b.w)), y1 = Math.max(...bs.map(b => b.y + b.h));
+    const ax = corner.includes('w') ? x1 : x0, ay = corner.includes('n') ? y1 : y0, p0 = toCanvas(e.clientX, e.clientY), d0 = Math.hypot(p0.x - ax, p0.y - ay) || 1; // opposite corner holds
+    const list = items.map(m => ({ m, x: px(m, 'left'), y: px(m, 'top'), s: parseFloat(m.style.scale) || 1, w: sizes.get(m)?.w || 1, before: attrsOf(m) }));
+    return {
+      move(ev) {
+        const p = toCanvas(ev.clientX, ev.clientY);
+        let k = Math.max(0.05, Math.hypot(p.x - ax, p.y - ay) / d0);
+        if (ev.altKey) { const f = list[0]; k = Math.max(GRID, Math.round(f.w * f.s * k / GRID) * GRID) / (f.w * f.s); } // whole cells
+        list.forEach(t => { t.m.style.scale = +(t.s * k).toFixed(4); t.m.style.left = Math.round(ax + (t.x - ax) * k) + 'px'; t.m.style.top = Math.round(ay + (t.y - ay) * k) + 'px'; });
+      },
+      end() { recordAttrs(list.map(t => t.m), list.map(t => t.before), 'scale'); },
+      cancel() { list.forEach(t => setAttrs(t.m, t.before)); },
+    };
+  };
+  const edgeAt = (u, e) => { // border edge under pointer, 8 screen px wide
+    const b = boxOf(u), p = toCanvas(e.clientX, e.clientY), m = 8 / zoom();
+    if (p.x < b.x - m || p.x > b.x + b.w + m || p.y < b.y - m || p.y > b.y + b.h + m) return null;
+    return Math.abs(p.y - b.y) < m ? 't' : Math.abs(p.y - b.y - b.h) < m ? 'b' : Math.abs(p.x - b.x) < m ? 'l' : Math.abs(p.x - b.x - b.w) < m ? 'r' : null;
+  };
+  const cropGesture = (e, u, edge) => {
+    const host = u.firstElementChild, before = attrsOf(host), c0 = cropOf(u), s = { x: e.clientX, y: e.clientY }, k = place(u).s, z = sizes.get(u) || { w: 0, h: 0 };
+    return {
+      move(ev) {
+        const dx = (ev.clientX - s.x) / zoom() / k, dy = (ev.clientY - s.y) / zoom() / k, c = { ...c0 };
+        if (edge === 't') c.t = Math.max(0, c0.t + dy); if (edge === 'b') c.b = Math.max(0, c0.b - dy);
+        if (edge === 'l') c.l = Math.max(0, c0.l + dx); if (edge === 'r') c.r = Math.max(0, c0.r - dx);
+        if (ev.altKey) { const { x, y } = place(u); if (edge === 't') c.t = Math.max(0, (snap(y + c.t * k) - y) / k); if (edge === 'b') c.b = Math.max(0, z.h - (snap(y + (z.h - c.b) * k) - y) / k); if (edge === 'l') c.l = Math.max(0, (snap(x + c.l * k) - x) / k); if (edge === 'r') c.r = Math.max(0, z.w - (snap(x + (z.w - c.r) * k) - x) / k); }
+        host.style.clipPath = `inset(${+c.t.toFixed(2)}px ${+c.r.toFixed(2)}px ${+c.b.toFixed(2)}px ${+c.l.toFixed(2)}px)`;
+        paint(); draw();
+      },
+      end() { recordAttrs([host], [before], 'crop'); },
+      cancel() { setAttrs(host, before); paint(); draw(); },
+    };
+  };
+  const clickGesture = (e, fn) => { const s = { x: e.clientX, y: e.clientY }; let on = false; return { move(ev) { on ||= moved(ev, s); }, end() { if (!on) fn(); }, cancel() {} }; };
+
+  const finish = (ev, how) => { const x = g; g = null; window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onCancel); x?.[how](ev); paint(); draw(); };
+  const onMove = ev => { const x = g; if (x) onFrame(onMove, () => { if (g === x) x.move(ev); paint(); draw(); }); };
+  const onUp = ev => { if (g) { g.move(ev); finish(ev, 'end'); } };
+  const onCancel = ev => finish(ev, 'cancel');
+  const begin = gesture => { g = gesture; window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onCancel); };
+  pb.cancelGesture = () => { if (g) finish(null, 'cancel'); };
+
+  pb.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || (isMac && e.ctrlKey) || g) return; // mac ctrl-click is right click
+    const path = e.composedPath();
+    if (path.some(n => n === st.menu || n === bg || n === intro)) return;
+    closeMenu();
+    if (!pb.editing) return;
+    layer.focus({ preventScroll: true });
+    const node = path.find(n => n.localName === 'scv-logic'), item = path.find(n => n.localName === 'scv-item' && pb.contains(n));
+    if (node && path[0]?.classList?.contains('input') && node.states.has('expanded')) return; // typing into node
+    if (st.chain && st.last) { const t = targetAt(path); if (t && t !== st.last) { e.preventDefault(); return void chainTo(t, e); } disarm(); }
+    const corner = path.find(n => n.classList?.contains('corner')), cable = path.find(n => n._cable)?._cable, unit = node || item;
+    e.preventDefault();
+    if (corner) return begin(scaleGesture(e, corner.dataset.c));
+    if (cable) return begin(clickGesture(e, () => cut(cable)));
+    if (unit && mod(e)) return begin(moveGesture(e, unit));
+    const edge = item && e.shiftKey && !node && edgeAt(item, e);
+    if (edge) return begin(cropGesture(e, item, edge));
+    if (node) return begin(wireGesture(e, node, () => { const b = [attrsOf(node)]; node.trigger(); recordAttrs([node], b, 'click'); }));
+    if (item) return begin(wireGesture(e, endOf2(path, item), () => e.shiftKey ? toggle(item) : select([item])));
+    begin(lassoGesture(e, e.shiftKey));
+  });
+  pb.addEventListener('dblclick', e => { // ctrl-double-click opens node input
+    const node = e.composedPath().find(n => n.localName === 'scv-logic');
+    if (node && pb.editing && mod(e)) { node.expand(); draw(); }
+  });
+
+  const closeMenu = () => { if (!st.menu) return; const m = st.menu; st.menu = null; m.remove(); m._onClose?.(); };
+  const menu = (items, x, y, onClose) => {
+    closeMenu();
+    const m = document.createElement('div'), r = rectOf();
+    m.className = 'menu'; m._onClose = onClose;
+    items.forEach(it => {
+      const b = document.createElement('button');
+      b.textContent = it.label;
+      if (it.key) { const k = document.createElement('span'); k.className = 'key'; k.textContent = it.key; b.append(k); }
+      b.addEventListener('click', () => { st.menu = null; m.remove(); it.fn(); });
+      m.append(b);
+    });
+    m.style.left = Math.min(x, r.right - 170) - r.left + 'px'; m.style.top = Math.min(y, r.bottom - 26 * items.length - 12) - r.top + 'px';
+    root.append(m); st.menu = m;
+  };
+  pb.menu = () => st.menu && [...st.menu.querySelectorAll('button')].map(b => b.firstChild.textContent);
+  const nodeItems = fn => [...kit.NODE_TYPES.values()].sort((a, b) => (+a.key || 99) - (+b.key || 99)).map(d => ({ label: '[node] - ' + d.name, key: d.key, fn: () => { setMode('edit'); fn(d.name); } }));
+  pb.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    const node = e.composedPath().find(n => n.localName === 'scv-logic');
+    if (node && pb.editing) { const b = [attrsOf(node)]; node.cycleMode(); recordAttrs([node], b, 'mode'); return closeMenu(); }
+    const p = toCanvas(e.clientX, e.clientY);
+    if (st.chain && st.last) st.lock = mod(e);
+    const items = [{ label: pb.editing ? '[mode] - use' : '[mode] - edit', fn: () => setMode(pb.editing ? 'use' : 'edit') }];
+    items.push(...nodeItems(type => { const last = st.chain ? st.last : null, rev = st.lock; const n = spawn(type, p.x - 16, p.y - 16); if (last) rev ? wire(n, last) : wire(last, n); disarm(); }));
+    for (const [tag] of kit.comps) items.push({ label: '[comp] - ' + tag.replace(/^scv-/, ''), fn: () => { setMode('edit'); const it = document.createElement('scv-item'); it.style.left = p.x + 'px'; it.style.top = p.y + 'px'; const c = document.createElement(tag); c.dataset.scvId = 'comp_' + uid(9); it.append(c); pb.append(it); record(() => pb.append(it), () => it.remove(), 'spawn'); } });
+    items.push({ label: '[save] - quine', fn: () => pb.export('quine') }, { label: '[save] - view', fn: () => pb.export('view') }, { label: '[save] - publish', fn: () => pb.export('publish') });
+    menu(items, e.clientX, e.clientY, () => { st.lock = null; });
+  });
+
+  pb.addEventListener('pointermove', e => {
+    st.pointer = { x: e.clientX, y: e.clientY };
+    if (st.chain && st.last) showTemp(st.last, e);
+    if (g || !pb.editing) return;
+    const path = e.composedPath(), t = targetAt(path);
+    if (!t || selection().length || path.some(n => n === st.menu || n === bg || n === intro)) { tip.hidden = true; return; }
+    const r = rectOf(), right = e.clientX > r.left + r.width / 2, low = e.clientY > r.top + r.height / 2;
+    tip.textContent = t.localName === 'scv-logic' ? t.label : t.id ? '#' + t.id : t.localName;
+    tip.hidden = false;
+    Object.assign(tip.style, { left: e.clientX - r.left + (right ? -15 : 15) + 'px', top: e.clientY - r.top + (low ? -4 : 15) + 'px', transform: `translate(${right ? '-100%' : '0'}, ${low ? '-100%' : '0'})` }); // flips toward centre, no measuring
+  });
+  const danger = (e, on) => { const c = e.composedPath().find(n => n._cable)?._cable; if (c?.src.localName === 'scv-logic') on ? c.src.states.add('danger') : c.src.states.delete('danger'); }; // cable about to be cut reddens its source ring
+  svg.addEventListener('pointerover', e => danger(e, true));
+  svg.addEventListener('pointerout', e => danger(e, false));
+  pb.addEventListener('pointerover', e => {
+    if (!pb.editing || selection().length || g) return;
+    const u = e.composedPath().find(isUnit);
+    if (u && u !== st.hover) { st.hover = u; paint(); }
+  });
+  pb.addEventListener('pointerout', e => {
+    if (!st.hover) return;
+    const into = e.relatedTarget;
+    if (!into || !(into.localName === 'scv-item' || into.localName === 'scv-logic' || itemOf(into) || into.closest?.('scv-logic'))) { st.hover = null; tip.hidden = true; paint(); }
+  });
+
+  // keys need patchbay focus - embedded ones never steal host shortcuts
+
+  pb.addEventListener('keydown', e => {
+    const t = e.composedPath()[0], typing = !!(t?.closest?.('input, textarea, select') || t?.isContentEditable);
+    const k = e.key, m = mod(e), node = typing && e.composedPath().find(n => n.localName === 'scv-logic');
+    if (node && (k === 'Escape' || k === 'Enter')) { node.expand(false); layer.focus({ preventScroll: true }); draw(); return; } // node already committed or dropped draft
+    if (k === 'Escape') { g && finish(null, 'cancel'); closeMenu(); disarm(); select([]); st.hover = null; st.introOpen = false; chrome(); paint(); return; }
+    if (typing) return;
+    if (k === 'Tab') { if (!pb.editing && e.composedPath().some(n => n.localName === 'scv-item')) return; e.preventDefault(); return setMode(pb.editing ? 'use' : 'edit'); } // tab still walks fields in use mode
+    if (k === '?') { e.preventDefault(); if (!pb.editing) setMode('edit'); st.introOpen = !st.introOpen; return chrome(); }
+    if (m && (k === 'z' || k === 'Z')) { e.preventDefault(); return e.shiftKey ? pb.redo() : pb.undo(); }
+    if (m && (k === 'y' || k === 'Y')) { e.preventDefault(); return pb.redo(); }
+    if (m && (k === 's' || k === 'S')) { e.preventDefault(); return pb.export('quine'); }
+    if (m && (k === 'p' || k === 'P')) { e.preventDefault(); return pb.export('publish'); }
+    if (!pb.editing) return;
+    if (m && (k === 'a' || k === 'A')) { e.preventDefault(); return select(units()); }
+    if (k === 'Backspace' || k === 'Delete') { e.preventDefault(); return remove(selection()); }
+    if (k === '[' || k === ']') return zorder(k === ']' ? 1 : -1);
+    if (k.startsWith('Arrow') && !e.repeat) {
+      e.preventDefault();
+      const step = e.altKey ? GRID : e.shiftKey ? 10 : 1;
+      return nudge(k === 'ArrowLeft' ? -step : k === 'ArrowRight' ? step : 0, k === 'ArrowUp' ? -step : k === 'ArrowDown' ? step : 0, e.altKey);
+    }
+    if (k === 'Enter') { const sel = selection(); if (sel.length === 1 && sel[0].localName === 'scv-logic') { e.preventDefault(); sel[0].expand(true); draw(); } return; }
+    if (k === ' ' && !e.repeat) {
+      e.preventDefault();
+      if (st.chain && st.last && chainTo(st.hover && (st.hover.localName === 'scv-logic' ? st.hover : st.hover.firstElementChild), e)) return;
+      if (st.last?.isConnected) { st.chain = true; showTemp(st.last, { clientX: st.pointer.x, clientY: st.pointer.y, ctrlKey: e.ctrlKey, metaKey: e.metaKey }); }
+      return;
+    }
+    const type = /^[0-9]$/.test(k) && !e.shiftKey && !e.altKey && [...kit.NODE_TYPES.values()].find(d => d.key === k);
+    const armed = st.chain && st.last;
+    if (type && !e.repeat && (!m || armed)) { // ctrl+digit only while chain is armed - ctrl+0 would reset browser zoom
+      e.preventDefault();
+      const p = toCanvas(st.pointer.x, st.pointer.y), prev = armed ? st.last : null;
+      const n = spawn(type.name, p.x - 16, p.y - 16);
+      if (prev) m ? wire(n, prev) : wire(prev, n);
+      disarm();
+      return;
+    }
+    if (st.chain && k.length === 1) disarm();
+  });
+  pb.addEventListener('keyup', e => { if ((e.key === 'Control' || e.key === 'Meta') && st.chain) temp.classList.toggle('rev', reversed(e)); });
+
+  // background is state on patchbay, grid dots follow its luminance
+
+  const [hex, swatch] = bg.children;
+  const lum = h => { const n = parseInt(h.slice(1), 16); return (0.2126 * (n >> 16 & 255) + 0.7152 * (n >> 8 & 255) + 0.0722 * (n & 255)) / 255; };
+  const setBg = h => withUndo([pb], 'background', () => { pb.style.setProperty('--background-sunk', h); pb.style.setProperty('--background-grid', `rgba(${lum(h) < 0.5 ? '255,255,255' : '0,0,0'},0.09)`); });
+  swatch.addEventListener('click', () => { const open = bg.classList.toggle('open'); if (open) { hex.value = getComputedStyle(pb).getPropertyValue('--background-sunk').trim().toUpperCase(); hex.focus(); hex.select(); } });
+  hex.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { bg.classList.remove('open'); hex.classList.remove('bad'); return; }
+    if (e.key !== 'Enter') return;
+    let v = hex.value.trim(); if (v && v[0] !== '#') v = '#' + v;
+    if (/^#[0-9a-f]{3}$/i.test(v)) v = '#' + [...v.slice(1)].map(c => c + c).join('');
+    if (!/^#[0-9a-f]{6}$/i.test(v)) return hex.classList.add('bad');
+    hex.classList.remove('bad'); bg.classList.remove('open'); setBg(v.toLowerCase());
+  });
+
+  pb.save = kind => save(pb, kind);
+  pb.export = async (kind = 'quine') => download(await save(pb, kind), NAMES[kind]);
+  setMode('edit');
+  if (document.body.children[0] === pb || document.querySelectorAll('scv-patchbay').length === 1) layer.focus({ preventScroll: true }); // standalone takes focus on load
+};
 
 // save by item into blob parts - peak is largest, never whole document
 
@@ -1412,12 +2099,7 @@ const download = (blob, name) => {
   setTimeout(() => URL.revokeObjectURL(a.href), 100);
 };
 
-PB.use(pb => {
-  if (!pb.questApi) pb.questApi = LOCAL_QUESTS;
-  pb.save = kind => save(pb, kind);
-  pb.export = async (kind = 'quine') => download(await save(pb, kind), NAMES[kind]);
-  pb.setMode = m => { pb.mode = m; };
-});
+PB.use(studio);
 })();
 </script>
 </body>

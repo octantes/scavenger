@@ -8,7 +8,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const tiers = [
   'unit.mjs', 'tokens.mjs', 'security.mjs', 'build.mjs', 'server-loop.mjs', // fast: logic, tokens, gate, lexer, artifact, scheduling
   'tui.mjs', 'engine.mjs', 'kernel.mjs', 'tools.mjs', 'live-emit.mjs',
-  'patchbay.mjs', 'studio.mjs', 'nodes.mjs', 'export.mjs', 'fractal.mjs', 'adversarial.mjs', 'next.mjs',
+  'patchbay.mjs', 'studio.mjs', 'nodes.mjs', 'export.mjs', 'fractal.mjs', 'adversarial.mjs', 'next.mjs', 'next-studio.mjs',
   'connectivity.mjs', 'compiler.mjs', 'components.mjs', 'cli.mjs', // integration + real cli
 ];
 

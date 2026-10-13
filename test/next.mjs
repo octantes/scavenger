@@ -49,7 +49,7 @@ const helpers = () => {
     kit,
     frame: () => new Promise(r => requestAnimationFrame(() => r())),
     sleep: ms => new Promise(r => setTimeout(r, ms)),
-    pb() { const p = document.createElement('scv-patchbay'); document.body.append(p); return p; },
+    pb() { const p = document.createElement('scv-patchbay'); document.body.append(p); p.setMode?.('use'); return p; }, // studio opens in edit
     node(pb, type, attrs = {}) { const n = document.createElement('scv-logic'); n.dataset.type = type; for (const k in attrs) n.setAttribute(k, attrs[k]); pb.append(n); return n; },
     item(pb, child, x = 0, y = 0) { const it = document.createElement('scv-item'); it.style.left = x + 'px'; it.style.top = y + 'px'; it.append(child); pb.append(it); return child; },
     el(html) { const t = document.createElement('template'); t.innerHTML = html; return t.content.firstElementChild; },

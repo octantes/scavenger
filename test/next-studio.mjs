@@ -142,8 +142,8 @@ try {
     await mouse('mouseMoved', 416, 216, CTRL);
     for (const n of [1, 2]) { await mouse('mousePressed', 416, 216, CTRL, 'left', n); await mouse('mouseReleased', 416, 216, CTRL, 'left', n); }
     await frames();
-    const r = await js(`T.nodes()[1].states.has('expanded')`);
-    return [r === true, r];
+    const r = await js(`[T.nodes()[1].states.has('expanded'), T.nodes()[1].states.has('selected')]`);
+    return [r.join() === 'true,true', r];
   });
   await run('enter opens selected node', async () => {
     await key('Escape');
@@ -169,6 +169,13 @@ try {
     await drag(at[0], at[1], 616, 416);
     const r = await js(`[T.pb.querySelector('[data-scv-id=p1]').shadowRoot.querySelector('.go').getAttribute('data-scv-emits'), T.nodes()[0].getAttribute('data-scv-receives')]`);
     return [r[0] && r[0] === r[1], r];
+  });
+  await run('wire started on text inside button leaves from button', async () => {
+    const at = await js(`(() => { const tag = T.comp('bt1', '<button class="b"><span class="s">press me</span></button>'); T.item('<' + tag + ' data-scv-id="bt"></' + tag + '>', 100, 600); return new Promise(r => requestAnimationFrame(() => { const q = T.pb.querySelector('[data-scv-id=bt]').shadowRoot.querySelector('.s').getBoundingClientRect(); r([q.x + 5, q.y + 5]); })); })()`);
+    await drag(at[0], at[1], 616, 416);
+    const r = await js(`(() => { const sr = T.pb.querySelector('[data-scv-id=bt]').shadowRoot; return [!!sr.querySelector('.b').getAttribute('data-scv-emits'), sr.querySelector('.s').hasAttribute('data-scv-emits')]; })()`);
+    await key('z', CTRL); await js(`T.pb.querySelector('[data-scv-id=bt]').parentElement.remove()`); await frames();
+    return [r.join() === 'true,false', r];
   });
   await run('click selects item alone, shift adds', async () => {
     await click(130, 420); const a = await js(`T.pb.selection().length`);
@@ -212,6 +219,14 @@ try {
     await key('ArrowRight', ALT); const c = await js(`T.pb.querySelector('scv-item').style.left`);
     await key('z', CTRL); const u = await js(`T.pb.querySelector('scv-item').style.left`);
     return [a === '101px' && b === '111px' && c === '132px' && u === '111px', [a, b, c, u]];
+  });
+  await run('held arrow keeps moving, whole hold is one undo step', async () => {
+    const before = await js(`T.pb.querySelector('scv-item').style.left`);
+    for (let i = 0; i < 4; i++) await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, autoRepeat: i > 0 });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 }); await frames();
+    const held = await js(`T.pb.querySelector('scv-item').style.left`);
+    await key('z', CTRL); const u = await js(`T.pb.querySelector('scv-item').style.left`);
+    return [parseFloat(held) === parseFloat(before) + 4 && u === before, [before, held, u]];
   });
   await run('backspace deletes selection, undo restores dom order', async () => {
     await click(130, 420); await click(330, 420, SHIFT);
@@ -291,7 +306,31 @@ try {
     await moveTo(105, 305, 205, 355, CTRL); await mouse('mouseReleased', 205, 355, CTRL); await frames();
     const reads = await js(`window.__reads`);
     const near = Math.hypot(start[0] - start[2], start[1] - start[3]) < 40;
-    return [near && reads === 0, { start, reads }];
+    const baked = await js(`T.pb.querySelector('scv-item').style.translate`);
+    return [near && reads === 0 && baked === '', { start, reads, baked }];
+  });
+  await run('routed text never measures inside frame callback', async () => {
+    const r = await js(`(async () => {
+      const out = T.pb.querySelector('[data-scv-id=p]').shadowRoot.querySelector('.go'), n = T.nodes()[0];
+      out.setAttribute('data-scv-receives', 'txt'); n.setAttribute('data-scv-emits', 'txt'); await T.frame(); await T.frame();
+      let inFrame = false, frameReads = 0; const raf = window.requestAnimationFrame, g = Element.prototype.getBoundingClientRect;
+      window.requestAnimationFrame = cb => raf(t => { inFrame = true; try { cb(t); } finally { inFrame = false; } });
+      Element.prototype.getBoundingClientRect = function () { if (inFrame) frameReads++; return g.call(this); };
+      for (let i = 0; i < 10; i++) { T.pb.routeSend('txt', 'value ' + 'x'.repeat(i)); await T.frame(); }
+      window.requestAnimationFrame = raf; Element.prototype.getBoundingClientRect = g;
+      return frameReads;
+    })()`);
+    return [r === 0, r];
+  });
+  await run('cable end follows inner element as it grows', async () => {
+    const r = await js(`(async () => {
+      const out = T.pb.querySelector('[data-scv-id=p]').shadowRoot.querySelector('.go'), n = T.node('accumulator', 500, 600);
+      out.style.width = 'auto'; out.setAttribute('data-scv-emits', 'fromout'); n.setAttribute('data-scv-receives', 'fromout'); await T.frame(); await T.frame();
+      T.pb.routeSend('txt', 'a much longer label than before'); await T.frame(); await T.frame(); await T.frame();
+      const c = T.pb.cables().find(c => c.src === out), q = out.getBoundingClientRect(), d = c.d.split(' ');
+      return [+d[1], q.x + q.width / 2];
+    })()`);
+    return [Math.abs(r[0] - r[1]) < 2, r];
   });
 
   // hover and selection dimming

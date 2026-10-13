@@ -1214,7 +1214,7 @@ Object.assign(kit, {
   ATTR_EMITS, ATTR_RECEIVES, ATTR_ACTION, WIRING_SEL, NODE_TYPES, VERBS,
   splitWords, uid, px, debug, channelOf, collectChannels, hostOf, itemOf, patchbayOf, onFrame, whenGone, whenReady,
   pulse, isPulse, asset, quests, clock, shared, unshare, patch, resolveRefs,
-  defineNode, runNodeSource, nodeSources: _nodeSources, defineComponent, comps: _comps, compTag,
+  isEmitter: el => _emitters.has(el), defineNode, runNodeSource, nodeSources: _nodeSources, defineComponent, comps: _comps, compTag,
   mountHarvest, morphShadow, extractShadowMarkup, boxScopeCss, snapSlots, restoreSlots, slotValue, setSlot,
 });
 
@@ -1459,21 +1459,23 @@ const studio = pb => {
   const zoom = () => pb.zoom || 1;
 
   const hist = { list: [], pos: -1 };
-  const record = (redo, undo, label) => {
+  const record = (redo, undo, label, merge, extend) => {
+    const top = hist.list[hist.pos];
+    if (extend && merge && top?.merge === merge && hist.pos === hist.list.length - 1) { top.redo = redo; return; } // held key extends its step
     hist.list.length = hist.pos + 1;
-    hist.list.push({ redo, undo, label });
+    hist.list.push({ redo, undo, label, merge });
     if (hist.list.length > UNDO_MAX) hist.list.shift(); else hist.pos++;
   };
   pb.undo = () => { if (hist.pos >= 0) hist.list[hist.pos--].undo(); };
   pb.redo = () => { const n = hist.list[hist.pos + 1]; if (n) { n.redo(); hist.pos++; } };
   const attrsOf = el => Object.fromEntries([...el.attributes].map(a => [a.name, a.value]));
   const setAttrs = (el, a) => { for (const at of [...el.attributes]) if (!(at.name in a)) el.removeAttribute(at.name); for (const k in a) if (el.getAttribute(k) !== a[k]) el.setAttribute(k, a[k]); };
-  const recordAttrs = (els, before, label) => { // one step for all changed elements
+  const recordAttrs = (els, before, label, merge, extend) => { // one step for all changed elements
     const after = els.map(attrsOf), changed = els.filter((el, i) => JSON.stringify(before[i]) !== JSON.stringify(after[i]));
     if (!changed.length) return;
-    record(() => els.forEach((el, i) => setAttrs(el, after[i])), () => els.forEach((el, i) => setAttrs(el, before[i])), label);
+    record(() => els.forEach((el, i) => setAttrs(el, after[i])), () => els.forEach((el, i) => setAttrs(el, before[i])), label, merge, extend);
   };
-  const withUndo = (els, label, fn) => { const before = els.map(attrsOf); fn(); recordAttrs(els, before, label); };
+  const withUndo = (els, label, fn, merge, extend) => { const before = els.map(attrsOf); fn(); recordAttrs(els, before, label, merge, extend); };
 
   pb.addEventListener('scv-commit', e => {
     const node = e.target, { name, old } = e.detail, now = node.getAttribute(name);
@@ -1495,11 +1497,11 @@ const studio = pb => {
   // positions are state, sizes from resize observer - no layout read in a loop
 
   const sizes = new WeakMap(), inner = new WeakMap(), innerBy = new WeakMap(); // unit > ends measured inside it
-  const dropInner = u => { innerBy.get(u)?.forEach(el => inner.delete(el)); innerBy.delete(u); };
-  const ro = new ResizeObserver(es => { for (const e of es) { const b = e.borderBoxSize[0]; sizes.set(e.target, { w: b.inlineSize, h: b.blockSize }); dropInner(e.target); } draw(); });
+  const ro = new ResizeObserver(es => { for (const e of es) { const b = e.borderBoxSize[0]; sizes.set(e.target, { w: b.inlineSize, h: b.blockSize }); remeasure(e.target); } draw(); });
+  const at = u => { const [tx, ty] = (u.style.translate || '0 0').split(' ').map(parseFloat); return [px(u, 'left') + (tx || 0), px(u, 'top') + (ty || 0)]; }; // translate only while dragging
   const place = u => { // canvas position and scale, through parent items
-    let x = px(u, 'left'), y = px(u, 'top'), s = parseFloat(u.style.scale) || 1;
-    for (let p = u.parentElement; p && p !== pb; p = p.parentElement) if (p.localName === 'scv-item') { const ps = parseFloat(p.style.scale) || 1; x = px(p, 'left') + x * ps; y = px(p, 'top') + y * ps; s *= ps; }
+    let [x, y] = at(u), s = parseFloat(u.style.scale) || 1;
+    for (let p = u.parentElement; p && p !== pb; p = p.parentElement) if (p.localName === 'scv-item') { const ps = parseFloat(p.style.scale) || 1, [pxx, pyy] = at(p); x = pxx + x * ps; y = pyy + y * ps; s *= ps; }
     return { x, y, s };
   };
   const cropOf = item => { const m = (item.firstElementChild?.style.clipPath || '').match(/inset\(([^)]*)\)/), v = m ? m[1].split(/\s+/).map(parseFloat) : []; return { t: v[0] || 0, r: v[1] ?? v[0] ?? 0, b: v[2] ?? v[0] ?? 0, l: v[3] ?? v[1] ?? v[0] ?? 0 }; };
@@ -1522,14 +1524,19 @@ const studio = pb => {
     const { x, y, s } = place(u);
     return { x: x + (o.x + o.w / 2) * s, y: y + (o.y + o.h / 2) * s, w: 0, h: 0 };
   };
-  const measure = els => { // reads first, writes after - one layout for every new inner end
-    const rects = els.map(el => { const u = itemOf(el); return [el, u, el.getBoundingClientRect(), u.getBoundingClientRect()]; });
-    for (const [el, u, r, ur] of rects) {
-      const k = zoom() * place(u).s;
+  const innerRo = new ResizeObserver(es => { // runs right after layout - rect reads here never force one
+    for (const e of es) {
+      const el = e.target, u = itemOf(el);
+      if (!u || !el.isConnected) continue;
+      const r = el.getBoundingClientRect(), ur = u.getBoundingClientRect(), k = zoom() * place(u).s;
       inner.set(el, r.width || r.height ? { x: (r.left - ur.left) / k, y: (r.top - ur.top) / k, w: r.width / k, h: r.height / k } : { x: 0, y: 0, w: (sizes.get(u)?.w || 0), h: (sizes.get(u)?.h || 0) }); // hidden end anchors at item centre
-      let set = innerBy.get(u); if (!set) innerBy.set(u, set = new Set()); set.add(el);
     }
-  };
+    draw();
+  });
+  const tracked = new Set();
+  const track = el => { const u = itemOf(el); if (!u || tracked.has(el)) return; let set = innerBy.get(u); if (!set) innerBy.set(u, set = new Set()); set.add(el); tracked.add(el); innerRo.observe(el); };
+  const untrack = keep => tracked.forEach(el => { if (keep.has(el)) return; tracked.delete(el); inner.delete(el); innerRo.unobserve(el); const u = itemOf(el); u && innerBy.get(u)?.delete(el); }); // end no longer wired
+  const remeasure = u => innerBy.get(u)?.forEach(el => { innerRo.unobserve(el); innerRo.observe(el); }); // fresh observation after next layout
   pb.geometry = u => boxOf(u);
 
   // wire index rebuilt when wiring changes - cables only re-derive geometry
@@ -1538,13 +1545,13 @@ const studio = pb => {
   let wiresDirty = true;
   const ids = new WeakMap(); let idN = 0;
   const idOf = el => { let i = ids.get(el); if (!i) ids.set(el, i = ++idN); return i; };
-  const shadowMo = new MutationObserver(rs => { for (const r of rs) { if (r.type === 'attributes' && r.attributeName.startsWith('data-scv-')) wiresDirty = true; const u = itemOf(r.target); if (u) dropInner(u); } draw(); });
+  const shadowMo = new MutationObserver(rs => { for (const r of rs) { if (r.type === 'attributes' && r.attributeName.startsWith('data-scv-')) wiresDirty = true; const u = itemOf(r.target); if (u) remeasure(u); } draw(); });
   const watched = new WeakSet();
   const watchShadow = sr => { // content or scroll moves inner ends
     if (watched.has(sr)) return;
     watched.add(sr);
     shadowMo.observe(sr, { subtree: true, childList: true, attributes: true, characterData: true });
-    sr.addEventListener('scroll', e => { const u = itemOf(e.target); if (u) { dropInner(u); draw(); } }, { capture: true, passive: true });
+    sr.addEventListener('scroll', e => { const u = itemOf(e.target); if (u) remeasure(u); }, { capture: true, passive: true });
   };
   const walk = (r, sel, fn) => {
     r.querySelectorAll(sel).forEach(fn);
@@ -1567,12 +1574,12 @@ const studio = pb => {
   const render = () => {
     if (!pb.editing) return;
     if (wiresDirty) rebuild();
-    const need = [];
+    const ends = new Set();
     for (const c of cables.values()) for (const el of [c.src, c.tgt]) {
       const u = el.localName === 'scv-logic' ? null : itemOf(el), m = u && (el === u.firstElementChild ? el.shadowRoot?.querySelector('[data-scv-port]') : el);
-      if (m && !inner.has(m)) need.push(m);
+      if (m) { ends.add(m); track(m); } // measured by observer, cable drawn next frame
     }
-    if (need.length) measure([...new Set(need)]);
+    untrack(ends);
     for (const c of cables.values()) {
       const a = endOf(c.src), b = endOf(c.tgt), r = a && b && arrow(a, b);
       if (!c.path) { c.path = svgEl('path', 'cable'); c.path._cable = c; c.path.dataset.ch = c.ch; svg.append(c.path); }
@@ -1616,7 +1623,7 @@ const studio = pb => {
       box.querySelectorAll('.corner').forEach(c => { c.hidden = !sel.some(u => u.localName === 'scv-item'); });
     }
     const lit = sel.length ? new Set(sel) : st.hover ? connected(st.hover) : null;
-    units().forEach(u => lit && !lit.has(u) && !(u.localName === 'scv-logic' && lit.has(u.parentElement)) ? u.states.add('dimmed') : u.states.delete('dimmed'));
+    units().forEach(u => { const dim = !!lit && !lit.has(u) && !(u.localName === 'scv-logic' && lit.has(u.parentElement)); if (u.states.has('dimmed') !== dim) dim ? u.states.add('dimmed') : u.states.delete('dimmed'); });
     tint();
   });
   const paintKey = {};
@@ -1668,12 +1675,12 @@ const studio = pb => {
   };
   pb.removeSelection = () => remove(selection());
   const zorder = d => { const sel = movable(selection()); withUndo(sel, 'z-order', () => sel.forEach(u => { u.style.zIndex = Math.max(0, (parseInt(u.style.zIndex) || (u.localName === 'scv-logic' ? 100 : 1)) + d); })); };
-  const nudge = (dx, dy, cells) => {
+  const nudge = (dx, dy, cells, held) => {
     const sel = movable(selection()); if (!sel.length) return;
     withUndo(sel, 'nudge', () => sel.forEach((u, i) => {
       const x = px(u, 'left'), y = px(u, 'top');
       u.style.left = (cells && dx ? snap(x + dx) : x + dx) + 'px'; u.style.top = (cells && dy ? snap(y + dy) : y + dy) + 'px';
-    }));
+    }), 'nudge ' + sel.map(idOf).join(), held);
     paint(); draw();
   };
 
@@ -1726,6 +1733,10 @@ const studio = pb => {
     const el = path.find(n => n.nodeType === 1);
     return el === u ? u.firstElementChild || u : el;
   };
+  const sourceAt = (path, u) => { // closest emitter: nearest control or script emitter, else innermost
+    for (const n of path) { if (n === u || n === u.firstElementChild) break; if (n.nodeType === 1 && (/^(input|select|textarea|button)$/.test(n.localName) || kit.isEmitter(n))) return n; }
+    return endOf2(path, u);
+  };
   const targetAt = path => { // wire drop target
     const node = path.find(n => n.localName === 'scv-logic');
     if (node) return pb.contains(node) ? node : null;
@@ -1747,11 +1758,11 @@ const studio = pb => {
         }
         let dx = Math.round((ev.clientX - s.x) / zoom()), dy = Math.round((ev.clientY - s.y) / zoom());
         if (ev.altKey) { const f = list[0], ax = f.m.localName === 'scv-logic' ? 16 : 0; dx = snap(f.x + ax + dx) - f.x - ax; dy = snap(f.y + ax + dy) - f.y - ax; } // node rides dot by its glyph
-        list.forEach(t => { t.m.style.left = t.x + dx + 'px'; t.m.style.top = t.y + dy + 'px'; });
+        list.forEach(t => { t.m.style.translate = `${dx}px ${dy}px`; t.dx = dx; t.dy = dy; }); // translate skips layout - left/top baked on drop
       },
       end() {
         if (!list) return toggle(u);
-        list.forEach(t => t.m.states.delete('dragging'));
+        list.forEach(t => { t.m.states.delete('dragging'); t.m.style.removeProperty('translate'); t.m.style.left = t.x + (t.dx || 0) + 'px'; t.m.style.top = t.y + (t.dy || 0) + 'px'; });
         recordAttrs(list.map(t => t.m), list.map(t => t.before), 'move');
       },
       cancel() { list?.forEach(t => { t.m.states.delete('dragging'); setAttrs(t.m, t.before); }); },
@@ -1855,12 +1866,12 @@ const studio = pb => {
     const edge = item && e.shiftKey && !node && edgeAt(item, e);
     if (edge) return begin(cropGesture(e, item, edge));
     if (node) return begin(wireGesture(e, node, () => { const b = [attrsOf(node)]; node.trigger(); recordAttrs([node], b, 'click'); }));
-    if (item) return begin(wireGesture(e, endOf2(path, item), () => e.shiftKey ? toggle(item) : select([item])));
+    if (item) return begin(wireGesture(e, sourceAt(path, item), () => e.shiftKey ? toggle(item) : select([item])));
     begin(lassoGesture(e, e.shiftKey));
   });
   pb.addEventListener('dblclick', e => { // ctrl-double-click opens node input
     const node = e.composedPath().find(n => n.localName === 'scv-logic');
-    if (node && pb.editing && mod(e)) { node.expand(); draw(); }
+    if (node && pb.editing && mod(e)) { node.expand(); node.states.add('selected'); paint(); draw(); } // second click toggled it off
   });
 
   const closeMenu = () => { if (!st.menu) return; const m = st.menu; st.menu = null; m.remove(); m._onClose?.(); };
@@ -1936,10 +1947,10 @@ const studio = pb => {
     if (m && (k === 'a' || k === 'A')) { e.preventDefault(); return select(units()); }
     if (k === 'Backspace' || k === 'Delete') { e.preventDefault(); return remove(selection()); }
     if (k === '[' || k === ']') return zorder(k === ']' ? 1 : -1);
-    if (k.startsWith('Arrow') && !e.repeat) {
+    if (k.startsWith('Arrow')) {
       e.preventDefault();
       const step = e.altKey ? GRID : e.shiftKey ? 10 : 1;
-      return nudge(k === 'ArrowLeft' ? -step : k === 'ArrowRight' ? step : 0, k === 'ArrowUp' ? -step : k === 'ArrowDown' ? step : 0, e.altKey);
+      return nudge(k === 'ArrowLeft' ? -step : k === 'ArrowRight' ? step : 0, k === 'ArrowUp' ? -step : k === 'ArrowDown' ? step : 0, e.altKey, e.repeat);
     }
     if (k === 'Enter') { const sel = selection(); if (sel.length === 1 && sel[0].localName === 'scv-logic') { e.preventDefault(); sel[0].expand(true); draw(); } return; }
     if (k === ' ' && !e.repeat) {

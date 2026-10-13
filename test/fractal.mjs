@@ -1,4 +1,4 @@
-// fractal tier - dashboard (harvested component + wired node group) survives exports when re-harvested (nodes working)
+// fractal tier - patchbay (harvest + wired node pair) survives its exports and a re-harvest, nodes working
 
 import { launchChrome, connect } from './_cdp.mjs';
 import { pathToFileURL, fileURLToPath } from 'url';
@@ -9,13 +9,12 @@ let fails = 0;
 const ok = (c, m) => { if (!c) { fails++; console.log('  ✗', m); } };
 const delay = ms => new Promise(r => setTimeout(r, ms));
 const here = dirname(fileURLToPath(import.meta.url));
-const pbUrl = pathToFileURL(join(here, '..', 'patchbay.html')).href;
+const pbUrl = pathToFileURL(join(here, '..', 'patchbay-next.html')).href;
 const bm = readFileSync(join(here, '..', 'bookmarklet.js'), 'utf8').trim();
 const decoded = decodeURIComponent(bm.slice('javascript:'.length));
 
 // minimal self-contained harvested component, the shape kernel emits
-const COMPONENT = '<scv-frtest data-scv-component></scv-frtest>'
-  + '<script data-scv-def>if(!customElements.get(\'scv-frtest\')){customElements.define(\'scv-frtest\',class extends HTMLElement{constructor(){super();if(this.shadowRoot)return;this.attachShadow({mode:\'open\'}).innerHTML=\'<style>:host{display:block;width:40px;height:20px;background:#345}</style><div>x</div>\';}});}<\/script>';
+const COMPONENT = '<scv-frtest data-scv-component></scv-frtest>\n<script data-scv-def>\nif(!customElements.get(\'scv-frtest\')){\ncustomElements.define(\'scv-frtest\', class extends HTMLElement {\nconstructor() {\nsuper();\nif (this.shadowRoot) return;\nthis.attachShadow({mode: \'open\'}).innerHTML = `<style>:host{display:block;width:40px;height:20px;background:#345}</style><div>x</div>`;\n}\n});\n}\n<\/script>';
 
 const { pageWsUrl, cleanup } = await launchChrome();
 const { ws, send, waitEvent } = await connect(pageWsUrl);
@@ -29,29 +28,27 @@ try {
   // build patch - harvested component + wired two node group
   await load(pbUrl);
   const built = await js(`(() => {
-    setMode('edit');
-    handlePasteData(${JSON.stringify(COMPONENT)});
-    const c = spawnLogicNode('clock', 120, 300), a = spawnLogicNode('accumulator', 300, 300);
-    c.setAttribute('data-scv-emits', 'ch_tick'); a.setAttribute('data-scv-receives', 'ch_tick'); // real wiring
-    invalidateCache();
-    return { comps: document.querySelectorAll('.comp-wrapper').length, nodes: document.querySelectorAll('scv-logic').length };
+    const pb = document.querySelector('scv-patchbay');
+    pb.import(${JSON.stringify(COMPONENT)}, { at: { x: 40, y: 40 } });
+    const n = (type, x) => { const e = document.createElement('scv-logic'); e.dataset.type = type; e.style.left = x + 'px'; e.style.top = '200px'; pb.append(e); return e; };
+    const c = n('clock', 120), a = n('accumulator', 300);
+    c.setAttribute('value', '50'); c.setAttribute('data-scv-emits', 'ch_tick'); a.setAttribute('data-scv-receives', 'ch_tick');
+    return { comps: pb.querySelectorAll('scv-item').length, nodes: pb.querySelectorAll('scv-logic').length };
   })()`);
   ok(built && built.nodes === 2, `board has two-node group (${built && built.nodes})`);
   ok(built && built.comps === 1, `board has harvested component (${built && built.comps})`);
 
-  // capture exports
-  const grab = async fn => await js(`(async () => { let c=null; const o=URL.createObjectURL; URL.createObjectURL=b=>{c=b;return 'blob:x';}; URL.revokeObjectURL=()=>{};
-    try { await ${fn}(); } catch(e){ return 'ERR '+e.message; } URL.createObjectURL=o; return c?await c.text():'NO-BLOB'; })()`, true);
+  const grab = async kind => await js(`(async () => { try { return await (await document.querySelector('scv-patchbay').save('${kind}')).text(); } catch (e) { return 'ERR ' + e.message; } })()`, true);
 
-  for (const [kind, fn] of [['publish', 'exportPublish'], ['quine', 'saveQuine']]) {
-    const html = await grab(fn);
+  for (const kind of ['publish', 'quine']) {
+    const html = await grab(kind);
     ok(typeof html === 'string' && html.length > 1000 && !html.startsWith('ERR'), `${kind} captured`);
-    if (!html || html.startsWith('ERR') || html === 'NO-BLOB') continue;
+    if (!html || html.startsWith('ERR')) continue;
     const path = join(here, `_fractal_${kind}.html`); writeFileSync(path, html); tmpFiles.push(path);
 
-    // open exported dashboard - publish hides nodes, quine keeps them live
+    // open exported patchbay - publish hides nodes, quine shows them in edit mode
     await load(pathToFileURL(path).href);
-    const inExport = await js(`(() => { const ns=[...document.querySelectorAll('scv-logic')];
+    const inExport = await js(`(() => { const ns = [...document.querySelectorAll('scv-logic')];
       return { nodes: ns.length, anyVisible: ns.some(n => getComputedStyle(n).display !== 'none') }; })()`);
     ok(inExport && inExport.nodes === 2, `${kind} still carries two nodes (${inExport && inExport.nodes})`);
     if (kind === 'publish') ok(inExport && !inExport.anyVisible, 'publish hides its nodes (use mode)');
@@ -62,21 +59,23 @@ try {
     await delay(700);
     await js(`(() => { const i=document.getElementById('scv-pal-input'); i.value='harvest'; i.dispatchEvent(new Event('input',{bubbles:true})); i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})); return true; })()`);
     await delay(500);
-    await js(`(() => { const el=document.getElementById('canvas-container'); const r=el.getBoundingClientRect();
-      el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,clientX:r.left+30,clientY:r.top+30})); return true; })()`);
+    await js(`(() => { const el = document.querySelector('scv-patchbay'), r = el.getBoundingClientRect();
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, clientX: r.left + 30, clientY: r.top + 30 })); return true; })()`);
     let clip = null;
     for (let i = 0; i < 45 && !clip; i++) { await delay(1000); clip = await js(`window.__clip`); }
     ok(clip && /<scv-logic/i.test(clip), `${kind} re-harvest carries node group (${clip ? clip.length + 'b' : 'no clip'})`);
     if (!clip) continue;
 
-    // paste harvested dashboard into fresh patchbay - nodes must survive and be visible
+    // paste re-harvest into fresh patchbay - nodes come back real, visible and wired
     await load(pbUrl);
-    const pasted = await js(`(() => { setMode('edit'); handlePasteData(${JSON.stringify(clip)});
-      let sn=[], vis=0;
-      document.querySelectorAll('[data-scv-component],[data-scv-id]').forEach(c=>{ if(c.shadowRoot){ const s=[...c.shadowRoot.querySelectorAll('scv-logic')]; sn.push(...s); s.forEach(n=>{ if(getComputedStyle(n).display!=='none') vis++; }); }});
-      return { comps: document.querySelectorAll('.comp-wrapper').length, shadowNodes: sn.length, shadowVisible: vis }; })()`);
-    ok(pasted && pasted.shadowNodes === 2, `${kind} paste keeps two nodes nested (${pasted && pasted.shadowNodes})`);
-    ok(pasted && pasted.shadowVisible === 2, `${kind} publish-hidden nodes come back visible on paste (${pasted && pasted.shadowVisible})`);
+    const pasted = await js(`(async () => { const pb = document.querySelector('scv-patchbay'); pb.import(${JSON.stringify(clip)}, { at: { x: 100, y: 100 } });
+      await new Promise(r => setTimeout(r, 300));
+      const ns = [...pb.querySelectorAll('scv-item scv-logic')], acc = ns.find(n => n.dataset.type === 'accumulator');
+      return { nodes: ns.length, visible: ns.filter(n => getComputedStyle(n).display !== 'none').length, ticking: +(acc?.getAttribute('value') || 0) > 0,
+        inShadow: [...pb.querySelectorAll('scv-item > *')].some(h => h.shadowRoot?.querySelector('scv-logic')) }; })()`, true);
+    ok(pasted && pasted.nodes === 2 && !pasted.inShadow, `${kind} paste brings both nodes back as real nodes (${JSON.stringify(pasted)})`);
+    ok(pasted && pasted.visible === 2, `${kind} publish-hidden nodes come back visible on paste (${pasted && pasted.visible})`);
+    ok(pasted && pasted.ticking, `${kind} pasted clock still drives accumulator (${JSON.stringify(pasted)})`);
   }
 } catch (e) {
   fails++; console.log('  ✗ fractal tier threw:', e.message);

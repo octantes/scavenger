@@ -867,6 +867,24 @@ const defineHarvest = h => { // element built from markup, canonical def written
   document.body.append(s);
   return true;
 };
+const remap = (el, map) => { // mapped channels renamed, others keep name
+  for (const a of [ATTR_EMITS, ATTR_RECEIVES]) { const v = el.getAttribute(a); if (v) el.setAttribute(a, splitWords(v).map(c => map.get(c) || c).join(' ')); }
+  const acts = el.getAttribute(ATTR_ACTION);
+  if (acts) el.setAttribute(ATTR_ACTION, splitWords(acts).map(t => { const p = t.split(':'), i = COMPOUND_VERBS.includes(p[0]) ? 2 : 1; if (map.has(p[i])) p[i] = map.get(p[i]); return p.join(':'); }).join(' '));
+};
+const reframe = item => { // harvest's nested nodes come back as real nodes in its item - attributes only, inner wires fresh per instance
+  const sr = item.firstElementChild?.shadowRoot, nested = sr ? [...sr.querySelectorAll('scv-logic')] : [];
+  if (!nested.length) return;
+  const em = new Set(), rc = new Set(), wired = [...sr.querySelectorAll(WIRING_SEL)];
+  wired.forEach(n => collectChannels(n, em, rc));
+  const map = new Map([...em].filter(c => rc.has(c)).map(c => [c, 'ch_' + uid(8)]));
+  wired.forEach(n => remap(n, map));
+  nested.forEach(n => {
+    const node = document.createElement('scv-logic');
+    for (const a of n.attributes) if (a.name !== 'class' && a.name !== 'data-scv-id') node.setAttribute(a.name, a.value); // flattened shadow and harvest class dropped
+    n.remove(); item.append(node);
+  });
+};
 const mountHarvest = (pb, { tag, script, x = 80, y = 80 }) => { // quest component - same rebuild as paste
   const h = pb && harvestOf(script);
   if (!h) return null;
@@ -876,7 +894,7 @@ const mountHarvest = (pb, { tag, script, x = 80, y = 80 }) => { // quest compone
   const el = document.createElement(h.tag);
   el.dataset.scvId = 'comp_' + uid(9);
   if (known && el.shadowRoot) el.shadowRoot.innerHTML = h.markup; // constructor built prior version
-  item.append(el); pb.append(item);
+  item.append(el); pb.append(item); reframe(item);
   if (/@container/.test(h.markup)) { const w = el.getBoundingClientRect().width / (pb.zoom || 1); if (w > 0) el.style.width = w + 'px'; el.style.containerType = 'inline-size'; } // host must be container its css queries
   return item;
 };
@@ -1252,7 +1270,7 @@ Object.assign(kit, {
   splitWords, uid, px, debug, channelOf, collectChannels, hostOf, itemOf, patchbayOf, onFrame, whenGone, whenReady,
   pulse, isPulse, asset, quests, clock, shared, unshare, patch, resolveRefs,
   isEmitter: el => _emitters.has(el), defineNode, runNodeSource, nodeSources: _nodeSources, defineComponent, comps: _comps, compTag,
-  mountHarvest, harvestOf, defineHarvest, defang, morphShadow, extractShadowMarkup, boxScopeCss, snapSlots, restoreSlots, slotValue, setSlot,
+  mountHarvest, harvestOf, defineHarvest, defang, remap, reframe, morphShadow, extractShadowMarkup, boxScopeCss, snapSlots, restoreSlots, slotValue, setSlot,
 });
 
 document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet(PAGE_CSS)];
@@ -2035,11 +2053,6 @@ const studio = pb => {
     clearTimeout(st.noteT); st.noteT = setTimeout(() => { tip.hidden = true; }, 2500);
   };
   const wiredIn = (u, fn) => { if (u.matches(kit.WIRING_SEL)) fn(u); walk(u, kit.WIRING_SEL, fn); };
-  const remap = (el, map) => { // mapped channels renamed, others keep name
-    for (const a of [ATTR_EMITS, ATTR_RECEIVES]) { const v = el.getAttribute(a); if (v) el.setAttribute(a, splitWords(v).map(c => map.get(c) || c).join(' ')); }
-    const acts = el.getAttribute(ATTR_ACTION);
-    if (acts) el.setAttribute(ATTR_ACTION, splitWords(acts).map(t => { const p = t.split(':'), i = ['prop', 'method', 'event'].includes(p[0]) ? 2 : 1; if (map.has(p[i])) p[i] = map.get(p[i]); return p.join(':'); }).join(' '));
-  };
   const putAt = (u, x, y) => { u.style.left = Math.round(x) + 'px'; u.style.top = Math.round(y) + 'px'; return u; };
   const itemFor = (child, x, y) => { const it = document.createElement('scv-item'); it.append(child); return putAt(it, x, y); };
   const adopt = (units, at, offset) => { // fresh ids, colliding channels re-minted, centred on pointer
@@ -2049,7 +2062,7 @@ const studio = pb => {
     units.forEach(u => wiredIn(u, n => kit.collectChannels(n, em, rc)));
     const map = new Map(), mint = () => { let c; do c = 'ch_' + uid(8); while (live.has(c) || em.has(c) || rc.has(c)); live.add(c); return c; };
     new Set([...em, ...rc]).forEach(c => { if (live.has(c)) map.set(c, mint()); }); // named channel reconnects in another patchbay
-    units.forEach(u => wiredIn(u, n => remap(n, map)));
+    units.forEach(u => wiredIn(u, n => kit.remap(n, map)));
     const cx = units.reduce((s, u) => s + px(u, 'left'), 0) / units.length, cy = units.reduce((s, u) => s + px(u, 'top'), 0) / units.length;
     const dx = offset ?? at.x - cx, dy = offset ?? at.y - cy;
     units.forEach(u => putAt(u, px(u, 'left') + dx, px(u, 'top') + dy));
@@ -2073,6 +2086,7 @@ const studio = pb => {
     if (!units.length) units = [...doc.querySelectorAll('[data-scv-component]')].filter(host => customElements.get(host.localName)).map((host, i) => { host.removeAttribute('data-scv-component'); host.dataset.scvId = 'x'; return itemFor(host, i * GRID, i * GRID); }); // kernel harvest snippet
     if (units.length) {
       const out = adopt(units.map(u => document.adoptNode(u)), at, opts.offset);
+      out.forEach(u => { if (u.localName === 'scv-item') kit.reframe(u); });
       const hosts = out.map(u => u.firstElementChild).filter(c => c && boxed.has(c.localName) && !c.style.containerType);
       if (hosts.length) requestAnimationFrame(() => { // measured once, then container of its own queries
         const ws = hosts.map(c => c.getBoundingClientRect().width / zoom());

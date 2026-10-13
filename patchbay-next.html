@@ -2062,7 +2062,8 @@ const studio = pb => {
     const at = opts.at || toCanvas(st.pointer.x, st.pointer.y);
     if (parseInt(doc.documentElement?.getAttribute('data-scv-runtime')) < 2 || doc.querySelector('.comp-wrapper')) { note('1.x file, open it directly'); return []; }
     let unknown = 0;
-    doc.querySelectorAll('script[data-scv-def]').forEach(s => { const hv = kit.harvestOf(kit.boxScopeCss(s.textContent)); hv ? kit.defineHarvest(hv) : unknown++; });
+    const boxed = new Set(); // harvests whose css queries their own box
+    doc.querySelectorAll('script[data-scv-def]').forEach(s => { const hv = kit.harvestOf(kit.boxScopeCss(s.textContent)); if (!hv) return unknown++; kit.defineHarvest(hv); if (hv.markup.includes('@container')) boxed.add(hv.tag); });
     kit.asset.boot(doc);
     const tags = [...doc.querySelectorAll('template[data-scv-comp]')].map(t => kit.defineComponent(document.importNode(t, true))).filter(Boolean); // authored code runs - same trust as opening its file
     const types = [...doc.querySelectorAll('script[data-scv-node]')].flatMap(s => kit.runNodeSource(s.textContent));
@@ -2070,7 +2071,15 @@ const studio = pb => {
     const src = doc.querySelector('scv-patchbay') || doc.body;
     let units = [...src.children].filter(isUnit);
     if (!units.length) units = [...doc.querySelectorAll('[data-scv-component]')].filter(host => customElements.get(host.localName)).map((host, i) => { host.removeAttribute('data-scv-component'); host.dataset.scvId = 'x'; return itemFor(host, i * GRID, i * GRID); }); // kernel harvest snippet
-    if (units.length) return adopt(units.map(u => document.adoptNode(u)), at, opts.offset);
+    if (units.length) {
+      const out = adopt(units.map(u => document.adoptNode(u)), at, opts.offset);
+      const hosts = out.map(u => u.firstElementChild).filter(c => c && boxed.has(c.localName) && !c.style.containerType);
+      if (hosts.length) requestAnimationFrame(() => { // measured once, then container of its own queries
+        const ws = hosts.map(c => c.getBoundingClientRect().width / zoom());
+        hosts.forEach((c, i) => { if (ws[i] > 0) c.style.width = ws[i] + 'px'; c.style.containerType = 'inline-size'; });
+      });
+      return out;
+    }
     const fresh = [ // authoring file places first instance of new type
       ...tags.filter(t => !pb.querySelector(t)).map(t => { const c = document.createElement(t); c.dataset.scvId = 'x'; return itemFor(c, 0, 0); }),
       ...types.filter(t => !pb.querySelector(`scv-logic[data-type="${CSS.escape(t)}"]`)).map(t => { const n = document.createElement('scv-logic'); n.dataset.type = t; return putAt(n, 0, 0); }),
@@ -2240,7 +2249,7 @@ const _item = async (el, defs, used) => { // component shadows only where they d
       if (n.localName === 'scv-logic') { used.nodes.add(n.dataset.type); continue; }
       if (!n.shadowRoot) continue;
       freeze(n.shadowRoot); roots.push(n.shadowRoot);
-      if (await _asDef(n, defs)) continue; // def rebuilds it
+      if (await _asDef(n, defs)) { n.shadowRoot.querySelectorAll('*').forEach(c => { if (c.localName.includes('-')) used.tags.add(c.localName); }); continue; } // def rebuilds it - defs it uses still ship
       shadows.push(n.shadowRoot); await walk(n.shadowRoot);
     }
   };

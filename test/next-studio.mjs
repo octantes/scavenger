@@ -547,6 +547,14 @@ try {
     const r = await js(`(() => { const n = T.pb.children.length, out = T.pb.import('<scv-odd data-scv-component></scv-odd><script data-scv-def>customElements.define("scv-odd", class extends HTMLElement {})<\\/script>'); return [out.length, T.pb.children.length === n, T.shadow('.tip').textContent]; })()`);
     return [r[0] === 0 && r[1] && r[2] === 'harvest not recognized', r];
   });
+  await run('pasted @media harvest becomes container of its own queries', async () => {
+    const r = await js(`(async () => {
+      const def = "if(!customElements.get('scv-box1')){\\ncustomElements.define('scv-box1', class extends HTMLElement {\\nconstructor() {\\nsuper();\\nif (this.shadowRoot) return;\\nthis.attachShadow({mode: 'open'}).innerHTML = \\\`<style>p{width:150px} @media (max-width: 100px) { p { color: red } }</style><p>box</p>\\\`;\\n}\\n});\\n}";
+      T.pb.import('<scv-box1 data-scv-component></scv-box1><script data-scv-def>' + def + '<\\/script>', { at: { x: 800, y: 100 } }); await T.frame(); await T.frame();
+      const h = T.pb.querySelector('scv-box1'); return [h.style.containerType, h.style.width, h.shadowRoot.querySelector('style').textContent.includes('@container')];
+    })()`);
+    return [r.join() === 'inline-size,150px,true', r];
+  });
   await run('1.x file refused with note', async () => {
     const r = await js(`(() => { const n = T.pb.children.length, out = T.pb.import('<html data-scv-runtime="1.0.0"><body><div class="comp-wrapper"></div></body></html>'); return [out.length, T.pb.children.length === n, T.shadow('.tip').textContent]; })()`);
     return [r[0] === 0 && r[1] && r[2] === '1.x file, open it directly', r];
@@ -606,17 +614,74 @@ try {
     return [r.join() === '1,v2,5,1,0,true', r];
   });
 
+  // shortcuts, chrome and canvas details
+
+  await fresh();
+  await run('ctrl+shift+z and caps-lock shortcuts still work', async () => {
+    await js(`(() => { T.pb.export = kind => { window.__exported = (window.__exported || []).concat(kind); }; T.pb.spawn('gate', 100, 100); })()`);
+    await key('z', CTRL); const undone = await js(`T.nodes().length`);
+    await key('Z', CTRL | SHIFT); const redone = await js(`T.nodes().length`);
+    await key('z', CTRL); await key('Y', CTRL); const capsY = await js(`T.nodes().length`);
+    await key('S', CTRL); await key('P', CTRL);
+    return [undone === 0 && redone === 1 && capsY === 1 && (await js(`window.__exported?.join()`)) === 'quine,publish', { undone, redone, capsY }];
+  });
+  await run('ctrl+a selects nothing in use mode', async () => {
+    await key('Tab'); await key('a', CTRL); const use = await js(`T.pb.selection().length`);
+    await key('Tab'); await key('a', CTRL); const edit = await js(`T.pb.selection().length`);
+    return [use === 0 && edit === 1, [use, edit]];
+  });
+  await run('only http links become cards, and their text stays text', async () => {
+    const r = await js(`(async () => { const layer = T.pb.shadowRoot.querySelector('.layer'), paste = t => { const dt = new DataTransfer(); dt.setData('text/plain', t); layer.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, composed: true, cancelable: true })); };
+      const before = T.pb.querySelectorAll('.scv-link-card').length;
+      ['just words', 'javascript:alert(1)', 'data:text/html,<b>x</b>'].forEach(paste);
+      const none = T.pb.querySelectorAll('.scv-link-card').length === before;
+      paste('https://ex.com/a"onmouseover="x/<b>y</b>'); await T.frame();
+      const c = [...T.pb.querySelectorAll('.scv-link-card')].at(-1);
+      return [none, !!c && !c.querySelector('[onmouseover], b') && c.querySelector('.scv-lc-open').getAttribute('href').includes('"onmouseover')]; })()`);
+    return [r.join() === 'true,true', r];
+  });
+  await run('handler inside pasted declarative shadow never runs', async () => {
+    const r = await js(`(async () => { T.comp('sh2', '<i>x</i>');
+      T.pb.import('<scv-patchbay><scv-item style="left:0px;top:0px"><scv-sh2 data-scv-id="s"><template shadowrootmode="open"><img src="data:," onerror="window.__ran = 1"><i>x</i></template></scv-sh2></scv-item></scv-patchbay>', { at: { x: 500, y: 500 } });
+      await new Promise(r => setTimeout(r, 200)); return [window.__ran ?? null, !!T.pb.querySelector('scv-sh2').shadowRoot.querySelector('img')]; })()`);
+    return [r.join() === ',true', r];
+  });
+  await fresh();
+  await run('intro lists all ten keyed nodes', async () => {
+    const r = await js(`[...T.shadow('.intro .nodes').querySelectorAll('dt')].map(d => d.textContent).join('')`);
+    return [r === '1234567890', r];
+  });
+  await run('bad hex flagged and ignored, light background turns grid dots dark', async () => {
+    const at = await js(`(() => { const r = T.shadow('.bg button').getBoundingClientRect(); return [r.x + 8, r.y + 8]; })()`);
+    await click(at[0], at[1]); await js(`T.shadow('.bg input').value = 'zzz'`); await key('Enter');
+    const bad = await js(`[T.shadow('.bg input').classList.contains('bad'), T.pb.style.getPropertyValue('--background-sunk')]`);
+    await js(`T.shadow('.bg input').value = '#f0f0f0'`); await key('Enter');
+    const grid = await js(`T.pb.style.getPropertyValue('--background-grid')`);
+    return [bad[0] === true && bad[1] === '' && grid.startsWith('rgba(0,0,0'), { bad, grid }];
+  });
+  await run('grid cell 24px at zoom 1, dots and cells scale with zoom, zoom clamps at 5', async () => {
+    const r = await js(`(() => { const g = T.shadow('.grid'), read = () => [g.style.getPropertyValue('--cell'), g.style.getPropertyValue('--dot')]; const one = read(); T.pb.setView(0, 0, 2); const two = read(); T.pb.setZoom(50, 0, 0); const z = T.pb.zoom; T.pb.setView(0, 0, 1); return [one, two, z]; })()`);
+    return [r[0].join() === '24px,1px' && r[1].join() === '48px,2px' && r[2] === 5, r];
+  });
+  await run('spawn, wire, paste, delete and undo cycles leak no listeners or nodes', async () => {
+    const cycle = `(async () => { for (let i = 0; i < 12; i++) { const a = T.pb.spawn('accumulator', 100, 100), b = T.pb.spawn('accumulator', 300, 100); T.pb.wire(a, b); T.pb.select([a, b]); await T.pb.duplicate(); await T.frame(); T.pb.select([...T.pb.querySelectorAll('scv-logic')]); T.pb.removeSelection(); T.pb.undo(); T.pb.select([...T.pb.querySelectorAll('scv-logic')]); T.pb.removeSelection(); await T.frame(); } return 1; })()`;
+    const counters = async () => { await send('HeapProfiler.enable'); await send('HeapProfiler.collectGarbage'); await js('new Promise(r => setTimeout(r, 100))'); return (await send('Memory.getDOMCounters')).result; };
+    await js(cycle); const before = await counters();
+    await js(cycle); const after = await counters();
+    return [after.jsEventListeners <= before.jsEventListeners && after.nodes <= before.nodes * 1.05, { before, after }];
+  });
+
   // real clipboard - copy and paste editing commands
 
   await send('Browser.grantPermissions', { permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] });
   await run('real copy and paste round-trip through system clipboard', async () => {
-    await js(`(() => { T.pb.select([T.pb.querySelector('scv-logic[data-type=dropnode]')]); T.pb.shadowRoot.querySelector('.layer').focus(); })()`);
+    await js(`(() => { T.pb.select([T.node('comparator', 500, 300)]); T.pb.shadowRoot.querySelector('.layer').focus(); })()`);
     await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'c', code: 'KeyC', windowsVirtualKeyCode: 67, modifiers: CTRL, commands: ['copy'] });
     await js('new Promise(r => setTimeout(r, 300))');
     await hover(700, 500);
     await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'v', code: 'KeyV', windowsVirtualKeyCode: 86, modifiers: CTRL, commands: ['paste'] });
     await js('new Promise(r => setTimeout(r, 300))');
-    const r = await js(`[...T.pb.querySelectorAll('scv-logic[data-type=dropnode]')].map(n => n.style.left)`);
+    const r = await js(`[...T.pb.querySelectorAll('scv-logic[data-type=comparator]')].map(n => n.style.left)`);
     return [r.length === 2 && r[1] === '700px', r];
   });
 

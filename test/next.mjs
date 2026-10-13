@@ -531,6 +531,72 @@ try {
     return [r === null, r];
   });
 
+  await run('wired checkbox emits 1 checked, 0 unchecked', async () => {
+    const pb = T.pb(), cb = T.el('<input type="checkbox" data-scv-emits="c">'); pb.append(cb);
+    const d = T.sink(pb, 'c'); cb.click(); cb.click();
+    return [d.log.join() === '1,0', d.log];
+  });
+
+  await run('method verb calls receiver, a throwing one is contained', async () => {
+    const pb = T.pb(), b = T.el('<button data-scv-receives="c" data-scv-action="method:click">x</button>'), s = T.el('<p data-scv-receives="c" data-scv-action="method:setAttribute">x</p>');
+    let clicks = 0; b.addEventListener('click', () => clicks++); pb.append(b, s);
+    const warn = console.warn; console.warn = () => {};
+    try { pb.routeSend('c', 'title'); } finally { console.warn = warn; }
+    return [clicks === 1 && s.attributes.length === 2, [clicks, s.attributes.length]];
+  });
+
+  await run('event verb dispatches value as detail', async () => {
+    const pb = T.pb(), el = T.el('<p data-scv-action="event:ping:c">x</p>'); pb.append(el); let got;
+    el.addEventListener('ping', e => { got = e.detail; });
+    pb.routeSend('c', 42);
+    return [got === 42, got];
+  });
+
+  await run('custom def icon renders as text, input type stays safe', async () => {
+    T.kit.runNodeSource(`defineNode({ name: 'esc1', icon: '<b>x</b>', inputType: 'text" onfocus="window.__x=1' })`);
+    const pb = T.pb(), n = T.node(pb, 'esc1'), sr = n.shadowRoot;
+    return [sr.querySelector('.dot').textContent === '<b>x</b>' && !sr.querySelector('b') && sr.querySelector('.input').type === 'text' && !sr.querySelector('.input').hasAttribute('onfocus'), sr.innerHTML.length];
+  });
+
+  await run('variable refuses globals, v and non-identifiers', async () => {
+    const out = [];
+    for (const name of ['Math', 'v', '1bad', 'rate']) {
+      const pb = T.pb(), v = T.node(pb, 'variable', { value: name }), m = T.node(pb, 'mutator', { value: `typeof ${name === '1bad' ? 'rate' : name}`, 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+      v.receive(5, 'x'); m.receive(0, 'x'); out.push(d.log[0]);
+    }
+    return [out.join() === 'object,number,undefined,number', out];
+  });
+
+  await run('mutator compiles once per expression and variable set, recovers from broken text', async () => {
+    const pb = T.pb(), m = T.node(pb, 'mutator', { value: 'v * 2', 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    const F = window.Function; let made = 0; window.Function = function (...a) { if (String(a.at(-1)).startsWith('return (')) made++; return F(...a); }; // mutator compiles only
+    const warn = console.warn; console.warn = () => {};
+    try {
+      for (let i = 0; i < 5; i++) m.receive(i, 'x'); const same = made;
+      m.setAttribute('value', 'v * 3'); m.receive(1, 'x'); const edit = made;
+      const v = T.node(pb, 'variable', { value: 'k' }); v.receive(1, 'x'); m.receive(1, 'x'); const scope = made;
+      m.receive(2, 'x'); const repeat = made;
+      m.setAttribute('value', 'v *'); m.receive(3, 'x'); const broke = d.log.at(-1);
+      m.setAttribute('value', 'v + 1'); m.receive(3, 'x');
+      return [same === 1 && edit === 2 && scope === 3 && repeat === 3 && broke === 6 && d.log.at(-1) === 4, { same, edit, scope, repeat, broke, last: d.log.at(-1) }];
+    } finally { window.Function = F; console.warn = warn; }
+  });
+
+  await run('sample holds 0 and re-emits it', async () => {
+    const pb = T.pb(), sm = T.node(pb, 'sample', { 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
+    sm.receive(0, 'x'); sm.trigger();
+    return [d.log.length === 1 && d.log[0] === 0, d.log];
+  });
+
+  await run('node chain past 20 hops stops with one warning', async () => {
+    const pb = T.pb(); let prev = T.node(pb, 'mutator', { value: 'v + 1', 'data-scv-emits': 'h0' });
+    const first = prev;
+    for (let i = 1; i < 25; i++) prev = T.node(pb, 'mutator', { value: 'v + 1', 'data-scv-receives': 'h' + (i - 1), 'data-scv-emits': 'h' + i });
+    const d = T.sink(pb, 'h24'); const warn = console.warn; let warned = 0; console.warn = () => warned++;
+    try { first.receive(0, 'x'); } finally { console.warn = warn; }
+    return [d.log.length === 0 && warned === 1, { got: d.log, warned }];
+  });
+
   // component api
 
   await run('shared: one instance, released one frame after last owner leaves', async () => {
@@ -737,6 +803,25 @@ try {
   ok(shadows.join() === 'false,true', `unchanged harvest instance saved bare, changed one with its shadow (${shadows})`);
   ok(imgFetches === 1, `remote image fetched once into table (${imgFetches})`);
 
+  ok(/^<!DOCTYPE html>  <!-- scavenge\.ar[^\n]*-->\n\n<html lang="en" data-scv-runtime="2\.\d+\.\d+">/.test(q), 'header: doctype and license, blank line, html lang en stamped');
+  ok(!/127\.0\.0\.1:9876/.test(body), 'quine bakes no quest api');
+
+  await run('last instance gone drops its def from save, undo-free live page keeps it', async () => {
+    const pb = T.pb(); T.harvestDef('scv-pr1', '<p>prune</p>');
+    const it = document.createElement('scv-item'); it.innerHTML = '<scv-pr1 data-scv-id="x"></scv-pr1>'; pb.append(it);
+    const withIt = await (await pb.save('publish')).text(); it.remove();
+    const without = await (await pb.save('publish')).text();
+    return [/customElements\.get\('scv-pr1'\)/.test(withIt) && !/scv-pr1/.test(without) && !!document.querySelector('script[data-scv-def]') && [...document.querySelectorAll('script[data-scv-def]')].some(s => s.textContent.includes('scv-pr1')), without.length];
+  });
+
+  await run('def used only inside a bare component shadow still ships', async () => {
+    const pb = T.pb(); T.harvestDef('scv-inner1', '<i>inner</i>');
+    T.comp('outer1', '<scv-inner1></scv-inner1>');
+    const it = document.createElement('scv-item'); it.innerHTML = '<scv-outer1 data-scv-id="o"></scv-outer1>'; pb.append(it); await T.frame();
+    const html = await (await pb.save('publish')).text();
+    return [/<scv-outer1 data-scv-id="o"><\/scv-outer1>/.test(html) && /customElements\.get\('scv-inner1'\)/.test(html), html.match(/<scv-outer1.*?<\/scv-outer1>/)?.[0]];
+  });
+
   for (const k of ['quine', 'view', 'publish']) {
     uncaught.length = 0;
     await nav(`${base}/saved/${k}`);
@@ -766,6 +851,19 @@ try {
     ok(r.canvas === (k === 'publish' ? 'undefined' : 'function') && r.studio === (k === 'quine' ? 'function' : 'undefined'), `${k}: behaviour matches script set (${r.canvas}, ${r.studio})`);
     ok(r.api === (k === 'quine' ? 'http://127.0.0.1:9876' : base), `${k}: quest api default (${r.api})`);
     ok(uncaught.length === 0, `${k}: no uncaught errors (${uncaught})`);
+  }
+
+  // quine generations: re-saving a reopened quine never grows it
+
+  {
+    let prev = q, sizes = [];
+    for (let g = 2; g <= 3; g++) {
+      saved.set('gen', prev);
+      await nav(`${base}/saved/gen`);
+      prev = await js(`(async () => (await document.querySelector('scv-patchbay').save('quine')).text())()`);
+      sizes.push(prev.length);
+    }
+    ok(sizes[0] === sizes[1], `quine size stable across generations (${sizes})`);
   }
 
   // script elements removed by hand

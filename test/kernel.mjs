@@ -547,6 +547,39 @@ try {
     ok(applied && applied.hostBg === 'rgb(7, 8, 9)', `transparent component carries backdrop (got ${JSON.stringify(applied && applied.hostBg)})`);
   }
 
+  // repeated list - one copy of its image, one block for identical items
+  await js(`(window.$kernel && window.$kernel.destroy(), true)`);
+  await send('Runtime.evaluate', { expression: kernelSrc });
+  const list = (await send('Runtime.evaluate', { awaitPromise: true, returnByValue: true, expression: `(async () => {
+    const st = document.createElement('style');
+    st.textContent = '.ddit{background:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%274%27 height=%274%27%3E%3Crect width=%274%27 height=%274%27 fill=%27red%27/%3E%3C/svg%3E");width:20px;height:20px;margin:2px}';
+    document.head.appendChild(st);
+    document.body.insertAdjacentHTML('beforeend', '<div id="ddwrap">' + '<div class="ddit"></div>'.repeat(6) + '</div>');
+    return await new Promise(resolve => {
+      Object.defineProperty(navigator.clipboard, 'writeText', { value: t => { resolve(String(t)); return Promise.resolve(); }, configurable: true });
+      window.$kernel.start('harvester');
+      const arm = Date.now();
+      (async () => { while (!window.$kernel.processes['harvester']?.active && Date.now() - arm < 2000) await new Promise(r => setTimeout(r, 10));
+        document.getElementById('ddwrap').click(); })();
+      setTimeout(() => resolve('__timeout__'), 3500);
+    });
+  })()` }))?.result?.result?.value;
+  ok(list && list !== '__timeout__', 'repeated list fixture harvested');
+  if (list && list !== '__timeout__') {
+    ok(list.split('data:image/svg+xml').length === 2 && /var\(--scv-a-\w+-0\)/.test(list), `repeated image ships once, items read it through var (${list.split('data:image/svg+xml').length - 1} copies)`);
+    ok(/(\.scv-\w+-\d+, ){5}\.scv-\w+-\d+ \{/.test(list), 'six identical items share one css block');
+    const shown = (await send('Runtime.evaluate', { awaitPromise: true, returnByValue: true, expression: `(async () => {
+      document.getElementById('ddwrap').remove();
+      const box = document.createElement('div'); document.body.appendChild(box);
+      box.innerHTML = ${JSON.stringify(list)};
+      box.querySelectorAll('script').forEach(s => { const n = document.createElement('script'); n.textContent = s.textContent; document.body.appendChild(n); });
+      await new Promise(r => setTimeout(r, 100));
+      const kids = [...box.querySelector('[data-scv-component]').shadowRoot.querySelectorAll('div > div')];
+      return kids.map(k => { const c = getComputedStyle(k); return c.backgroundImage.startsWith('url("data:image/svg') && c.width === '20px'; });
+    })()` }))?.result?.result?.value;
+    ok(shown?.length === 6 && shown.every(Boolean), `every item still paints its image and keeps its size (${JSON.stringify(shown)})`);
+  }
+
   // backdrop is whatever painted behind, often gradient on parent ::after - re-anchored it paints other colours
   await js(`(window.$kernel && window.$kernel.destroy(), true)`);
   await send('Runtime.evaluate', { expression: kernelSrc });

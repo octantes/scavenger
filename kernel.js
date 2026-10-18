@@ -836,6 +836,7 @@
       // probe is shallow clone of element - rebuilding from tag name guesses which attrs drive ua styling
       const PROBE_STRIP = ['class', 'style', 'id', 'src', 'srcset', 'poster', 'data']; // author styling, plus what would fetch
       let _diffIdx = 0;
+      const blocks = new Map(); // css body > classes sharing it
       for (const orig of origSet) {
         if (++_diffIdx % 40 === 0) await new Promise(res => _raf(res)); // let tab breathe on big harvests - freeze already stops page from drifting
         const data = nodeMap.get(orig);
@@ -958,19 +959,19 @@
           if (pd) pseudoBake[pe] = pd;
         }
 
-        const uClass = data.clone.getAttribute('class');
-
+        let body = ''; // \0 pseudo \1 stands for own class
         for (let m in data.media) { // media first, base after - same specificity, order decides, pseudo outranks both
-          cssText += `@media ${m} {\n`;
-          for (let p in data.media[m]) cssText += `  .${uClass}${p} { ${data.media[m][p]} }\n`;
-          cssText += `}\n`;
+          body += `@media ${m} {\n`;
+          for (let p in data.media[m]) body += `  \0${p}\u0001 { ${data.media[m][p]} }\n`;
+          body += `}\n`;
         }
-
-        if (data.css || diff) cssText += `.${uClass} { ${data.css} ${diff} }\n`;
-        for (let p in data.pseudo) cssText += `.${uClass}${p} { ${data.pseudo[p]} ${pseudoBake[p] || ''} }\n`;
-        for (let p in pseudoBake) if (!data.pseudo[p]) cssText += `.${uClass}${p} { ${pseudoBake[p]} }\n`;
+        if (data.css || diff) body += `\0\u0001 { ${data.css} ${diff} }\n`;
+        for (let p in data.pseudo) body += `\0${p}\u0001 { ${data.pseudo[p]} ${pseudoBake[p] || ''} }\n`;
+        for (let p in pseudoBake) if (!data.pseudo[p]) body += `\0${p}\u0001 { ${pseudoBake[p]} }\n`;
+        if (body) blocks.has(body) ? blocks.get(body).push(data.clone.getAttribute('class')) : blocks.set(body, [data.clone.getAttribute('class')]);
         data.clone.removeAttribute('style');
       }
+      for (const [body, cls] of blocks) cssText += body.replace(/\0([^\u0001]*)\u0001/g, (_, p) => cls.map(c => `.${c}${p}`).join(', ')); // identical blocks once, every class in selector
 
       cl.querySelectorAll('use').forEach(u => { // <use href="#id"> points at sprite left on page - carried alone renders nothing
         const href = u.getAttribute('href') || u.getAttribute('xlink:href') || '';
@@ -1043,13 +1044,17 @@
 
       const b64 = new Map(urls.map((u, i) => [u, b64Urls[i]]));
       // inlined url ships as data; would not inline = stays remote - beacon that phones home breaks offline, drop it
-      const inline = t => t.replace(urlRe, (m, q, u) => {
-        const v = b64.get(u);
-        if (v?.startsWith('data:')) return `url(${q}${v}${q})`;
-        if (/^(data:|#)/.test(u)) return m; // never fetched - local reference stays
-        return 'none';
+      const uses = new Map(); for (const m of cssText.matchAll(urlRe)) uses.set(m[2], (uses.get(m[2]) || 0) + 1);
+      const vars = new Map(); // repeated asset > one custom property on :host - font descriptors take no var()
+      const inline = (t, share) => t.replace(urlRe, (m, q, u) => {
+        const v = u.startsWith('data:') ? u : b64.get(u);
+        if (!v?.startsWith('data:')) return u.startsWith('#') ? m : 'none'; // local reference stays
+        if (!share || uses.get(u) < 2) return `url(${q}${v}${q})`;
+        if (!vars.has(u)) vars.set(u, { name: `--scv-a-${uid}-${vars.size}`, def: `url(${q || '"'}${v}${q || '"'})` });
+        return `var(${vars.get(u).name})`;
       });
-      cssText = inline(cssText); fontCss = inline(fontCss);
+      cssText = inline(cssText, true); fontCss = inline(fontCss);
+      if (vars.size) cssText = `:host { ${[...vars.values()].map(a => `${a.name}: ${a.def};`).join(' ')} }\n` + cssText;
       imgs.forEach((img, i) => img.src = b64Imgs[i]);
       const ssMap = new Map(ssUrls.map((u, i) => [u, b64Ss[i]]));
       ssNodes.forEach((n, i) => n.setAttribute('srcset',

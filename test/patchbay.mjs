@@ -1025,9 +1025,16 @@ try {
     fk.unshare('lend'); const kept = kit.isShared('lend');
     kit.unshare('lend'); const gone = !kit.isShared('lend');
     f.remove();
-    return [got === own, fresh.id, kept, gone];
+    window.scvShared = { audio: { id: 'daw' } };
+    const g = document.createElement('iframe'); g.src = location.origin + '/pb'; document.body.append(g);
+    await new Promise(r => { g.onload = r; });
+    const gk = g.contentWindow.customElements.get('scv-patchbay').kit, offered = gk.shared('audio', () => ({ id: 'frame' }));
+    gk.unshare('audio'); const again = gk.shared('audio', () => ({ id: 'frame' }));
+    g.remove(); delete window.scvShared;
+    return [got === own, fresh.id, kept, gone, offered.id, again.id];
   })()`);
-  ok(lent?.join() === 'true,frame,true,true', `same-origin frame borrows host's shared instance, makes its own when host has none (${lent})`);
+  ok(lent?.slice(0, 4).join() === 'true,frame,true,true', `same-origin frame borrows host's shared instance, makes its own when host has none (${lent})`);
+  ok(lent?.[4] === 'daw' && lent[5] === 'daw', `frame takes instance plain host page offers in window.scvShared (${lent})`);
 
   // clock wakes
 

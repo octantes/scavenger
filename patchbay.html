@@ -100,12 +100,19 @@ const onFrame = (key, fn) => { // last write per key, once per frame
 };
 
 const _shared = new Map(); // key > { value, users, release }
-const _lent = new Map(); // key > { kit, users } - same-origin host lends what it holds
-const _hostKit = () => { try { return window.parent !== window ? window.parent.customElements?.get('scv-patchbay')?.kit : null; } catch { return null; } };
+const _lent = new Map(); // key > { kit | value, users } - same-origin host lends what it holds
+const _hostOffer = key => { // host's own runtime, else plain window.scvShared it set before framing
+  try {
+    const p = window.parent; if (p === window) return null;
+    const k = p.customElements?.get('scv-patchbay')?.kit;
+    if (k?.isShared(key)) return { kit: k, users: 0 };
+    return p.scvShared && Object.hasOwn(p.scvShared, key) ? { value: p.scvShared[key], users: 0 } : null;
+  } catch { return null; } // cross origin
+};
 const shared = (key, create, release) => { // one per page, released by last user
   let l = _lent.get(key);
-  if (!l && !_shared.has(key)) { const k = _hostKit(); if (k?.isShared(key)) _lent.set(key, l = { kit: k, users: 0 }); }
-  if (l) { l.users++; return l.kit.shared(key); }
+  if (!l && !_shared.has(key) && (l = _hostOffer(key))) _lent.set(key, l);
+  if (l) { l.users++; return l.kit ? l.kit.shared(key) : l.value; }
   let s = _shared.get(key);
   if (!s) { s = { value: create(), users: 0, release }; _shared.set(key, s); }
   s.users++;
@@ -113,7 +120,7 @@ const shared = (key, create, release) => { // one per page, released by last use
 };
 const unshare = key => {
   const l = _lent.get(key);
-  if (l) { l.kit.unshare(key); if (--l.users === 0) _lent.delete(key); return; }
+  if (l) { l.kit?.unshare(key); if (--l.users === 0) _lent.delete(key); return; } // offered value stays host's
   const s = _shared.get(key); if (!s) return;
   if (--s.users > 0) return;
   _shared.delete(key);

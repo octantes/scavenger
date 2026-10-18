@@ -555,9 +555,9 @@ try {
     })()`);
     return [r.join() === 'inline-size,150px,true', r];
   });
-  await run('1.x file refused with note', async () => {
-    const r = await js(`(() => { const n = T.pb.children.length, out = T.pb.import('<html data-scv-runtime="1.0.0"><body><div class="comp-wrapper"></div></body></html>'); return [out.length, T.pb.children.length === n, T.shadow('.tip').textContent]; })()`);
-    return [r[0] === 0 && r[1] && r[2] === '1.x file, open it directly', r];
+  await run('1.0 file refused with note, 1.1 taken', async () => {
+    const r = await js(`(() => { const n = T.pb.children.length, a = T.pb.import('<html data-scv-runtime="1.0.0"><body><scv-item><p data-scv-id="o">old</p></scv-item></body></html>'), b = T.pb.import('<div class="comp-wrapper"></div>'), c = T.pb.import('<html data-scv-runtime="1.1.0"><body><scv-item><p data-scv-id="n">new</p></scv-item></body></html>'); return [a.length + b.length, c.length, T.pb.children.length === n + 1, T.shadow('.tip').textContent]; })()`);
+    return [r[0] === 0 && r[1] === 1 && r[2] && r[3] === '1.0 file, open it directly', r];
   });
   await run('ctrl+d duplicates selection one cell off, wires fresh', async () => {
     await js(`(() => { const [n, out] = [T.pb.querySelector('scv-logic[data-type=twice]'), T.nodes().find(x => x.dataset.type === 'accumulator' && x.getAttribute('data-scv-receives') !== 'clash')]; T.pb.select([n, out]); T.pb.shadowRoot.querySelector('.layer').focus(); })()`);

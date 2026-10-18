@@ -1,6 +1,6 @@
 <!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
 
-<html lang="en" data-scv-runtime="2.0.0">
+<html lang="en" data-scv-runtime="1.1.0">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -2076,7 +2076,7 @@ const studio = pb => {
   };
   const importDoc = (doc, opts = {}) => {
     const at = opts.at || toCanvas(st.pointer.x, st.pointer.y);
-    if (parseInt(doc.documentElement?.getAttribute('data-scv-runtime')) < 2 || doc.querySelector('.comp-wrapper')) { note('1.x file, open it directly'); return []; }
+    if (parseFloat(doc.documentElement?.getAttribute('data-scv-runtime')) < 1.1 || doc.querySelector('.comp-wrapper')) { note('1.0 file, open it directly'); return []; } // carries its own editor
     let unknown = 0;
     const boxed = new Set(); // harvests whose css queries their own box
     doc.querySelectorAll('script[data-scv-def]').forEach(s => { const hv = kit.harvestOf(kit.boxScopeCss(s.textContent)); if (!hv) return unknown++; kit.defineHarvest(hv); if (hv.markup.includes('@container')) boxed.add(hv.tag); });

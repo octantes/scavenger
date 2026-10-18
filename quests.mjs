@@ -12,7 +12,7 @@ import { lookup } from 'dns/promises';
 import { pathToFileURL, fileURLToPath } from 'url';
 import { createHash } from 'crypto';
 
-const SCV_QUESTS_VERSION  = '1.0.0';             // server version - logged at boot and served at get /version
+const SCV_QUESTS_VERSION  = '1.1.0';             // server version - logged at boot and served at get /version
 const QUESTS_FILE         = 'quests.json';       // persisted quests json file name
 const COMPONENT_DIR       = 'component';         // harvest - quests write each component to readable html here
 const ASSET_CACHE_MAX     = 200;                 // proxied component assets kept in memory (evict oldest past this)

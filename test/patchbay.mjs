@@ -823,7 +823,7 @@ try {
   ok(shadows.join() === 'false,true', `unchanged harvest instance saved bare, changed one with its shadow (${shadows})`);
   ok(imgFetches === 1, `remote image fetched once into table (${imgFetches})`);
 
-  ok(/^<!DOCTYPE html>  <!-- scavenge\.ar[^\n]*-->\n\n<html lang="en" data-scv-runtime="2\.\d+\.\d+">/.test(q), 'header: doctype and license, blank line, html lang en stamped');
+  ok(/^<!DOCTYPE html>  <!-- scavenge\.ar[^\n]*-->\n\n<html lang="en" data-scv-runtime="1\.1\.\d+">/.test(q), 'header: doctype and license, blank line, html lang en stamped');
   ok(!/127\.0\.0\.1:9876/.test(body), 'quine bakes no quest api');
 
   await run('last instance gone drops its def from save, undo-free live page keeps it', async () => {

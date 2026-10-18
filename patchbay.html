@@ -881,7 +881,7 @@ const remap = (el, map) => { // mapped channels renamed, others keep name
   const acts = el.getAttribute(ATTR_ACTION);
   if (acts) el.setAttribute(ATTR_ACTION, splitWords(acts).map(t => { const p = t.split(':'), i = COMPOUND_VERBS.includes(p[0]) ? 2 : 1; if (map.has(p[i])) p[i] = map.get(p[i]); return p.join(':'); }).join(' '));
 };
-const reframe = item => { // harvest's nested nodes come back as real nodes in its item - attributes only, inner wires fresh per instance
+const reframe = item => { // nested nodes come back real in item - attributes only, fresh inner wires
   const sr = item.firstElementChild?.shadowRoot, nested = sr ? [...sr.querySelectorAll('scv-logic')] : [];
   if (!nested.length) return;
   const em = new Set(), rc = new Set(), wired = [...sr.querySelectorAll(WIRING_SEL)];
@@ -2166,9 +2166,9 @@ const studio = pb => {
     if (/^\s*https?:\/\/\S+\s*$/.test(text)) { e.preventDefault(); linkCard(text.trim().replace(/[.,;:!?]+$/, ''), at); }
   });
   pb.addEventListener('dragover', e => e.preventDefault());
-  const followed = new Map(); // dropped authoring file > last seen - session only, a reload drops it again
+  const followed = new Map(); // dropped source > last seen - session only, reload drops it
   let followT = 0;
-  const poll = async () => { // saves in any editor update the canvas - metadata read once a second
+  const poll = async () => { // editor saves update canvas - metadata read once a second
     for (const [h, seen] of followed) {
       try {
         const f = await h.getFile();

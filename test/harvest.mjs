@@ -37,7 +37,7 @@ const PROPS = `['color','background-color','background-image','background-size',
 // never paints alone - filtered out before indexing, or one removed sibling would renumber every later key
 const NR = `/^(script|template|defs|symbol|clipPath|mask|linearGradient|radialGradient|pattern|filter|marker|metadata|title|desc)$/i`;
 
-// harvest inlines shadow root, slotted light dom where its slot is, unassigned light dom after - same walk here
+// same order harvest writes - shadow, slotted at their slot, unslotted after
 const KIDS = `(n => [...(n.shadowRoot ? n.shadowRoot.children : n.children)].flatMap(c => c.tagName === 'SLOT' && c.getRootNode().host ? (c.assignedElements().length ? c.assignedElements() : [...c.children]) : [c]).concat(n.shadowRoot ? [...n.children].filter(c => !c.assignedSlot) : []).filter(c => !${NR}.test(c.tagName)))`;
 
 const SIGNATURE = `(root => {

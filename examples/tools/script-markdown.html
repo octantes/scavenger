@@ -46,7 +46,7 @@ function blockPref(line) { // leading structural marker, kept visible; rest is s
   const m = line.match(/^( {0,3})(#{1,6}\s+|>\s?|[-*]\s+|(?:\d+\.)\s+|```\s*|---+$)/);
   return m ? { marker: m[2], rest: line.slice(m[2].length) } : { marker: '', rest: line };
 }
-function inline(s) { // NEVER removes a literal char - delimiters stay, inner text is styled (zero displacement)
+function inline(s) { // delimiters stay, only inner text styled - caret never drifts
   const out = [];
   const mark = t => `<span class="md-marker">${esc(t)}</span>`;
   let i = 0;

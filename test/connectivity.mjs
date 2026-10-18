@@ -1,4 +1,4 @@
-// connectivity tier - cross-subsystem seams: patchbay<>quests, kernel>patchbay clipboard harvest, kernel>quests grammar
+// connectivity tier - patchbay<>quests, kernel>patchbay clipboard, kernel>quests grammar
 
 import { launchChrome, connect } from './_cdp.mjs';
 import { parseQuestLine } from '../quests.mjs';
@@ -14,7 +14,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const patchbayHtml = readFileSync(join(here, '..', 'patchbay.html'), 'utf8');
 const kernelSrc = readFileSync(join(here, '..', 'kernel.js'), 'utf8');
 
-// static server: patchbay, captured publish, small harvest fixture
+// static server - patchbay, captured publish, harvest fixture
 const fixture = `<!doctype html><title>fix</title><div id="widget" class="w" style="width:120px;padding:10px;background:#222;color:#eee">Live 42<span id="val">42</span></div>`;
 let publishDoc = '';
 const web = createServer((req, res) => {
@@ -24,7 +24,7 @@ const web = createServer((req, res) => {
 await new Promise(r => web.listen(0, '127.0.0.1', r));
 const webPort = web.address().port;
 
-// quest component file as kernel emits it - val changes between versions, v4 nests node
+// quest component as kernel emits it - val bumps per version, v4 nests node
 let compVer = 1;
 const BT = String.fromCharCode(96);
 const compFile = n => `<scv-cvtest data-scv-component></scv-cvtest>
@@ -40,7 +40,7 @@ this.attachShadow({mode: 'open'}).innerHTML = ${BT}<style>:host{display:block;wi
 }
 <\/script>`;
 
-// mock quests server: register (post /quests), read (get /quests), emit (post /quests/emit)
+// mock quests - register post /quests, read get /quests, emit post /quests/emit
 const store = new Map(), posted = [], emitted = [];
 let listReads = 0;
 const cors = res => { res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type, scv-token'); };

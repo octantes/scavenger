@@ -382,7 +382,7 @@ function knobPaint(sp, get, lo, hi, fmt, curveV) {
   const txt = fmt(get());
   if (rk && rk.textContent !== String(txt)) rk.textContent = String(txt);
 }
-// gain: dial v -> db(-60..+6, 0dB at .75) -> amp; amp <-> db via log/exp
+// dial v > db (-60..+6, 0db at .75) > amp, log/exp both ways
 const GAIN = {
   get: () => () => gain,
   set: () => v => { gain = ampFromDB(gainDBRo(v)); },
@@ -613,7 +613,7 @@ root.addEventListener('change', e => {
   fi.value = '';
 }, { signal });
 
-host.addEventListener('scv-receive', e => { // take from a track, cmd and transport from a transport, notes, or a bpm number
+host.addEventListener('scv-receive', e => { // track take, transport cmd and state, notes, or a bpm number
   const v = e.detail;
   if (v instanceof AudioBuffer) return setClip(v);
   if (typeof v?.ref === 'string') { curKey = v.id || null; loadRef(v.ref); return; }

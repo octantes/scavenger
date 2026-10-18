@@ -547,7 +547,7 @@
       [el, ...el.querySelectorAll('*')].forEach(n => { if (n.shadowRoot) utils.purge(n.shadowRoot); });
       return el;
     },
-    captureShadows: (original, clone) => { // recursively flatten shadow doms into light dom - captures styles and markup, > clone to original pairs
+    captureShadows: (original, clone) => { // flatten shadow doms into light dom with styles - > clone to original pairs
       let hostSeq = 0; // nested shadow's :host rules end in one shadow once flattened - rescope each to real element, not outer host
       const pairs = new Map();
       const walk = (orig, cl) => {
@@ -571,7 +571,7 @@
           const top = [...cl.children].slice(adopted.length, cl.children.length - before), sk = sr.children;
           for (let i = 0; i < top.length && i < sk.length; i++) walk(sk[i], top[i]);
           const oSlots = sr.querySelectorAll('slot'), cSlots = top.flatMap(t => [...(t.matches('slot') ? [t] : []), ...t.querySelectorAll('slot')]);
-          oSlots.forEach((os, i) => { // slotted light children sit where their slot is - a canvas layer keeps its items
+          oSlots.forEach((os, i) => { // slotted children sit at their slot - canvas layer keeps its items
             const cs = cSlots[i]; if (!cs) return;
             const moved = os.assignedElements().map(a => light.get(a)).filter(Boolean);
             cs.replaceWith(...(moved.length ? moved : cs.childNodes));
@@ -613,7 +613,7 @@
       skipped.forEach(n => n.style.contentVisibility = 'visible');
       try {
       const cl = el.cloneNode(true);
-      const pairs = utils.captureShadows(el, cl); // fold shadow in - pairs follow slotted nodes wherever they land
+      const pairs = utils.captureShadows(el, cl); // fold shadow in - pairs follow slotted nodes
       const ao = [], ac = [];
       [cl, ...cl.querySelectorAll('*')].forEach(c => { const o = pairs.get(c); if (o) { ao.push(o); ac.push(c); } });
       const keepScv = utils.preserveScvNodes(el, cl); // logic nodes and wired elements keep their markup

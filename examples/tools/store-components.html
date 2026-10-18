@@ -93,7 +93,7 @@ const shown = () => items.map((it, i) => [it, i]).filter(([it]) => !activeTag ||
 
 const bodyOf = html => { const m = html.match(/<body[^>]*>([\s\S]*)<\/body>/i); return m ? m[1] : html; };
 const SHOW = 'var t=document.querySelector("template[data-scv-comp]");if(t){var h=document.createElement("div"),r=h.attachShadow({mode:"open"});r.append(t.content.cloneNode(true));r.querySelectorAll("script").forEach(function(s){s.remove()});document.body.prepend(h)}'; // authored file shows its markup, script stays off
-const frame = (html, fit) => { // sandboxed render; measures its content, then scales to fit (fit=box px) or sizes to it (fit=null)
+const frame = (html, fit) => { // sandboxed render - scaled into fit px box, own size without fit
   const id = 'f' + (++fid); const f = document.createElement('iframe'); f.dataset.fid = id; f.dataset.fit = fit || '';
   f.setAttribute('sandbox', 'allow-scripts'); f.setAttribute('scrolling', 'no');
   f.style.opacity = '0'; f.style.transition = 'opacity 0.12s'; // stay hidden until measured + placed, no top-left flash
@@ -107,7 +107,7 @@ addEventListener('message', e => {
   f.style.width = d.w + 'px'; f.style.height = d.h + 'px';
   if (f.dataset.fit) { const box = +f.dataset.fit, s = Math.min(box * 0.78 / d.w, box * 0.78 / d.h, 1.6); // 0.78 leaves padding around the render
     f.style.left = '50%'; f.style.top = '50%'; f.style.transform = 'translate(-50%,-50%) scale(' + s + ')';
-  } else if (f.closest('.mod-stage')) { // preview shows the component at original size - grow the module to fit it, never clip
+  } else if (f.closest('.mod-stage')) { // preview at original size - module grows to fit, never clips
     const w = Math.max(340, d.w + 68); mod.style.width = w + 'px'; q('.mod-in').style.width = w + 'px';
   }
   f.style.opacity = '1'; // now sized + placed, reveal
@@ -148,7 +148,7 @@ const openPreview = i => {
 const resetW = () => { mod.style.width = ''; q('.mod-in').style.width = ''; }; // drop grow-to-fit width, back to the fixed 340
 const openAdd = () => { current = null; resetW(); q('.mod-title').textContent = 'new component'; drop.value = ''; setPending(); addName.value = addTags.value = addDesc.value = ''; showView('add'); };
 const closeMod = () => { mod.classList.remove('on'); resetW(); [...grid.querySelectorAll('.thumb')].forEach(t => t.classList.remove('sel')); };
-const setPending = () => { pending = drop.value.trim(); drop.classList.toggle('has', !!pending); addSave.disabled = !pending; }; // the textarea itself holds the payload - paste, type, or drop into it
+const setPending = () => { pending = drop.value.trim(); drop.classList.toggle('has', !!pending); addSave.disabled = !pending; }; // textarea holds payload - paste, type or drop into it
 
 grid.addEventListener('click', e => {
   if (e.target.closest('.thumb-add')) return openAdd();

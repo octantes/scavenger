@@ -105,7 +105,7 @@ const HALF = Math.PI * 22, METER_H = 120;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const takesSlot = $('[data-scv-slot="takes"]'), mixerSlot = $('[data-scv-slot="mixer"]');
 
-// takes: name, tab, asset ref, tab, take id - id stays when a re-record changes ref
+// name, tab, asset ref, tab, take id - id outlives re-recorded ref
 const takes = takesSlot.value.split('\n').map(l => l.split('\t')).filter(p => p[1]).map(([name, ref, id]) => ({ name, ref, id: id || crypto.randomUUID() }));
 let [vol, pan, arm] = mixerSlot.value.split('|'); // vol|pan|arm
 vol = clamp(parseFloat(vol), 0, 1); if (!isFinite(vol)) vol = 0.72;

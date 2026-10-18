@@ -1,4 +1,4 @@
-// examples tier - every authored example imports clean, survives its own save, and wires to others
+// examples tier - each example imports clean, survives its save, wires to others
 
 import { launchChrome, connect } from './_cdp.mjs';
 import { pathToFileURL, fileURLToPath } from 'url';

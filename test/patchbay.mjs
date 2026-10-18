@@ -178,6 +178,12 @@ try {
     return [a.log.length === 10 && b.log.length === 10, { a: a.log.length, b: b.log.length }];
   });
 
+  await run('wire made this turn routes at once', async () => {
+    const pb = T.pb(), a = T.sink(pb, 'c'); pb.routeSend('c', 1);
+    const b = T.sink(pb, 'c'); pb.routeSend('c', 2);
+    return [b.log.join() === '2', b.log];
+  });
+
   await run('cache follows dom: added receiver gets next value', async () => {
     const pb = T.pb(); T.sink(pb, 'c');
     pb.routeSend('c', 1);

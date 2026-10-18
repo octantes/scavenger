@@ -196,7 +196,8 @@ const createRouter = (root, {
   let _cache = null; // channel > receivers in walk order
 
   const invalidate = () => { _cache = null; };
-  const _observer = new MutationObserver(invalidate);
+  const _stale = recs => recs.some(r => r.type === 'attributes' || [...r.addedNodes, ...r.removedNodes].some(n => n.nodeType === 1)); // text writes never rewire
+  const _observer = new MutationObserver(recs => { if (_stale(recs)) invalidate(); });
   const _observed = new WeakSet();
   const _observe = (r, childList) => {
     if (_observed.has(r)) return;
@@ -302,19 +303,21 @@ const createRouter = (root, {
     _runAction(node, channel, value, isRecv);
   };
 
+  const _receivers = ch => {
+    if (_stale(_observer.takeRecords())) invalidate(); // wiring changed this turn counts now
+    return (_cache ??= _rebuild()).get(ch);
+  };
   const routeSend = (channel, value) => {
     if (_depth >= 20) return console.warn('[scav] depth limit (20) reached on ' + channel + ', chain stopped');
     _depth++;
     try {
       try { onRoute(channel, value); } catch (e) { debug('onRoute failed', e, true); }
-      _cache ??= _rebuild();
-      _cache.get(channel)?.forEach(n => _deliver(n, channel, value));
+      _receivers(channel)?.forEach(n => _deliver(n, channel, value));
     } finally { _depth--; }
   };
 
   const applyAction = (verb, channel, value) => { // action node: verb on every receiver of channel
-    _cache ??= _rebuild();
-    _cache.get(channel)?.forEach(node => {
+    _receivers(channel)?.forEach(node => {
       const isRecv = splitWords(node.getAttribute(ATTR_RECEIVES)).includes(channel);
       const listed = splitWords(node.getAttribute(ATTR_ACTION)).some(t => t.split(':')[0] === verb && (channelOf(t) === channel || !channelOf(t)));
       if (isRecv) {

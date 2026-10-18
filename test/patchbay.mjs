@@ -1015,6 +1015,20 @@ try {
   })()`);
   ok(foreign?.join() === 'parent', `frame ignores messages not from its parent (${foreign})`);
 
+  const lent = await js(`(async () => {
+    const kit = customElements.get('scv-patchbay').kit, own = { id: 'host' };
+    kit.shared('lend', () => own);
+    const f = document.createElement('iframe'); f.src = location.origin + '/pb'; document.body.append(f);
+    await new Promise(r => { f.onload = r; });
+    const fk = f.contentWindow.customElements.get('scv-patchbay').kit;
+    const got = fk.shared('lend', () => ({ id: 'frame' })), fresh = fk.shared('solo', () => ({ id: 'frame' }));
+    fk.unshare('lend'); const kept = kit.isShared('lend');
+    kit.unshare('lend'); const gone = !kit.isShared('lend');
+    f.remove();
+    return [got === own, fresh.id, kept, gone];
+  })()`);
+  ok(lent?.join() === 'true,frame,true,true', `same-origin frame borrows host's shared instance, makes its own when host has none (${lent})`);
+
   // clock wakes
 
   await send('Page.addScriptToEvaluateOnNewDocument', { source: `window.__timeouts = 0; const _st = window.setTimeout; window.setTimeout = (...a) => { window.__timeouts++; return _st(...a); };` });

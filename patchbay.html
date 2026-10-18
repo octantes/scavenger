@@ -100,13 +100,20 @@ const onFrame = (key, fn) => { // last write per key, once per frame
 };
 
 const _shared = new Map(); // key > { value, users, release }
+const _lent = new Map(); // key > { kit, users } - same-origin host lends what it holds
+const _hostKit = () => { try { return window.parent !== window ? window.parent.customElements?.get('scv-patchbay')?.kit : null; } catch { return null; } };
 const shared = (key, create, release) => { // one per page, released by last user
+  let l = _lent.get(key);
+  if (!l && !_shared.has(key)) { const k = _hostKit(); if (k?.isShared(key)) _lent.set(key, l = { kit: k, users: 0 }); }
+  if (l) { l.users++; return l.kit.shared(key); }
   let s = _shared.get(key);
   if (!s) { s = { value: create(), users: 0, release }; _shared.set(key, s); }
   s.users++;
   return s.value;
 };
 const unshare = key => {
+  const l = _lent.get(key);
+  if (l) { l.kit.unshare(key); if (--l.users === 0) _lent.delete(key); return; }
   const s = _shared.get(key); if (!s) return;
   if (--s.users > 0) return;
   _shared.delete(key);
@@ -1315,7 +1322,7 @@ class ScvPatchbay extends HTMLElement {
 Object.assign(kit, {
   ATTR_EMITS, ATTR_RECEIVES, ATTR_ACTION, WIRING_SEL, NODE_TYPES, VERBS,
   splitWords, uid, px, debug, channelOf, collectChannels, hostOf, itemOf, patchbayOf, onFrame, whenGone, whenReady,
-  pulse, isPulse, asset, quests, clock, shared, unshare, patch, resolveRefs,
+  pulse, isPulse, asset, quests, clock, shared, unshare, isShared: key => _shared.has(key), patch, resolveRefs,
   isEmitter: el => _emitters.has(el), defineNode, runNodeSource, nodeSources: _nodeSources, defineComponent, comps: _comps, compTag,
   mountHarvest, harvestOf, defineHarvest, defang, remap, reframe, morphShadow, extractShadowMarkup, boxScopeCss, snapSlots, restoreSlots, slotValue, setSlot,
 });

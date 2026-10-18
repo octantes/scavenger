@@ -109,6 +109,16 @@ try {
     return got.map(b => b.beat + ':' + b.play);
   })()`);
   ok(beats?.length >= 2 && beats.at(-1).endsWith(':0'), `transport play sends beats, stop sends play 0 (${beats})`);
+  const shaped = await js(`(() => { // signals told apart by shape
+    const tr = pb.querySelector('scv-audio-transport'), sr = tr.shadowRoot, src = document.createElement('div'); pb.append(src); pb.wire(src, tr);
+    const ch = src.getAttribute('data-scv-emits'), label = () => sr.querySelector('[data-tr="playbtn"] span').textContent;
+    pb.routeSend(ch, 90); const bpm = sr.querySelector('[data-tr="bpm"]').value;
+    pb.routeSend(ch, { t: 'start', beat: 3 }); const started = label();
+    pb.routeSend(ch, { t: 'stop', beat: 4 }); const stopped = label();
+    return [bpm, started, stopped];
+  })()`);
+  ok(shaped?.[0] === '90', `number reaching transport sets bpm (${shaped})`);
+  ok(shaped?.[1] === 'stop' && shaped[2] === 'play', `object with t and beat reaches transport as command (${shaped})`);
   const shown = await js(`(async () => { // gallery ref lands in plain img through prop:src
     const ga = pb.querySelector('scv-store-images').shadowRoot, input = ga.querySelector('[data-ga="file"]'), dt = new DataTransfer();
     const c = document.createElement('canvas'); c.width = c.height = 4;

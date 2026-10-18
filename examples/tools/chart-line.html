@@ -1,0 +1,45 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>chart-line - scavenger component</title>
+<template data-scv-comp="chart-line">
+<style>
+  :host { display: block; }
+  .sp { background: var(--background-sunk, #1A1C1C); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); padding: 12px 14px 10px; font: 11px var(--font-mono, 'SF Mono', monospace); color: var(--text-dim, #888888); width: 280px; box-sizing: border-box; }
+  .sp-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .sp-lab { color: var(--text-faint, #666666); font-size: 10px; text-transform: lowercase; letter-spacing: 1px; }
+  .sp-last { font-size: 16px; color: var(--input, #8AB6BB); }
+  svg { display: block; width: 100%; height: 90px; }
+  .s-line { stroke: var(--input, #8AB6BB); stroke-width: 1.5; fill: none; }
+  .s-area { fill: var(--input, #8AB6BB); fill-opacity: .15; }
+</style>
+
+<div class="sp">
+  <div class="sp-head"><span class="sp-lab" data-scv-slot="label">sparkline</span><span class="sp-last" data-scv-slot="last">—</span></div>
+  <svg viewBox="0 0 280 90" preserveAspectRatio="none"></svg>
+</div>
+
+<script>
+const svg = root.querySelector('svg'), last = root.querySelector('[data-scv-slot="last"]');
+const NS = 'http://www.w3.org/2000/svg', W = 280, H = 90, MAX = 60;
+const series = [];
+const draw = () => { // area down to chart floor, line on top
+  const n = series.length;
+  if (n < 2) return svg.replaceChildren();
+  let lo = Math.min(...series), hi = Math.max(...series);
+  if (hi === lo) { hi += 1; lo -= 1; }
+  const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
+  const pts = series.map((v, i) => [(i / (n - 1)) * W, H - ((v - lo) / (hi - lo)) * H].map(c => c.toFixed(1)));
+  const area = document.createElementNS(NS, 'path');
+  area.setAttribute('d', 'M' + pts.map(p => p.join(' ')).join(' L') + ` L${W} ${H} L0 ${H} Z`); area.setAttribute('class', 's-area');
+  const line = document.createElementNS(NS, 'polyline');
+  line.setAttribute('points', pts.map(p => p.join(',')).join(' ')); line.setAttribute('class', 's-line');
+  svg.replaceChildren(area, line);
+};
+host.addEventListener('scv-receive', e => {
+  const p = parseFloat(String(e.detail).replace(/[^0-9.eE+-]/g, '')); if (isNaN(p)) return;
+  patch(last, { text: p });
+  series.push(p); if (series.length > MAX) series.shift();
+  draw();
+}, { signal });
+</script>
+</template>

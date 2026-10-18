@@ -1,0 +1,50 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>launchpad - scavenger component</title>
+<template data-scv-comp="launchpad">
+<style>
+  :host { display: block; }
+  .pg { width: 240px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-low, 5px); padding: 8px 10px; box-sizing: border-box; font-family: var(--font-mono, 'SF Mono', ui-monospace, monospace); }
+  .pg-lab { color: var(--text-faint, #666666); font-size: 10px; text-transform: lowercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .pg-cfg { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
+  .pg-cfg label { display: flex; flex: 1; align-items: center; gap: 4px; font-size: 9px; color: var(--text-dim, #888888); text-transform: lowercase; letter-spacing: 1px; }
+  .pg-cfg input[type=number] { width: 100%; background: var(--background-sunk, #1A1C1C); border: none; border-radius: var(--corner-low, 5px); color: var(--text-base, #AAABAC); font: 11px var(--font-mono, 'SF Mono', monospace); padding: 3px 4px; outline: none; -moz-appearance: textfield; appearance: textfield; }
+  .pg-cfg input[type=number]::-webkit-inner-spin-button,
+  .pg-cfg input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .pg-cfg input[type=number]:focus { border-color: var(--input, #8AB6BB); }
+  .pg-grid { display: grid; gap: 4px; grid-auto-rows: 34px; }
+  .pg-grid .pad { width: 100%; height: 100%; border: none; border-radius: var(--corner-low, 5px); background: var(--background-sunk, #1A1C1C); cursor: pointer; touch-action: none; transition: background .1s, transform .05s; }
+  .pg-grid .pad:hover { background: var(--hl-ctx, var(--output, #986C98)); }
+  .pg-grid .pad:active { transform: scale(.94); }
+  .pg-grid .pad.hit { background: var(--input, #8AB6BB); }
+</style>
+
+<div class="pg">
+  <div class="pg-lab" data-scv-slot="label">pad grid</div>
+  <div class="pg-cfg">
+    <label><input type="number" min="1" max="16" placeholder="cols" data-scv-slot="cols"></label>
+    <label><input type="number" min="1" max="16" placeholder="rows" data-scv-slot="rows"></label>
+  </div>
+  <div class="pg-grid"></div>
+</div>
+
+<script>
+const colsIn = root.querySelector('[data-scv-slot="cols"]'), rowsIn = root.querySelector('[data-scv-slot="rows"]'), grid = root.querySelector('.pg-grid');
+const pads = [...grid.querySelectorAll('.pad')]; // saved pads keep their wires
+const clamp = n => Math.max(1, Math.min(16, Math.floor(+n) || 1));
+const hook = b => b.addEventListener('click', () => {
+  b.classList.add('hit'); setTimeout(() => b.classList.remove('hit'), 140);
+  emit(pulse, b);
+});
+pads.forEach(hook);
+const sync = () => {
+  const cols = clamp(colsIn.value), total = cols * clamp(rowsIn.value);
+  grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  while (pads.length < total) { const b = document.createElement('button'); b.type = 'button'; b.className = 'pad'; hook(b); grid.append(b); pads.push(b); }
+  pads.forEach((b, i) => { b.hidden = i >= total; }); // shrink hides, wires stay
+};
+colsIn.addEventListener('input', sync);
+rowsIn.addEventListener('input', sync);
+sync();
+</script>
+</template>

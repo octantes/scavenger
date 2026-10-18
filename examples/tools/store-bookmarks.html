@@ -1,0 +1,81 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>store-bookmarks - scavenger component</title>
+<template data-scv-comp="store-bookmarks">
+<style>
+:host { display: block; }
+.bmk { width: 320px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); padding: 10px; box-sizing: border-box; font-family: var(--font-mono, 'SF Mono', ui-monospace, monospace); }
+.bmk-title { display: block; text-align: center; color: var(--text-faint, #666666); font-size: 13px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; outline: none; }
+.bmk-title:focus { color: var(--input, #8AB6BB); }
+.bmk-list { display: flex; flex-direction: column; gap: 6px; }
+.lc { display: flex; gap: 10px; padding: 7px; background: var(--background-sunk, #1A1C1C); border-radius: var(--corner-low, 5px); color: var(--text-base, #AAABAC); cursor: pointer; touch-action: none; }
+.lc.dragging { opacity: 0.4; }
+.lc-thumb { width: 42px; height: 42px; flex: none; object-fit: cover; border-radius: var(--corner-low, 5px); background: var(--background-raised, #252727); pointer-events: none; }
+.lc-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; justify-content: center; pointer-events: none; }
+.lc-title { font-weight: bold; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color 0.12s; }
+.lc:hover .lc-title { color: var(--input, #8AB6BB); }
+.lc-desc { font-size: 10px; color: var(--text-dim, #888888); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bmk-add { margin-top: 6px; height: 20px; display: flex; align-items: center; justify-content: center; background: var(--background-sunk, #1A1C1C); border-radius: var(--corner-low, 5px); color: var(--input, #8AB6BB); font-size: 13px; line-height: 1; cursor: pointer; }
+.bmk-add:hover { color: var(--text-base, #AAABAC); }
+.bmk-add.on, .bmk-input { display: none; }
+.bmk-input.on { display: block; margin-top: 6px; }
+.bmk-input input { width: 100%; box-sizing: border-box; background: var(--background-sunk, #1A1C1C); border: 1px solid var(--input, #8AB6BB); color: var(--input, #8AB6BB); font-family: inherit; font-size: 12px; padding: 5px 8px; border-radius: var(--corner-low, 5px); outline: none; }
+</style>
+
+<div class="bmk">
+  <div class="bmk-title" data-scv-slot="label" contenteditable="true">bookmarks</div>
+  <div class="bmk-list"></div>
+  <div class="bmk-add">+</div>
+  <div class="bmk-input"><input type="text" placeholder="paste a url + enter"></div>
+</div>
+
+<script>
+const listEl = root.querySelector('.bmk-list');
+const addEl = root.querySelector('.bmk-add');
+const inputRow = root.querySelector('.bmk-input');
+const inputEl = inputRow.querySelector('input');
+
+const meta = url => { try { const u = new URL(url); return { title: u.hostname.replace(/^www\./, ''), desc: (u.pathname + u.search).slice(1) || 'root', img: u.origin + '/favicon.ico', href: u.href }; } catch { return null; } };
+
+const enrich = a => { // quest server fills title, desc and image once
+  if (a.dataset.lc) return;
+  fetch(customElements.get('scv-patchbay').kit.quests.api(host) + '/unfurl?url=' + encodeURIComponent(a.dataset.url)).then(r => r.ok ? r.json() : null).then(d => {
+    if (!d) return;
+    if (d.title) a.querySelector('.lc-title').textContent = d.title;
+    if (d.description) a.querySelector('.lc-desc').textContent = d.description;
+    if (d.image) a.querySelector('.lc-thumb').src = d.image;
+    a.dataset.lc = '1';
+  }).catch(() => {});
+};
+
+const addCard = (url, silent) => { // wired value passes through on its own
+  const m = meta(url); if (!m) return false;
+  const a = document.createElement('div'); a.className = 'lc'; a.dataset.url = m.href; a.title = m.href;
+  const img = document.createElement('img'); img.className = 'lc-thumb'; img.src = m.img; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
+  const body = document.createElement('div'); body.className = 'lc-body';
+  const t = document.createElement('div'); t.className = 'lc-title'; t.textContent = m.title;
+  const d = document.createElement('div'); d.className = 'lc-desc'; d.textContent = m.desc;
+  body.append(t, d); a.append(img, body); listEl.appendChild(a);
+  enrich(a); if (!silent) emit(m.href, listEl); return true;
+};
+
+// drag reorders in place, click opens
+let drag = null;
+root.addEventListener('pointerdown', e => { const c = e.target.closest('.lc'); if (!c) return; drag = { el: c, y0: e.clientY, moved: false, id: e.pointerId }; }, { signal });
+root.addEventListener('pointermove', e => {
+  if (!drag) return;
+  if (!drag.moved) { if (Math.abs(e.clientY - drag.y0) < 4) return; drag.moved = true; drag.el.classList.add('dragging'); try { drag.el.setPointerCapture(drag.id); } catch {} }
+  const after = [...listEl.querySelectorAll('.lc:not(.dragging)')].find(c => e.clientY < c.getBoundingClientRect().top + c.offsetHeight / 2);
+  if (after) listEl.insertBefore(drag.el, after); else listEl.appendChild(drag.el);
+}, { signal });
+root.addEventListener('pointerup', () => { if (!drag) return; if (drag.moved) drag.el.classList.remove('dragging'); else window.open(drag.el.dataset.url, '_blank', 'noopener'); drag = null; }, { signal });
+
+root.addEventListener('click', e => { if (e.target.closest('.bmk-add')) { addEl.classList.add('on'); inputRow.classList.add('on'); inputEl.focus(); } }, { signal });
+root.addEventListener('keydown', e => {
+  if (!e.target.closest('.bmk-input input')) return;
+  if (e.key === 'Enter' && e.target.value.trim()) { addCard(e.target.value.trim()); e.target.value = ''; inputRow.classList.remove('on'); addEl.classList.remove('on'); }
+}, { signal });
+root.addEventListener('blur', e => { if (e.target.closest('.bmk-input input')) { inputRow.classList.remove('on'); addEl.classList.remove('on'); } }, { capture: true, signal });
+host.addEventListener('scv-receive', e => { if (!isPulse(e.detail)) addCard(String(e.detail), true); }, { signal });
+</script>
+</template>

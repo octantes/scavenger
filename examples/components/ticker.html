@@ -1,0 +1,25 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>ticker - scavenger component</title>
+<template data-scv-comp="ticker">
+<style>
+.fr { font: 700 40px var(--font-mono, 'SF Mono', monospace); color: var(--text-base, #AAABAC); padding: 20px 30px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); text-align: center; transition: color .12s ease, border-color .12s ease; }
+.fr.up { color: var(--success, #6FAC67); border-color: var(--success, #6FAC67); }
+.fr.dn { color: var(--danger, #985954); border-color: var(--danger, #985954); }
+.lbl { display: block; font-size: 11px; color: var(--text-dim, #888888); letter-spacing: 2px; margin-bottom: 8px; text-transform: uppercase; }
+</style>
+
+<div class="fr"><span class="lbl" data-scv-slot="label">value</span><span data-scv-slot="value">—</span></div>
+
+<script>
+const box = root.querySelector('.fr'), v = root.querySelector('[data-scv-slot=value]');
+let prev = null;
+host.addEventListener('scv-receive', e => {
+  if (isPulse(e.detail)) return;
+  patch(v, { text: e.detail });
+  const num = parseFloat(String(e.detail).replace(/[^0-9.]/g, ''));
+  if (prev != null && !isNaN(num) && num !== prev) patch(box, { class: 'fr ' + (num >= prev ? 'up' : 'dn') });
+  if (!isNaN(num)) prev = num;
+}, { signal });
+</script>
+</template>

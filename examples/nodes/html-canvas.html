@@ -1,0 +1,26 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>html-canvas - scavenger node</title>
+<script type="scv/node" data-scv-node>
+defineNode({
+  name: 'html-canvas',
+  icon: '▦',
+  color: '#8ab6bb',
+  defaultVal: '320x180',
+  placeholder: 'w x h',
+  init(ctx) {
+    const c = ctx.mem.c = document.createElement('canvas');
+    c.style.cssText = 'background:#111;display:block';
+    ctx.append(c, ctx.x + 44, ctx.y);
+    this.onValue(ctx);
+  },
+  onValue(ctx) { // resize clears it, emits element for drawing nodes
+    const [w, h] = (ctx.value.match(/\d+/g) || []).map(Number), c = ctx.mem.c;
+    c.width = w || 320; c.height = h || 180;
+    ctx.emit(c);
+  },
+  onPulse(ctx) { ctx.emit(ctx.mem.c); },
+  onReceive(v, ctx) { ctx.emit(ctx.mem.c); },
+  teardown(ctx) { ctx.remove(ctx.mem.c); },
+});
+</script>

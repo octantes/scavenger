@@ -1,0 +1,20 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>input - scavenger component</title>
+<template data-scv-comp="input">
+<style>
+.ic { background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-low, 5px); padding: 8px 12px; font-family: var(--font-mono, 'SF Mono', monospace); width: 150px; box-sizing: border-box; }
+.ic-lab { color: var(--text-faint, #666666); font-size: 9px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px; }
+.ic input { background: transparent; border: none; color: var(--input, #8AB6BB); font-family: inherit; font-size: 16px; font-weight: 600; width: 100%; outline: none; padding: 0; }
+.ic input:focus { color: var(--text-base, #AAABAC); }
+</style>
+
+<div class="ic"><div class="ic-lab" data-scv-slot="label">input</div><input type="text" data-scv-slot="value" value="0"></div>
+
+<script>
+const inp = root.querySelector('input');
+const fire = () => emit(inp.value, inp);
+inp.addEventListener('input', fire);
+requestAnimationFrame(fire); // seeds receivers once every component is up
+</script>
+</template>

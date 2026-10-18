@@ -1,0 +1,309 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>audio-track - scavenger component</title>
+<template data-scv-comp="audio-track">
+<style>
+  :host { display: block; }
+  .at { width: 280px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); padding: 8px 10px 10px; box-sizing: border-box; font-family: var(--font-mono, 'SF Mono', ui-monospace, monospace); user-select: none; -webkit-user-select: none; }
+  .at-name { color: var(--text-base, #AAABAC); font-size: 11px; text-transform: lowercase; letter-spacing: 1px; text-align: center; outline: none; margin-bottom: 10px; margin-top: 4px; }
+  .at-name:focus, .at-name:hover { color: var(--input, #8AB6BB); }
+  .at-rows { display: flex; flex-direction: column; gap: 3px; }
+  .at-row, .at-add { display: flex; align-items: center; gap: 6px; height: 28px; box-sizing: border-box; padding: 0 4px; background: var(--background-sunk, #1A1C1C); border-radius: var(--corner-low, 5px); }
+  .at-add { border: none; }
+  .at-row.recv { background: var(--output, #986C98); color: var(--background-sunk, #1A1C1C); border: 1px solid var(--output, #986C98); }
+  .at-pp { flex: none; width: 24px; height: 24px; box-sizing: border-box; border: none; border-radius: var(--corner-low, 5px); background: transparent; color: var(--text-base, #AAABAC); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .at-pp:hover { color: var(--input, #8AB6BB); }
+  .at-pp svg, .at-rm svg, .at-add svg { fill: currentColor; pointer-events: none; display: block; }
+  .at-pp svg { width: 13px; height: 13px; }
+  .at-tname { flex: 1; min-width: 0; font-size: 10px; color: var(--text-base, #AAABAC); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+  .at-tname.editing { box-sizing: border-box; background: var(--background-sunk, #1A1C1C); color: var(--input, #8AB6BB); border: none; border-radius: var(--corner-low, 3px); padding: 0 5px; outline: none; }
+  .at-rm { flex: none; width: 20px; height: 20px; box-sizing: border-box; border: none; border-radius: var(--corner-low, 3px); background: transparent; color: var(--text-base, #AAABAC); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .at-rm:hover { background: var(--background-sunk, #1A1C1C); color: var(--output, #986C98); }
+  .at-rm svg { width: 11px; height: 11px; }
+  .at-add { justify-content: center; color: var(--input, #8AB6BB); cursor: pointer; width: 100%; }
+  .at-add:hover { color: var(--output, #986C98); }
+  .at-add svg { width: 15px; height: 15px; }
+  .at-add.rec { color: var(--text-base, #AAABAC); }
+  .at-add.rec:hover { color: var(--output, #986C98); }
+  .at-meter { position: relative; height: 120px; margin: 8px 0 2px; background: var(--background-sunk, #1A1C1C); border-radius: var(--corner-low, 5px); overflow: hidden; touch-action: none; }
+  .at-bars { position: absolute; inset: 0; display: flex; gap: 2px; align-items: flex-end; justify-content: center; padding: 2px; box-sizing: border-box; pointer-events: none; }
+  .at-bar { width: 10px; height: 0%; background: var(--input, #8AB6BB); border-radius: 2px; }
+  .at-bar:nth-child(2) { background: var(--output, #986C98); }
+  .at-caret { position: absolute; left: 4px; right: 4px; height: 2px; background: var(--text-base, #AAABAC); box-shadow: 0 0 4px rgba(0,0,0,0.6); cursor: ns-resize; }
+  .at-caret .at-caret-dot { position: absolute; top: -3px; left: 50%; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--text-base, #AAABAC); box-shadow: 0 0 5px rgba(0,0,0,0.6); }
+  .at-pan { position: relative; width: 58px; height: 35px; margin: 10px auto 12px; cursor: ns-resize; touch-action: none; }
+  .at-pan svg { width: 100%; height: 100%; display: block; }
+  .pan-base { fill: none; stroke: var(--background-sunk, #1A1C1C); stroke-width: 5; stroke-linecap: round; }
+  .pan-val { fill: none; stroke: var(--input, #8AB6BB); stroke-width: 5; stroke-linecap: round; }
+  .pan-ptr { stroke: var(--text-base, #AAABAC); stroke-width: 3; stroke-linecap: round; }
+  .at-arm { display: block; width: 100%; height: 24px; margin-top: 4px; box-sizing: border-box; border: none; border-radius: var(--corner-low, 5px); background: var(--background-sunk, #1A1C1C); color: var(--text-dim, #888888); font: 9px var(--font-mono, 'SF Mono', monospace); text-transform: uppercase; letter-spacing: 1px; cursor: pointer; }
+  .at-arm:hover { color: var(--text-base, #AAABAC); }
+  .at-arm.on { background: var(--output, #986C98); color: var(--background-sunk, #1A1C1C); }
+  .at-vis { display: block; width: 100%; box-sizing: border-box; margin-top: 8px; border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-low, 5px); padding: 6px 8px; font-size: 10px; letter-spacing: 1px; opacity: .85; }
+  .at-port { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .at-ins, .at-outs { display: flex; flex-direction: column; gap: 4px; }
+  .at-p { display: flex; align-items: center; gap: 6px; font-size: 9px; letter-spacing: 1px; text-transform: lowercase; position: relative; }
+  .at-p::before { content: ''; width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .at-in { color: var(--input, #8AB6BB); }
+  .at-in::before { background: var(--input, #8AB6BB); }
+  .at-out { color: var(--output, #986C98); }
+  .at-out::before { background: var(--output, #986C98); }
+  .at-file-in { display: none; }
+  textarea[hidden] { display: none; }
+</style>
+
+<div class="at">
+  <div class="at-name" data-scv-slot="label" contenteditable="true">audio track</div>
+  <div class="at-rows">
+    <button type="button" class="at-add" data-at="add" title="add take">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4h4v6h6v4h-6v6h-4v-6H4v-4h6z"></path></svg>
+    </button>
+  </div>
+  <div class="at-meter">
+    <div class="at-bars"><div class="at-bar" data-at="barL"></div><div class="at-bar" data-at="barR"></div></div>
+    <div class="at-caret" data-at="caret"><div class="at-caret-dot"></div></div>
+  </div>
+  <div class="at-pan" data-at="pan">
+    <svg viewBox="0 0 56 34">
+      <path class="pan-base" d="M6 28 A 22 22 0 0 1 50 28"></path>
+      <path class="pan-val" data-at="panArc" d="M6 28 A 22 22 0 0 1 50 28"></path>
+      <line class="pan-ptr" data-at="panPtr" x1="28" y1="28" x2="28" y2="6"></line>
+    </svg>
+  </div>
+  <button type="button" class="at-arm" data-at="arm">arm</button>
+  <div class="at-vis">
+    <div class="at-port">
+      <div class="at-ins">
+        <div class="at-p at-in" title="cmd and transport from a transport"><span>in</span></div>
+      </div>
+      <div class="at-outs">
+        <div class="at-p at-out" data-out="audio" title="AudioBuffer of playing take">audio</div>
+        <div class="at-p at-out" data-out="take" title="{id, ref, name} of playing take">take</div>
+      </div>
+    </div>
+  </div>
+  <input type="file" accept="audio/*" class="at-file-in" data-at="file">
+  <textarea data-scv-slot="takes" hidden=""></textarea>
+  <textarea data-scv-slot="mixer" hidden=""></textarea>
+</div>
+
+<script>
+const $ = s => root.querySelector(s);
+const out = k => $(`[data-out="${k}"]`);
+const ac = shared('audio', () => new AudioContext(), a => a.close());
+const decode = shared('audio-decode', () => b => ac.decodeAudioData(b)); // one decode per take per page
+const resume = () => ac.state === 'suspended' ? ac.resume() : Promise.resolve();
+
+const ICON = {
+  play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg>',
+  pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zm6 0h4v14h-4z"></path></svg>',
+  plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4h4v6h6v4h-6v6h-4v-6H4v-4h6z"></path></svg>',
+  stop: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12"></rect></svg>',
+  x: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>',
+};
+const HALF = Math.PI * 22, METER_H = 120;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const takesSlot = $('[data-scv-slot="takes"]'), mixerSlot = $('[data-scv-slot="mixer"]');
+
+// takes: name, tab, asset ref, tab, take id - id stays when a re-record changes ref
+const takes = takesSlot.value.split('\n').map(l => l.split('\t')).filter(p => p[1]).map(([name, ref, id]) => ({ name, ref, id: id || crypto.randomUUID() }));
+let [vol, pan, arm] = mixerSlot.value.split('|'); // vol|pan|arm
+vol = clamp(parseFloat(vol), 0, 1); if (!isFinite(vol)) vol = 0.72;
+pan = clamp(parseFloat(pan), -1, 1); if (!isFinite(pan)) pan = 0;
+arm = arm === '1';
+let current = -1, playing = false, pendingStart = false;
+let recording = false, recTimer = null, recCancel = false, stream = null, mediaRec = null, recN = takes.length;
+let srcNode = null, raf = 0;
+
+const outGain = ac.createGain(), panner = ac.createStereoPanner(), analyser = ac.createAnalyser();
+analyser.fftSize = 256;
+const wave = new Uint8Array(analyser.fftSize);
+outGain.connect(panner).connect(ac.destination);
+outGain.connect(analyser);
+outGain.gain.value = vol; panner.pan.value = pan;
+
+const persistMixer = () => { mixerSlot.value = vol + '|' + pan + '|' + (arm ? 1 : 0); };
+const persistTakes = () => { takesSlot.value = takes.map(t => t.name + '\t' + t.ref + '\t' + t.id).join('\n'); };
+
+const stopSrc = () => { if (!srcNode) return; srcNode.onended = null; try { srcNode.stop(); } catch {} srcNode.disconnect(); srcNode = null; };
+const startTake = (i, atTime) => {
+  const t = takes[i];
+  asset.decode(t.ref, decode).then(buf => {
+    if (current !== i || !playing || !buf) return;
+    stopSrc();
+    srcNode = ac.createBufferSource();
+    srcNode.buffer = buf;
+    srcNode.connect(outGain);
+    srcNode.onended = () => { srcNode = null; if (current === i) { playing = false; stopMeter(); paintRows(); } };
+    srcNode.start(atTime > ac.currentTime ? atTime : 0);
+    pendingStart = false;
+    emit(buf, out('audio'));
+    emit({ id: t.id, ref: t.ref, name: t.name }, out('take'));
+  }).catch(err => { console.warn('[audio-track] decode failed', err); playing = false; pendingStart = false; paintRows(); stopMeter(); });
+};
+const playTake = i => {
+  if (i === current && playing) return pauseTake();
+  stopSrc();
+  if (recording) endCapture();
+  current = i; playing = true;
+  paintRows(); startMeter();
+  resume().then(() => { if (current === i) startTake(i, 0); });
+};
+const pauseTake = () => { playing = false; stopSrc(); current = -1; paintRows(); stopMeter(); };
+const removeTake = i => {
+  if (current === i) pauseTake();
+  else if (i < current) current--;
+  takes.splice(i, 1);
+  rebuildRows(); persistTakes();
+};
+
+const pickMime = () => ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find(m => MediaRecorder.isTypeSupported(m)) || '';
+const beginCapture = () => {
+  const name = 'rec ' + (++recN);
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(s => {
+    if (recCancel) return s.getTracks().forEach(x => x.stop());
+    stream = s;
+    const mime = pickMime(), chunks = [];
+    mediaRec = new MediaRecorder(s, mime ? { mimeType: mime, audioBitsPerSecond: 320000 } : { audioBitsPerSecond: 320000 });
+    mediaRec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    mediaRec.onstop = async () => {
+      const ref = await asset.put(new Blob(chunks, { type: mediaRec?.mimeType || mime || 'audio/webm' }));
+      takes.push({ name, ref, id: crypto.randomUUID() });
+      rebuildRows(); persistTakes(); markRow(takes.length - 1, true);
+    };
+    mediaRec.start();
+    recording = true;
+    paintAdd();
+  }).catch(err => console.warn('[audio-track] capture denied', err));
+};
+const endCapture = () => {
+  if (mediaRec?.state !== 'inactive') mediaRec?.stop();
+  stream?.getTracks().forEach(x => x.stop());
+  stream = null; recording = false;
+  paintAdd();
+};
+const scheduleCapture = atTime => { // capture starts on downbeat, timer wakes 20ms early
+  if (recording) return;
+  recCancel = false;
+  clearTimeout(recTimer);
+  const now = ac.currentTime, when = atTime > now ? atTime : now + 0.05;
+  recTimer = setTimeout(() => {
+    recTimer = null;
+    if (recCancel || recording) return;
+    pendingStart = false;
+    arm = true; paintArm(); persistMixer();
+    beginCapture();
+  }, Math.max(0, (when - now - 0.02) * 1000));
+};
+const cancelCapture = () => { recCancel = true; clearTimeout(recTimer); recTimer = null; if (recording) endCapture(); };
+
+const markRow = (i, on) => root.querySelectorAll('.at-row')[i]?.classList.toggle('recv', on);
+const rebuildRows = () => {
+  const rows = $('.at-rows'), addEl = $('[data-at="add"]');
+  rows.querySelectorAll('.at-row').forEach(r => r.remove());
+  takes.forEach((t, i) => {
+    const row = document.createElement('div');
+    row.className = 'at-row'; row.dataset.i = i;
+    row.innerHTML = `<button type="button" class="at-pp" data-at="pp">${ICON.play}</button><span class="at-tname"></span><button type="button" class="at-rm" data-at="rm" title="remove">${ICON.x}</button>`;
+    row.querySelector('.at-tname').textContent = t.name || 'take';
+    rows.insertBefore(row, addEl);
+  });
+  paintRows();
+};
+const paintRows = () => root.querySelectorAll('.at-row').forEach((row, i) => patch(row.querySelector('.at-pp'), { html: i === current && playing ? ICON.pause : ICON.play }));
+const paintArm = () => $('[data-at="arm"]').classList.toggle('on', arm);
+const paintAdd = () => { patch($('[data-at="add"]'), { html: recording ? ICON.stop : ICON.plus }); $('[data-at="add"]').classList.toggle('rec', recording); };
+
+const meterFrame = () => { // left half and right half of waveform window
+  if (!playing) return;
+  analyser.getByteTimeDomainData(wave);
+  let l = 0, r = 0;
+  const n = wave.length;
+  for (let i = 0; i < n; i++) { const v = (wave[i] - 128) / 128; if (i < n / 2) l += v * v; else r += v * v; }
+  $('[data-at="barL"]').style.height = clamp(Math.sqrt(l / (n / 2)) * vol * 140, 2, 100) + '%';
+  $('[data-at="barR"]').style.height = clamp(Math.sqrt(r / (n / 2)) * vol * 140, 2, 100) + '%';
+  raf = requestAnimationFrame(meterFrame);
+};
+const startMeter = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(meterFrame); };
+const stopMeter = () => { cancelAnimationFrame(raf); $('[data-at="barL"]').style.height = $('[data-at="barR"]').style.height = '0%'; };
+const drawCaret = () => { $('[data-at="caret"]').style.bottom = clamp(vol * (METER_H - 6), 0, METER_H - 2) + 'px'; };
+const drawPan = () => {
+  const a = (pan + 1) / 2 * Math.PI - Math.PI / 2, ptr = $('[data-at="panPtr"]');
+  ptr.setAttribute('x2', 28 + 22 * Math.sin(a)); ptr.setAttribute('y2', 28 - 22 * Math.cos(a));
+  $('[data-at="panArc"]').setAttribute('stroke-dasharray', (pan + 1) / 2 * HALF + ' ' + HALF * 2);
+};
+
+let drag = null; // fader or pan knob, vertical drag
+root.addEventListener('pointerdown', e => {
+  const el = e.target.closest?.('[data-at="caret"], [data-at="pan"]'); if (!el) return;
+  drag = { el, id: e.pointerId, y0: e.clientY, v0: el.dataset.at === 'pan' ? pan : vol };
+  e.preventDefault(); el.setPointerCapture(e.pointerId);
+}, { signal });
+root.addEventListener('pointermove', e => {
+  if (drag?.id !== e.pointerId) return;
+  if (drag.el.dataset.at === 'pan') { pan = clamp(drag.v0 + (drag.y0 - e.clientY) / 30, -1, 1); panner.pan.value = pan; drawPan(); }
+  else { vol = clamp(drag.v0 - (e.clientY - drag.y0) / (METER_H - 6), 0, 1); outGain.gain.value = vol; drawCaret(); }
+}, { signal });
+const endDrag = e => { if (drag?.id === e.pointerId) { drag = null; persistMixer(); } };
+root.addEventListener('pointerup', endDrag, { signal });
+root.addEventListener('pointercancel', endDrag, { signal });
+
+root.addEventListener('dblclick', e => {
+  if (e.target.closest?.('[data-at="pan"]')) { e.preventDefault(); pan = 0; panner.pan.value = 0; drawPan(); persistMixer(); return; }
+  const nm = e.target.closest?.('.at-tname'), i = Number(nm?.closest('.at-row')?.dataset.i);
+  if (!takes[i]) return;
+  const inp = document.createElement('input');
+  inp.className = 'at-tname editing'; inp.value = nm.textContent;
+  nm.replaceWith(inp); inp.focus(); inp.select();
+  const commit = () => { takes[i].name = inp.value.trim().replace(/\t/g, ' ') || 'take'; nm.textContent = takes[i].name; inp.replaceWith(nm); persistTakes(); };
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); commit(); } if (ev.key === 'Escape') inp.replaceWith(nm); });
+}, { signal });
+
+root.addEventListener('click', e => {
+  const at = e.target.closest?.('[data-at]')?.dataset.at, i = Number(e.target.closest?.('.at-row')?.dataset.i);
+  if (at === 'add') { if (recording) endCapture(); else if (arm) { recCancel = false; beginCapture(); } else $('[data-at="file"]').click(); }
+  else if (at === 'arm') { arm = !arm; paintArm(); if (!arm) root.querySelectorAll('.at-row').forEach(r => r.classList.remove('recv')); persistMixer(); }
+  else if (at === 'rm') removeTake(i);
+  else if (at === 'pp') playTake(i);
+}, { signal });
+root.addEventListener('change', async e => {
+  if (e.target.dataset?.at !== 'file') return;
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f?.type.startsWith('audio/')) return;
+  takes.push({ name: f.name.replace(/\t/g, ' '), ref: await asset.put(f), id: crypto.randomUUID() });
+  rebuildRows(); persistTakes();
+}, { signal });
+
+host.addEventListener('scv-receive', e => { // cmd and transport from a transport
+  const v = e.detail;
+  if (typeof v?.t === 'string') {
+    const tt = Number(v.targetTime), tgt = tt > ac.currentTime + 0.001 ? tt : undefined;
+    if (v.t === 'start') {
+      if (v.rec) pendingStart = true; // count-in ticks must not cancel scheduled capture
+      resume().then(() => {
+        if (!takes.length) return;
+        stopSrc();
+        current = Math.max(0, current); playing = true; pendingStart = true;
+        paintRows(); startMeter();
+        startTake(current, tgt ?? ac.currentTime + 0.05);
+      });
+      if (v.rec) scheduleCapture(tgt);
+    }
+    else if (v.t === 'stop') { cancelCapture(); pendingStart = false; pauseTake(); }
+    else if (v.t === 'reset') { cancelCapture(); pendingStart = false; stopSrc(); playing = false; current = takes.length ? 0 : -1; paintRows(); stopMeter(); }
+    else if (v.t === 'rec') scheduleCapture(tgt);
+    else if (v.t === 'recOff') cancelCapture();
+  }
+  else if (v && 'run' in v && !v.play && !pendingStart) { cancelCapture(); if (playing) pauseTake(); }
+}, { signal });
+
+onTeardown(() => {
+  cancelCapture(); stopSrc(); cancelAnimationFrame(raf);
+  outGain.disconnect(); panner.disconnect();
+});
+
+if (root.querySelectorAll('.at-row').length !== takes.length) rebuildRows();
+drawCaret(); drawPan(); paintRows(); paintArm(); paintAdd();
+</script>
+</template>

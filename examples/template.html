@@ -1,0 +1,26 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>template - scavenger component and node</title>
+<template data-scv-comp="hello" data-scv-icon="◇">
+<style>
+  .h { padding: 10px 14px; background: var(--background-raised); border-radius: var(--corner-low); font-family: var(--font-mono); color: var(--text-base); }
+  b { color: var(--input); cursor: pointer; }
+</style>
+
+<div class="h">hello <b data-scv-slot="name">world</b></div>
+
+<script>
+const name = root.querySelector('b');
+host.addEventListener('scv-receive', e => { if (!isPulse(e.detail)) patch(name, { text: e.detail }); }, { signal });
+name.addEventListener('click', () => emit(name.textContent, name));
+</script>
+</template>
+
+<script type="scv/node" data-scv-node>
+defineNode({
+  name: 'twice',
+  icon: '×2',
+  inputType: false,
+  onReceive(v, ctx) { ctx.output(Number(v) * 2); },
+});
+</script>

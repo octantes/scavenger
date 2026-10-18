@@ -1,0 +1,20 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>slider - scavenger component</title>
+<template data-scv-comp="slider">
+<style>
+  .sl { display:flex; align-items:center; gap:10px; padding:12px 14px; background:#252727; border-radius:5px; font:13px 'SF Mono',ui-monospace,monospace; color:#AAABAC; }
+  .sl input[type=range] { width:130px; accent-color:#8AB6BB; }
+  .sl .v { min-width:28px; text-align:right; color:#8AB6BB; }
+</style>
+
+<div class="sl">
+  <input type="range" min="0" max="100" value="50" data-scv-slot="v">
+  <span class="v" data-scv-slot="label">50</span>
+</div>
+
+<script>
+const r = root.querySelector('input'), label = root.querySelector('[data-scv-slot=label]');
+r.addEventListener('input', () => { label.textContent = r.value; emit(+r.value, r); });
+</script>
+</template>

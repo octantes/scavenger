@@ -1,0 +1,17 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>readout - scavenger component</title>
+<template data-scv-comp="readout">
+<style>
+.mc { background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); padding: 14px 18px; font-family: var(--font-mono, 'SF Mono', monospace); min-width: 160px; box-sizing: border-box; }
+.mc-lbl { color: var(--text-faint, #666666); font-size: 9px; text-transform: uppercase; letter-spacing: 1px; }
+.mc-val { color: var(--output, #986C98); font-size: 26px; font-weight: 600; margin-top: 5px; line-height: 1.1; }
+</style>
+
+<div class="mc"><div class="mc-lbl" data-scv-slot="label">readout</div><div class="mc-val" data-scv-slot="value">–</div></div>
+
+<script>
+const val = root.querySelector('[data-scv-slot=value]');
+host.addEventListener('scv-receive', e => { if (!isPulse(e.detail)) patch(val, { text: typeof e.detail === 'object' ? JSON.stringify(e.detail) : e.detail }); }, { signal });
+</script>
+</template>

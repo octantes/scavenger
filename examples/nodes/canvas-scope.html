@@ -1,0 +1,29 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>canvas-scope - scavenger node</title>
+<script type="scv/node" data-scv-node>
+defineNode({
+  name: 'canvas-scope',
+  icon: '∿',
+  color: '#8ab6bb',
+  inputType: false,
+  init(ctx) {
+    const c = document.createElement('canvas');
+    c.width = 200; c.height = 60; c.style.background = '#111';
+    ctx.mem.c = c; ctx.mem.v = [];
+    ctx.append(c, ctx.x + 44, ctx.y);
+  },
+  onReceive(value, ctx) {
+    const { c, v } = ctx.mem;
+    v.push(Number(value) || 0);
+    if (v.length > 200) v.shift();
+    const g = c.getContext('2d');
+    g.clearRect(0, 0, 200, 60);
+    g.strokeStyle = '#8ab6bb'; g.beginPath();
+    v.forEach((n, i) => { const y = 60 - (((n % 60) + 60) % 60); i ? g.lineTo(i, y) : g.moveTo(i, y); });
+    g.stroke();
+    ctx.emit(value);
+  },
+  teardown(ctx) { ctx.remove(ctx.mem.c); },
+});
+</script>

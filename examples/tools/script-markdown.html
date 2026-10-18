@@ -1,0 +1,95 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>script-markdown - scavenger component</title>
+<template data-scv-comp="script-markdown">
+<style>
+  :host { display: block; }
+  .sc { width: 460px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); padding: 10px; box-sizing: border-box; font-family: var(--font-mono, 'SF Mono', ui-monospace, monospace); }
+  .sc-lab { color: var(--text-faint, #666666); font-size: 10px; text-transform: lowercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .sc-editor { display: flex; border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-low, 5px); background: var(--background-sunk, #1A1C1C); overflow: hidden; }
+  .sc-gutter { flex: 0 0 30px; background: rgba(255,255,255,0.02); border-right: 1px solid var(--border, #3A3C3C); padding: 8px 4px; text-align: center; overflow: hidden; color: var(--text-dim, #888888); font: 12px/18px var(--font-mono, 'SF Mono', monospace); user-select: none; }
+  .sc-gutter span { display: block; line-height: 18px; }
+  .sc-surface { position: relative; flex: 1; min-height: 88px; }
+  .sc-ta, .sc-syn { margin: 0; padding: 8px; position: absolute; inset: 0; font: 12px/18px var(--font-mono, 'SF Mono', monospace); white-space: pre; tab-size: 2; }
+  .sc-ta { display: block; width: 100%; height: 100%; resize: none; overflow: auto; background: transparent; color: transparent; -webkit-text-fill-color: transparent; caret-color: var(--text-base, #AAABAC); border: none; outline: none; }
+  .sc-ta::selection { background: rgba(255,255,255,0.15); }
+  .sc-syn { pointer-events: none; overflow: hidden; }
+  .md-h1 { color: var(--output, #986C98); font-weight: 700; }
+  .md-h2 { color: var(--input, #8AB6BB); font-weight: 600; }
+  .md-h3 { color: var(--input, #8AB6BB); font-weight: 600; }
+  .md-bold { color: var(--output, #986C98); font-weight: 700; }
+  .md-italic { font-style: italic; color: var(--input, #8AB6BB); }
+  .md-code { color: var(--hl-str, #ce9178); background: rgba(255,255,255,0.05); }
+  .md-link { color: var(--input, #8AB6BB); }
+  .md-li { color: var(--output, #986C98); }
+  .md-q { color: var(--hl-com, var(--success)); }
+  .md-hr { color: var(--text-faint, #666666); }
+  .md-marker { color: var(--text-faint, #666666); }
+</style>
+
+<div class="sc">
+  <div class="sc-lab" data-scv-slot="label">note</div>
+  <div class="sc-editor">
+    <div class="sc-gutter"></div>
+    <div class="sc-surface">
+      <div class="sc-syn"><div class="syntax-inner"></div></div>
+      <textarea class="sc-ta" spellcheck="false" wrap="off" data-scv-slot="note"></textarea>
+    </div>
+  </div>
+</div>
+
+<script>
+const ta = root.querySelector('.sc-ta'), gutter = root.querySelector('.sc-gutter'), inner = root.querySelector('.syntax-inner');
+const LINE_H = 18;
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function blockPref(line) { // leading structural marker, kept visible; rest is styled text
+  const m = line.match(/^( {0,3})(#{1,6}\s+|>\s?|[-*]\s+|(?:\d+\.)\s+|```\s*|---+$)/);
+  return m ? { marker: m[2], rest: line.slice(m[2].length) } : { marker: '', rest: line };
+}
+function inline(s) { // NEVER removes a literal char - delimiters stay, inner text is styled (zero displacement)
+  const out = [];
+  const mark = t => `<span class="md-marker">${esc(t)}</span>`;
+  let i = 0;
+  while (i < s.length) {
+    if (s[i] === '`') { const e = s.indexOf('`', i + 1); if (e === -1) { out.push(esc(s.slice(i))); break; } out.push(mark('`'), `<span class="md-code">${esc(s.slice(i + 1, e))}</span>`, mark('`')); i = e + 1; continue; }
+    if (s[i] === '[') { const l = /^\[([^\]]+)\]\(([^)]+)\)/.exec(s.slice(i)); if (l) { out.push(mark('['), `<span class="md-link">${esc(l[1])}</span>`, mark('](' + l[2] + ')')); i += l[0].length; continue; } }
+    if (s[i] === '*' || s[i] === '_') {
+      const t = s[i];
+      if (s[i + 1] === t) { const e = s.indexOf(t + t, i + 2); if (e !== -1) { out.push(mark(t + t), `<span class="md-bold">${esc(s.slice(i + 2, e))}</span>`, mark(t + t)); i = e + 2; continue; } }
+      else { const e = s.indexOf(t, i + 1); if (e !== -1) { out.push(mark(t), `<span class="md-italic">${esc(s.slice(i + 1, e))}</span>`, mark(t)); i = e + 1; continue; } }
+    }
+    out.push(esc(s[i])); i++;
+  }
+  return out.join('');
+}
+function highlightLine(line) {
+  const b = blockPref(line);
+  if (b.marker === '---') return `<span class="md-hr">${esc(line)}</span>`;
+  const h = /^(#{1,6})\s+/.exec(b.marker), q = /^>\s?/.test(b.marker);
+  const lead = b.marker ? `<span class="md-marker">${esc(b.marker)}</span>` : '';
+  let rest = inline(b.rest);
+  if (h) rest = `<span class="md-h${Math.min(3, h[1].length)}">${rest}</span>`;
+  else if (q) rest = `<span class="md-q">${rest}</span>`;
+  return lead + rest;
+}
+function render() {
+  const lines = ta.value.split('\n');
+  while (lines.length < 4) lines.push('');
+  gutter.innerHTML = lines.map((_, i) => `<span>${String(i + 1).padStart(2, '0')}</span>`).join('');
+  inner.style.cssText = 'position:relative;height:' + (lines.length * LINE_H + 16) + 'px';
+  inner.innerHTML = lines.map((line, i) => `<div style="position:absolute;top:${i * LINE_H}px;left:0;right:0;height:${LINE_H}px;white-space:pre">${highlightLine(line || ' ')}</div>`).join('');
+  inner.style.transform = `translate(-${ta.scrollLeft}px,-${ta.scrollTop}px)`;
+  ta.style.height = Math.max(4, lines.length) * LINE_H + 16 + 'px';
+  gutter.scrollTop = ta.scrollTop;
+}
+function syncScroll() { inner.style.transform = `translate(-${ta.scrollLeft}px,-${ta.scrollTop}px)`; gutter.scrollTop = ta.scrollTop; }
+ta.addEventListener('input', render);
+ta.addEventListener('scroll', syncScroll);
+ta.addEventListener('keydown', e => {
+  if (e.key === 'Tab') { e.preventDefault(); document.execCommand('insertText', false, '  '); render(); }
+  if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) { const s = ta.value.slice(0, ta.selectionStart); const ind = (s.slice(s.lastIndexOf('\n') + 1).match(/^[ \t]*/) || [''])[0]; e.preventDefault(); document.execCommand('insertText', false, '\n' + ind); render(); }
+});
+ta.addEventListener('paste', e => { e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData || window.clipboardData).getData('text/plain')); render(); });
+render(); syncScroll();
+</script>
+</template>

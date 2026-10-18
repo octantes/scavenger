@@ -1,0 +1,34 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>dropdown - scavenger component</title>
+<template data-scv-comp="dropdown">
+<style>
+  :host { display: block; }
+  .sl { width: 240px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-low, 5px); padding: 8px 10px; box-sizing: border-box; font-family: var(--font-mono, 'SF Mono', ui-monospace, monospace); }
+  .sl-lab { color: var(--text-faint, #666666); font-size: 10px; text-transform: lowercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .sl-options { width: 100%; box-sizing: border-box; background: var(--background-sunk, #1A1C1C); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-low, 5px); color: var(--text-dim, #888888); font: 10px var(--font-mono, 'SF Mono', monospace); padding: 4px 6px; margin-bottom: 6px; outline: none; }
+  .sl-options:focus { color: var(--text-base, #AAABAC); border-color: var(--input, #8AB6BB); }
+  select { width: 100%; box-sizing: border-box; background: var(--background-sunk, #1A1C1C); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-low, 5px); color: var(--text-base, #AAABAC); font: 12px var(--font-mono, 'SF Mono', monospace); padding: 5px 6px; outline: none; cursor: pointer; }
+  select:focus { border-color: var(--input, #8AB6BB); }
+  option { background: var(--background-sunk, #1A1C1C); color: var(--text-base, #AAABAC); }
+</style>
+
+<div class="sl">
+  <div class="sl-lab" data-scv-slot="label">select</div>
+  <input type="text" class="sl-options" data-scv-slot="options" placeholder="a, b, c" spellcheck="false">
+  <select data-scv-slot="value"></select>
+</div>
+
+<script>
+const opts = root.querySelector('.sl-options'), sel = root.querySelector('select');
+const render = () => {
+  const cur = sel.value, items = (opts.value || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!items.length) items.push('a', 'b', 'c');
+  sel.replaceChildren(...items.map(o => new Option(o, o)));
+  sel.value = items.includes(cur) ? cur : items[0];
+};
+opts.addEventListener('input', render);
+sel.addEventListener('change', () => emit(sel.value, sel));
+render();
+</script>
+</template>

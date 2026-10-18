@@ -1,0 +1,61 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>metronome - scavenger node</title>
+<script type="scv/node" data-scv-node>
+defineNode({
+  name: 'metronome',
+  icon: '▲',
+  color: '#8ab6bb',
+  defaultVal: '120',
+  inputType: 'number',
+  placeholder: 'bpm',
+  modes: [{ id: 'on', icon: '▲' }, { id: 'muted', icon: '○' }],
+  init(ctx) {
+    const ac = ctx.mem.ac = ctx.shared('audio', () => new AudioContext(), a => a.close());
+    const resume = () => { if (ac.state === 'suspended') ac.resume(); }; // autoplay waits for a gesture
+    addEventListener('pointerdown', resume, { signal: ctx.signal });
+    addEventListener('keydown', resume, { signal: ctx.signal });
+    ctx.mem.beat = 0;
+    this.arm(ctx);
+  },
+  teardown(ctx) { clearInterval(ctx.mem.timer); },
+  bpm: ctx => Math.max(20, Math.min(300, Number(ctx.value) || 120)),
+  click(ctx, t, accent) { // square blip at exact audio time
+    if (ctx.mode === 'muted') return;
+    const ac = ctx.mem.ac, osc = ac.createOscillator(), g = ac.createGain();
+    osc.type = 'square';
+    osc.frequency.value = accent ? 1760 : 1480;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(accent ? 0.5 : 0.3, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    osc.connect(g).connect(ac.destination);
+    osc.start(t); osc.stop(t + 0.06);
+  },
+  arm(ctx) { // own schedule, 100ms ahead on audio clock - phase restarts now
+    clearInterval(ctx.mem.timer);
+    if (ctx.mem.following || ctx.mode === 'muted') return;
+    const ac = ctx.mem.ac;
+    ctx.mem.next = ac.currentTime;
+    ctx.mem.timer = setInterval(() => {
+      while (ctx.mem.next <= ac.currentTime + 0.1) {
+        const b = ++ctx.mem.beat;
+        this.click(ctx, ctx.mem.next, b % 4 === 1);
+        ctx.emit(b);
+        ctx.mem.next += 60 / this.bpm(ctx);
+      }
+    }, 25);
+  },
+  onValue(ctx) { this.arm(ctx); },
+  onMode(m, ctx) { this.arm(ctx); },
+  onPulse(ctx) { ctx.mem.following = false; this.arm(ctx); },
+  onReceive(v, ctx) { // transport beats take over schedule, a number sets bpm
+    if (v && typeof v === 'object' && v.beat !== undefined) {
+      ctx.mem.following = true;
+      clearInterval(ctx.mem.timer);
+      if (!v.play) return;
+      this.click(ctx, ctx.mem.ac.currentTime, v.beat % (Number(v.num) || 4) === 1);
+      ctx.emit(v.beat);
+    } else if (Number.isFinite(Number(v))) ctx.value = String(v);
+  },
+});
+</script>

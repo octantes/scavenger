@@ -1,0 +1,22 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>toggle - scavenger component</title>
+<template data-scv-comp="toggle">
+<style>
+  .tg label { display:flex; align-items:center; gap:8px; padding:10px 12px; background:#252727; border-radius:5px; font:14px 'SF Mono',ui-monospace,monospace; color:#AAABAC; cursor:pointer; user-select:none; }
+  .tg input { position:absolute; opacity:0; pointer-events:none; }
+  .tg .sw { width:34px; height:18px; border-radius:9px; background:#3A3C3C; position:relative; transition:background .15s; }
+  .tg .sw::after { content:''; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:#AAABAC; transition:left .15s; }
+  .tg input:checked + .sw { background:#8AB6BB; }
+  .tg input:checked + .sw::after { left:18px; background:#1A1C1C; }
+</style>
+
+<div class="tg">
+  <label><input type="checkbox" data-scv-slot="on"><span class="sw"></span></label>
+</div>
+
+<script>
+const cb = root.querySelector('input');
+cb.addEventListener('change', () => emit(cb.checked, cb));
+</script>
+</template>

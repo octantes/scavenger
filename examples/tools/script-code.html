@@ -1,0 +1,121 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>script-code - scavenger component</title>
+<template data-scv-comp="script-code">
+<style>
+  :host { display: block; }
+  .sc { width: 460px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); padding: 10px; box-sizing: border-box; font-family: var(--font-mono, 'SF Mono', ui-monospace, monospace); }
+  .sc-lab { color: var(--text-faint, #666666); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .sc-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .sc-in, .sc-out { display: flex; align-items: center; gap: 6px; font-size: 9px; letter-spacing: 1px; text-transform: lowercase; opacity: .85; }
+  .sc-in { color: var(--input, #8AB6BB); }
+  .sc-out { color: var(--output, #986C98); }
+  .sc-in::before, .sc-out::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
+  .sc-in::before { background: var(--input, #8AB6BB); }
+  .sc-out::before { background: var(--output, #986C98); }
+  .sc-in-val, .sc-out-val { color: var(--text-base, #AAABAC); }
+  .sc-editor { display: flex; border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-low, 5px); background: var(--background-sunk, #1A1C1C); overflow: hidden; }
+  .sc-gutter { flex: 0 0 30px; background: rgba(255,255,255,0.02); border-right: 1px solid var(--border, #3A3C3C); padding: 8px 4px; text-align: center; overflow: hidden; color: var(--text-dim, #888888); font: 12px/18px var(--font-mono, 'SF Mono', monospace); user-select: none; }
+  .sc-gutter span { display: block; line-height: 18px; }
+  .sc-surface { position: relative; flex: 1; min-height: 88px; }
+  .sc-ta, .sc-syn { margin: 0; padding: 8px; position: absolute; inset: 0; font: 12px/18px var(--font-mono, 'SF Mono', monospace); white-space: pre; tab-size: 2; }
+  .sc-ta { display: block; width: 100%; height: 100%; resize: none; overflow: auto; background: transparent; color: transparent; -webkit-text-fill-color: transparent; caret-color: var(--text-base, #AAABAC); border: none; outline: none; }
+  .sc-ta::selection { background: rgba(255,255,255,0.15); }
+  .sc-syn { pointer-events: none; overflow: hidden; }
+  .hl-str { color: var(--hl-str, #ce9178); }
+  .hl-kw { color: var(--hl-kw, #569cd6); }
+  .hl-num { color: var(--hl-num, #b5cea8); }
+  .hl-com { color: var(--hl-com, var(--success)); }
+  .hl-ctx { color: var(--hl-ctx, var(--output)); }
+  .hl-brace { color: var(--hl-brace, #6e7681); }
+  .sc-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 8px; }
+  .sc-run { background: none; border: none; color: var(--input, #1A1C1C); font: inherit; font-size: 12px; text-transform: lowercase; letter-spacing: 1px; padding: 2px 6px; border-radius: var(--corner-low, 5px); cursor: pointer; }
+  .sc-run:hover { filter: brightness(1.1); }
+  .sc-status { font-size: 10px; color: var(--text-dim, #888888); min-height: 12px; padding-left: 10px; }
+  .sc-status.err { color: var(--danger, #985954); }
+  .sc-status.ok { color: var(--success, #6FAC67); }
+</style>
+
+<div class="sc">
+  <div class="sc-lab" data-scv-slot="label">script</div>
+  <div class="sc-row">
+    <div class="sc-in">input: <span class="sc-in-val">—</span></div>
+    <div class="sc-out">output: <span class="sc-out-val">—</span></div>
+  </div>
+  <div class="sc-editor">
+    <div class="sc-gutter"></div>
+    <div class="sc-surface">
+      <div class="sc-syn"><div class="syntax-inner"></div></div>
+      <textarea class="sc-ta" spellcheck="false" wrap="off" data-scv-slot="code"></textarea>
+    </div>
+  </div>
+  <div class="sc-foot">
+    <span class="sc-status" data-scv-slot="status"></span>
+    <button class="sc-run" type="button">run</button>
+  </div>
+</div>
+
+<script>
+const ta = root.querySelector('.sc-ta'), gutter = root.querySelector('.sc-gutter'), inner = root.querySelector('.syntax-inner'), status = root.querySelector('.sc-status'), runBtn = root.querySelector('.sc-run'), inVal = root.querySelector('.sc-in-val'), outVal = root.querySelector('.sc-out-val'), out = root.querySelector('.sc-out');
+const DEFAULT_STATUS = 'wire a value into input and use it as v';
+const fmt = v => v === undefined ? 'undefined' : (typeof v === 'object' ? JSON.stringify(v) : v);
+const showDefault = () => { status.textContent = DEFAULT_STATUS; status.className = 'sc-status'; };
+const LINE_H = 18;
+const HL_CLASS = { com: 'hl-com', str: 'hl-str', kw: 'hl-kw', num: 'hl-num', ctx: 'hl-ctx', brace: 'hl-brace' };
+const KEYWORDS = ['function','return','let','const','var','if','else','for','while','do','switch','case','break','continue','new','delete','typeof','instanceof','true','false','null','undefined','this','try','catch','finally','throw'];
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function highlightLine(src, inComment, inTemplate) {
+  const tok = [];
+  const done = (ic, it) => ({ html: tok.map(t => HL_CLASS[t.t] ? `<span class="${HL_CLASS[t.t]}">${esc(t.v)}</span>` : esc(t.v)).join(''), inComment: ic, inTemplate: !!it });
+  const qend = (s, q, from) => { for (let j = from; j < s.length; j++) { if (s[j] === '\\') j++; else if (s[j] === q) return j; } return -1; };
+  let i = 0;
+  if (inTemplate) { const e = qend(src, '`', 0); if (e === -1) { tok.push({ t: 'str', v: src }); return done(false, true); } tok.push({ t: 'str', v: src.slice(0, e + 1) }); i = e + 1; }
+  if (inComment) { const e = src.indexOf('*/', i); if (e === -1) { tok.push({ t: 'com', v: src.slice(i) }); return done(true, false); } tok.push({ t: 'com', v: src.slice(i, e + 2) }); i = e + 2; }
+  while (i < src.length) {
+    if (src[i] === '/' && src[i+1] === '*') { const e = src.indexOf('*/', i + 2); if (e === -1) { tok.push({ t: 'com', v: src.slice(i) }); return done(true, false); } tok.push({ t: 'com', v: src.slice(i, e + 2) }); i = e + 2; continue; }
+    if (src[i] === '/' && src[i+1] === '/') { tok.push({ t: 'com', v: src.slice(i) }); i = src.length; continue; }
+    if (src[i] === '`' || src[i] === '"' || src[i] === "'") { const q = src[i]; const e = qend(src, q, i + 1); if (e === -1) { tok.push({ t: 'str', v: src.slice(i) }); if (q === '`') return done(false, true); break; } tok.push({ t: 'str', v: src.slice(i, e + 1) }); i = e + 1; continue; }
+    if (/[0-9]/.test(src[i]) && (i === 0 || !/[$\w]/.test(src[i-1]))) { let e = i + 1; while (e < src.length && /[0-9.eE]/.test(src[e])) e++; const word = src.slice(i, e); if (!isNaN(Number(word))) { tok.push({ t: 'num', v: word }); i = e; continue; } }
+    if (/[$\w]/.test(src[i])) { let e = i + 1; while (e < src.length && /[$\w]/.test(src[e])) e++; const word = src.slice(i, e); if (KEYWORDS.includes(word)) tok.push({ t: 'kw', v: word }); else tok.push({ t: 'txt', v: word }); i = e; continue; }
+    if ('{}()'.includes(src[i])) { tok.push({ t: 'brace', v: src[i] }); i++; continue; }
+    tok.push({ t: 'txt', v: src[i] }); i++;
+  }
+  return done(false, false);
+}
+function render() {
+  const lines = ta.value.split('\n');
+  while (lines.length < 4) lines.push('');
+  gutter.innerHTML = lines.map((_, i) => `<span>${String(i + 1).padStart(2, '0')}</span>`).join('');
+  let inComment = false, inTemplate = false;
+  inner.style.cssText = 'position:relative;height:' + (lines.length * LINE_H + 16) + 'px';
+  inner.innerHTML = lines.map((line, i) => { const r = highlightLine(line || ' ', inComment, inTemplate); inComment = r.inComment; inTemplate = r.inTemplate; return `<div style="position:absolute;top:${i * LINE_H}px;left:0;right:0;height:${LINE_H}px;white-space:pre">${r.html}</div>`; }).join('');
+  inner.style.transform = `translate(-${ta.scrollLeft}px,-${ta.scrollTop}px)`;
+  ta.style.height = Math.max(4, lines.length) * LINE_H + 16 + 'px';
+  gutter.scrollTop = ta.scrollTop;
+  if (ta.value.trim() === '') showDefault();
+}
+function syncScroll() { inner.style.transform = `translate(-${ta.scrollLeft}px,-${ta.scrollTop}px)`; gutter.scrollTop = ta.scrollTop; }
+ta.addEventListener('input', render);
+ta.addEventListener('scroll', syncScroll);
+ta.addEventListener('keydown', e => {
+  if (e.key === 'Tab') { e.preventDefault(); document.execCommand('insertText', false, '  '); render(); }
+  if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) { const s = ta.value.slice(0, ta.selectionStart); const ind = (s.slice(s.lastIndexOf('\n') + 1).match(/^[ \t]*/) || [''])[0]; e.preventDefault(); document.execCommand('insertText', false, '\n' + ind); render(); }
+});
+ta.addEventListener('paste', e => { e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData || window.clipboardData).getData('text/plain')); render(); });
+let _lastV, _lastOut; let _fn = null, _fnKey = null;
+function run() {
+  try {
+    const key = '\0' + ta.value;
+    if (key !== _fnKey) { _fn = new Function('v', ta.value); _fnKey = key; }
+    const res = _fn(_lastV);
+    _lastOut = res; outVal.textContent = fmt(res);
+    emit(res, out);
+    status.textContent = 'ok'; status.className = 'sc-status ok';
+  } catch (err) { status.textContent = String(err && err.message || err); status.className = 'sc-status err'; }
+}
+runBtn.addEventListener('click', run);
+out.addEventListener('click', () => { if (_lastOut !== undefined) emit(_lastOut, out); });
+host.addEventListener('scv-receive', e => { _lastV = e.detail; inVal.textContent = fmt(e.detail); run(); }, { signal });
+render(); syncScroll();
+</script>
+</template>

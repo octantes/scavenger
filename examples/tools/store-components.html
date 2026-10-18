@@ -1,0 +1,192 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>store-components - scavenger component</title>
+<template data-scv-comp="store-components">
+<style>
+:host { display: block; }
+.cab { display: flex; align-items: stretch; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); font-family: var(--font-mono, 'SF Mono', ui-monospace, monospace); overflow: hidden; }
+.cab-aside { width: 150px; flex: none; border-right: 1px solid var(--border, #3A3C3C); padding: 16px 12px; box-sizing: border-box; }
+.cab-atitle { color: var(--text-faint, #666666); font-size: 16px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; outline: none; }
+.cab-atitle:focus { color: var(--input, #8AB6BB); }
+.tag-list { display: flex; flex-direction: column; gap: 2px; }
+.tag-row { font-size: 12px; color: var(--text-dim, #888888); padding: 4px 8px; border-radius: var(--corner-low, 5px); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tag-row:hover { color: var(--text-base, #AAABAC); }
+.tag-row.on { color: var(--input, #8AB6BB); background: var(--background-sunk, #1A1C1C); }
+.tag-count { color: var(--text-faint, #666666); float: right; }
+
+.cab-main { padding: 16px; box-sizing: border-box; }
+.cab-grid { display: grid; grid-template-columns: repeat(8, 76px); gap: 8px; }
+.thumb { position: relative; cursor: pointer; }
+.thumb.dragging { opacity: 0.4; }
+.thumb-box { position: relative; aspect-ratio: 1; background: var(--background-sunk, #1A1C1C); border-radius: var(--corner-low, 5px); overflow: hidden; }
+.thumb.sel .thumb-box { outline: 1px solid var(--input, #8AB6BB); }
+.thumb-box iframe { border: 0; position: absolute; pointer-events: none; }
+.thumb-name { margin-top: 4px; font-size: 10px; color: var(--text-base, #AAABAC); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.thumb-del { position: absolute; top: 3px; right: 3px; width: 15px; height: 15px; border-radius: 50%; background: var(--background-sunk, #1A1C1C); color: var(--text-dim, #888888); font-size: 11px; line-height: 15px; text-align: center; opacity: 0; transition: opacity 0.1s; z-index: 2; }
+.thumb:hover .thumb-del { opacity: 1; }
+.thumb-del:hover { color: var(--danger, #985954); }
+.thumb-add .thumb-box { display: flex; align-items: center; justify-content: center; border: 1px dashed var(--border, #3A3C3C); color: var(--input, #8AB6BB); font-size: 20px; }
+.thumb-add:hover .thumb-box { border-color: var(--input, #8AB6BB); }
+
+.cab-mod { width: 0; flex: none; overflow: hidden; transition: width 0.2s ease; border-left: 0 solid var(--border, #3A3C3C); }
+.cab-mod.on { border-left-width: 1px; width: 340px; }
+.mod-in { width: 340px; padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; height: 100%; }
+.mod-top { display: flex; align-items: center; justify-content: space-between; }
+.mod-title { color: var(--text-base, #AAABAC); font-size: 14px; font-weight: 600; }
+.mod-close { background: none; border: none; color: var(--text-faint, #666666); cursor: pointer; font-size: 18px; line-height: 1; }
+.mod-close:hover { color: var(--text-base, #AAABAC); }
+.mod-view { display: flex; flex-direction: column; gap: 12px; flex: 1; }
+.mod-stage { background: var(--background-sunk, #1A1C1C); border-radius: var(--corner-low, 5px); display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 16px; min-height: 150px; }
+.mod-stage iframe { border: 0; }
+.mod-actions { display: flex; gap: 8px; }
+.mod-actions button { flex: 1; background: var(--background-sunk, #1A1C1C); border: none; color: var(--input, #8AB6BB); font-family: inherit; font-size: 11px; padding: 8px; border-radius: var(--corner-low, 5px); cursor: pointer; }
+.mod-actions button:hover { color: var(--text-base, #AAABAC); }
+.mod-desc { color: var(--text-dim, #888888); font-size: 12px; line-height: 1.5; }
+.mod-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: auto; justify-content: flex-end; }
+.mod-tag { background: var(--background-sunk, #1A1C1C); color: var(--input, #8AB6BB); font-size: 11px; padding: 3px 8px; border-radius: 999px; }
+.mod-drop { min-height: 84px; box-sizing: border-box; width: 100%; border: 1px dashed var(--border, #3A3C3C); border-radius: var(--corner-low, 5px); background: var(--background-sunk, #1A1C1C); color: var(--input, #8AB6BB); font-family: inherit; font-size: 11px; padding: 9px 11px; outline: none; resize: vertical; }
+.mod-drop::placeholder { color: var(--text-faint, #666666); }
+.mod-drop.has { border-style: solid; border-color: var(--input, #8AB6BB); }
+.mod-add input, .mod-add textarea:not(.mod-drop) { width: 100%; box-sizing: border-box; background: var(--background-sunk, #1A1C1C); border: none; color: var(--input, #8AB6BB); font-family: inherit; font-size: 12px; padding: 8px 10px; border-radius: var(--corner-low, 5px); outline: none; resize: vertical; }
+.add-save { background: var(--input, #8AB6BB); border: none; color: var(--background-sunk, #1A1C1C); font-family: inherit; font-size: 12px; font-weight: 600; padding: 9px; border-radius: var(--corner-low, 5px); cursor: pointer; }
+.add-save:disabled { opacity: 0.4; cursor: default; }
+[hidden] { display: none !important; }
+</style>
+
+<div class="cab">
+  <div class="cab-aside">
+    <div class="cab-atitle" data-scv-slot="label" contenteditable="true">cabinet</div>
+    <div class="tag-list"></div>
+  </div>
+  <div class="cab-main"><div class="cab-grid"></div></div>
+  <div class="cab-mod">
+    <div class="mod-in">
+      <div class="mod-top"><span class="mod-title"></span><button class="mod-close">×</button></div>
+      <div class="mod-view mod-preview" hidden>
+        <div class="mod-stage"></div>
+        <div class="mod-actions"><button class="mod-copy">copy</button><button class="mod-dl">download</button></div>
+        <div class="mod-desc"></div>
+        <div class="mod-tags"></div>
+      </div>
+      <div class="mod-view mod-add" hidden>
+        <textarea class="mod-drop" placeholder="paste a component here (an authored .html or a harvest), or drop its file"></textarea>
+        <input class="add-name" placeholder="name" type="text">
+        <input class="add-tags" placeholder="tags, comma separated" type="text">
+        <textarea class="add-desc" placeholder="description" rows="3"></textarea>
+        <button class="add-save" disabled>save to cabinet</button>
+      </div>
+    </div>
+  </div>
+  <div class="cab-store" hidden></div>
+</div>
+
+<script>
+const q = s => root.querySelector(s);
+const grid = q('.cab-grid'), tagList = q('.tag-list'), mod = q('.cab-mod'), store = q('.cab-store');
+const drop = q('.mod-drop'), addName = q('.add-name'), addTags = q('.add-tags'), addDesc = q('.add-desc'), addSave = q('.add-save');
+let items = [], activeTag = null, pending = '', fid = 0, current = null;
+
+const b64 = s => { try { return btoa(unescape(encodeURIComponent(s))); } catch { return ''; } };
+const unb64 = s => { try { return decodeURIComponent(escape(atob(s))); } catch { return ''; } };
+const persist = () => { store.dataset.items = b64(JSON.stringify(items)); };
+const shown = () => items.map((it, i) => [it, i]).filter(([it]) => !activeTag || (it.tags || []).includes(activeTag));
+
+const bodyOf = html => { const m = html.match(/<body[^>]*>([\s\S]*)<\/body>/i); return m ? m[1] : html; };
+const SHOW = 'var t=document.querySelector("template[data-scv-comp]");if(t){var h=document.createElement("div"),r=h.attachShadow({mode:"open"});r.append(t.content.cloneNode(true));r.querySelectorAll("script").forEach(function(s){s.remove()});document.body.prepend(h)}'; // authored file shows its markup, script stays off
+const frame = (html, fit) => { // sandboxed render; measures its content, then scales to fit (fit=box px) or sizes to it (fit=null)
+  const id = 'f' + (++fid); const f = document.createElement('iframe'); f.dataset.fid = id; f.dataset.fit = fit || '';
+  f.setAttribute('sandbox', 'allow-scripts'); f.setAttribute('scrolling', 'no');
+  f.style.opacity = '0'; f.style.transition = 'opacity 0.12s'; // stay hidden until measured + placed, no top-left flash
+  f.srcdoc = '<body style="margin:0;display:inline-block;background:transparent;overflow:hidden">' + bodyOf(html)
+    + '<' + 'script>' + SHOW + ';function m(){var e=document.body.firstElementChild,r=e?e.getBoundingClientRect():{width:0,height:0};parent.postMessage({cab:"' + id + '",w:Math.ceil(r.width),h:Math.ceil(r.height)},"*");}addEventListener("load",m);setTimeout(m,80);<' + '/script></body>';
+  return f;
+};
+addEventListener('message', e => {
+  const d = e.data; if (!d || !d.cab) return;
+  const f = root.querySelector('iframe[data-fid="' + d.cab + '"]'); if (!f || !d.w || !d.h) return;
+  f.style.width = d.w + 'px'; f.style.height = d.h + 'px';
+  if (f.dataset.fit) { const box = +f.dataset.fit, s = Math.min(box * 0.78 / d.w, box * 0.78 / d.h, 1.6); // 0.78 leaves padding around the render
+    f.style.left = '50%'; f.style.top = '50%'; f.style.transform = 'translate(-50%,-50%) scale(' + s + ')';
+  } else if (f.closest('.mod-stage')) { // preview shows the component at original size - grow the module to fit it, never clip
+    const w = Math.max(340, d.w + 68); mod.style.width = w + 'px'; q('.mod-in').style.width = w + 'px';
+  }
+  f.style.opacity = '1'; // now sized + placed, reveal
+}, { signal });
+
+const renderTags = () => {
+  const counts = {}; items.forEach(it => (it.tags || []).forEach(t => counts[t] = (counts[t] || 0) + 1));
+  tagList.textContent = '';
+  const mk = (label, tag, count) => { const r = document.createElement('div'); r.className = 'tag-row' + (activeTag === tag ? ' on' : ''); r.dataset.tag = tag == null ? '' : tag;
+    r.textContent = label; if (count != null) { const c = document.createElement('span'); c.className = 'tag-count'; c.textContent = count; r.appendChild(c); } tagList.appendChild(r); };
+  mk('all', null, items.length);
+  Object.keys(counts).sort().forEach(t => mk(t, t, counts[t]));
+};
+const renderGrid = () => {
+  grid.textContent = '';
+  shown().forEach(([it, i]) => {
+    const t = document.createElement('div'); t.className = 'thumb'; t.dataset.i = i;
+    const box = document.createElement('div'); box.className = 'thumb-box'; box.appendChild(frame(it.html, 76));
+    const del = document.createElement('div'); del.className = 'thumb-del'; del.textContent = '×'; del.dataset.del = i;
+    const nm = document.createElement('div'); nm.className = 'thumb-name'; nm.textContent = it.name;
+    t.append(del, box, nm); grid.appendChild(t);
+  });
+  const add = document.createElement('div'); add.className = 'thumb thumb-add'; add.dataset.add = '1';
+  const abox = document.createElement('div'); abox.className = 'thumb-box'; abox.textContent = '+';
+  const anm = document.createElement('div'); anm.className = 'thumb-name'; anm.textContent = 'add';
+  add.append(abox, anm); grid.appendChild(add);
+};
+
+const showView = v => { q('.mod-preview').hidden = v !== 'preview'; q('.mod-add').hidden = v !== 'add'; mod.classList.add('on'); };
+const openPreview = i => {
+  const it = items[i]; if (!it) return; current = it; resetW(); // start at 340, the measure grows it to the component
+  [...grid.querySelectorAll('.thumb')].forEach(t => t.classList.toggle('sel', +t.dataset.i === i));
+  q('.mod-title').textContent = it.name;
+  const stage = q('.mod-stage'); stage.textContent = ''; stage.appendChild(frame(it.html, null));
+  const tw = q('.mod-tags'); tw.textContent = ''; (it.tags || []).forEach(tag => { const s = document.createElement('span'); s.className = 'mod-tag'; s.textContent = tag; tw.appendChild(s); });
+  q('.mod-desc').textContent = it.desc || ''; showView('preview');
+};
+const resetW = () => { mod.style.width = ''; q('.mod-in').style.width = ''; }; // drop grow-to-fit width, back to the fixed 340
+const openAdd = () => { current = null; resetW(); q('.mod-title').textContent = 'new component'; drop.value = ''; setPending(); addName.value = addTags.value = addDesc.value = ''; showView('add'); };
+const closeMod = () => { mod.classList.remove('on'); resetW(); [...grid.querySelectorAll('.thumb')].forEach(t => t.classList.remove('sel')); };
+const setPending = () => { pending = drop.value.trim(); drop.classList.toggle('has', !!pending); addSave.disabled = !pending; }; // the textarea itself holds the payload - paste, type, or drop into it
+
+grid.addEventListener('click', e => {
+  if (e.target.closest('.thumb-add')) return openAdd();
+  const d = e.target.closest('.thumb-del'); if (d) { e.stopPropagation(); items.splice(+d.dataset.del, 1); persist(); renderTags(); renderGrid(); closeMod(); return; }
+  const t = e.target.closest('.thumb'); if (t && !t._dragged) openPreview(+t.dataset.i);
+});
+let drag = null;
+grid.addEventListener('pointerdown', e => { const t = e.target.closest('.thumb:not(.thumb-add)'); if (!t || e.target.closest('.thumb-del')) return; drag = { el: t, x0: e.clientX, y0: e.clientY, moved: false, id: e.pointerId }; });
+grid.addEventListener('pointermove', e => {
+  if (!drag) return;
+  if (!drag.moved) { if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 5) return; drag.moved = true; drag.el.classList.add('dragging'); try { drag.el.setPointerCapture(drag.id); } catch {} }
+  const tiles = [...grid.querySelectorAll('.thumb:not(.thumb-add):not(.dragging)')];
+  const after = tiles.find(t => { const r = t.getBoundingClientRect(); return e.clientY < r.top || (e.clientY <= r.bottom && e.clientX < r.left + r.width / 2); }); // row-major: a lower row, or same row left of centre
+  if (after) grid.insertBefore(drag.el, after); else grid.insertBefore(drag.el, q('.thumb-add'));
+});
+grid.addEventListener('pointerup', () => {
+  if (!drag) return;
+  if (drag.moved) { drag.el.classList.remove('dragging');
+    const order = [...grid.querySelectorAll('.thumb:not(.thumb-add)')].map(t => +t.dataset.i);
+    items = order.map(i => items[i]); persist(); renderTags(); renderGrid();
+  }
+  const d = drag; drag = null; if (d.moved) { d.el._dragged = true; setTimeout(() => { d.el._dragged = false; }, 0); }
+});
+
+tagList.addEventListener('click', e => { const r = e.target.closest('.tag-row'); if (!r) return; activeTag = r.dataset.tag || null; renderTags(); renderGrid(); });
+q('.mod-close').addEventListener('click', closeMod);
+q('.mod-copy').addEventListener('click', () => { if (current) navigator.clipboard?.writeText(current.html).catch(() => {}); });
+q('.mod-dl').addEventListener('click', () => { if (!current) return; const b = new Blob([current.html], { type: 'text/html' }); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = (current.name || 'component').replace(/\s+/g, '-') + '.html'; a.click(); setTimeout(() => URL.revokeObjectURL(u), 1000); });
+drop.addEventListener('input', setPending); // fires on paste + type
+drop.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); });
+drop.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files[0]; if (f) { const r = new FileReader(); r.onload = () => { drop.value = r.result; setPending(); }; r.readAsText(f); } else { drop.value = e.dataTransfer.getData('text'); setPending(); } });
+addSave.addEventListener('click', () => {
+  if (!pending) return;
+  items.push({ name: addName.value.trim() || 'untitled', tags: addTags.value.split(',').map(s => s.trim()).filter(Boolean), desc: addDesc.value.trim(), html: pending });
+  persist(); renderTags(); renderGrid(); closeMod();
+});
+
+try { const saved = store.dataset.items ? JSON.parse(unb64(store.dataset.items)) : []; if (Array.isArray(saved)) items = saved; } catch {}
+renderTags(); renderGrid();
+</script>
+</template>

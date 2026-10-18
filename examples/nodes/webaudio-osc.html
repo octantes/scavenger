@@ -1,0 +1,27 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>webaudio-osc - scavenger node</title>
+<script type="scv/node" data-scv-node>
+defineNode({
+  name: 'webaudio-osc',
+  icon: '♪',
+  color: '#ffa500',
+  inputType: false,
+  init(ctx) {
+    const ac = ctx.mem.ac = ctx.shared('audio', () => new AudioContext(), a => a.close());
+    const osc = ctx.mem.osc = ac.createOscillator(), g = ac.createGain();
+    g.gain.value = 0.05;
+    osc.connect(g).connect(ac.destination);
+    osc.start();
+    const resume = () => { if (ac.state === 'suspended') ac.resume(); }; // autoplay waits for a gesture
+    addEventListener('pointerdown', resume, { signal: ctx.signal });
+    addEventListener('keydown', resume, { signal: ctx.signal });
+  },
+  onReceive(value, ctx) {
+    const f = Math.max(20, Number(value) || 440);
+    ctx.mem.osc.frequency.setValueAtTime(f, ctx.mem.ac.currentTime);
+    ctx.emit(f);
+  },
+  teardown(ctx) { ctx.mem.osc.stop(); ctx.mem.osc.disconnect(); },
+});
+</script>

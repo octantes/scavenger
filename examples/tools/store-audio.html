@@ -1,0 +1,96 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>store-audio - scavenger component</title>
+<template data-scv-comp="store-audio">
+<style>
+  :host { display: block; }
+  .au { width: 300px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); padding: 8px 10px 10px; box-sizing: border-box; font-family: var(--font-mono, 'SF Mono', ui-monospace, monospace); }
+  .au-lab { color: var(--text-faint, #666666); font-size: 10px; text-transform: lowercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .au-panel { display: flex; flex-direction: column; gap: 4px; background: var(--background-sunk, #1A1C1C); border-radius: var(--corner-low, 5px); padding: 6px; box-sizing: border-box; margin-bottom: 4px; }
+  .au-name { font-size: 10px; color: var(--text-base, #AAABAC); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .au-idx { font-size: 9px; color: var(--text-faint, #666666); text-align: center; }
+  .au-bar { position: relative; flex: none; height: 10px; background: var(--background-raised, #252727); border-radius: var(--corner-low, 5px); overflow: hidden; cursor: pointer; }
+  .au-fill { height: 100%; width: 0%; background: var(--input, #8AB6BB); border-radius: inherit; pointer-events: none; }
+  .au-time { display: flex; justify-content: space-between; font-size: 9px; color: var(--text-dim, #888888); }
+  .au-ctrl { display: flex; align-items: stretch; gap: 4px; }
+  .au-btn { flex: 1; min-width: 0; height: 28px; box-sizing: border-box; background: var(--background-sunk, #1A1C1C); border: none; border-radius: var(--corner-low, 5px); color: var(--text-base, #AAABAC); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .au-btn:hover { color: var(--output, #986C98); }
+  .au-btn:active { transform: translateY(1px); background: var(--background-raised, #252727); }
+  .au-btn svg { width: 14px; height: 14px; fill: currentColor; pointer-events: none; display: block; }
+  .au-engine { display: none; }
+  .au-file-in { display: none; }
+  textarea[hidden] { display: none; }
+</style>
+
+<div class="au">
+  <div class="au-lab" data-scv-slot="label">audio</div>
+  <div class="au-panel">
+    <div class="au-name" data-au="name">—</div>
+    <div class="au-bar" data-au="bar"><div class="au-fill" data-au="fill"></div></div>
+    <div class="au-time">
+      <span data-au="cur">0:00</span>
+      <span class="au-idx" data-au="idx"></span>
+      <span data-au="dur">0:00</span>
+    </div>
+    <audio class="au-engine" data-au="engine"></audio>
+  </div>
+  <div class="au-ctrl">
+    <button type="button" class="au-btn" data-au="back" title="previous track">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h2v12H6zm10.5 0L9 12l7.5 6z"/></svg>
+    </button>
+    <button type="button" class="au-btn" data-au="add" title="add audio">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4h4v6h6v4h-6v6h-4v-6H4v-4h6z"/></svg>
+    </button>
+    <button type="button" class="au-btn" data-au="play" title="play/pause">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path data-au="playicon" d="M8 5v14l11-7z"/></svg>
+    </button>
+    <button type="button" class="au-btn" data-au="stop" title="stop">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12"/></svg>
+    </button>
+    <button type="button" class="au-btn" data-au="fwd" title="next track">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 6h-2v12h2zM7.5 6 15 12l-7.5 6z"/></svg>
+    </button>
+  </div>
+  <input type="file" accept="audio/*" class="au-file-in" data-au="file">
+  <textarea data-scv-slot="audio" hidden></textarea>
+</div>
+
+<script>
+const $ = s => root.querySelector(s);
+const eng = $('[data-au="engine"]'), play = $('[data-au="play"]'), playIcon = $('[data-au="playicon"]'),
+      bar = $('[data-au="bar"]'), fill = $('[data-au="fill"]'), curEl = $('[data-au="cur"]'), durEl = $('[data-au="dur"]'),
+      nameEl = $('[data-au="name"]'), idxEl = $('[data-au="idx"]'), fileIn = $('[data-au="file"]'), slot = $('[data-scv-slot="audio"]');
+const tracks = slot.value.split('\n').filter(Boolean).map(l => { const [ref, name] = l.split('\t'); return { ref, name }; }); // ref, tab, name - bytes live once in file
+let idx = 0, playing = false;
+const ft = s => isFinite(s) ? Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0') : '0:00';
+const setPlayBtn = () => { playIcon.setAttribute('d', playing ? 'M7 5v14l11-7zM7 5' : 'M8 5v14l11-7z'); play.title = playing ? 'pause' : 'play'; };
+const show = () => {
+  if (!tracks.length) { eng.removeAttribute('src'); nameEl.textContent = '—'; idxEl.textContent = ''; curEl.textContent = durEl.textContent = '0:00'; fill.style.width = '0%'; return; }
+  idx = (idx + tracks.length) % tracks.length;
+  eng.src = asset.url(tracks[idx].ref) || '';
+  nameEl.textContent = tracks[idx].name || 'track ' + (idx + 1);
+  idxEl.textContent = (idx + 1) + ' / ' + tracks.length;
+};
+const setTrack = i => { idx = i; show(); if (playing) eng.play().catch(() => {}); };
+const doStop = () => { eng.pause(); try { eng.currentTime = 0; } catch {} playing = false; setPlayBtn(); curEl.textContent = '0:00'; fill.style.width = '0%'; };
+$('[data-au="back"]').addEventListener('click', () => { if (tracks.length) { playing = false; setPlayBtn(); setTrack(idx - 1); } });
+$('[data-au="fwd"]').addEventListener('click', () => { if (tracks.length) { playing = false; setPlayBtn(); setTrack(idx + 1); } });
+play.addEventListener('click', () => { if (tracks.length) eng.paused ? eng.play().catch(() => {}) : eng.pause(); });
+$('[data-au="stop"]').addEventListener('click', doStop);
+$('[data-au="add"]').addEventListener('click', () => fileIn.click());
+eng.addEventListener('play', () => { playing = true; setPlayBtn(); emit(eng.src, eng); }); // live url - refs resolve only inside this file
+eng.addEventListener('pause', () => { playing = false; setPlayBtn(); });
+eng.addEventListener('timeupdate', () => { curEl.textContent = ft(eng.currentTime); fill.style.width = (eng.duration ? eng.currentTime / eng.duration * 100 : 0) + '%'; });
+eng.addEventListener('loadedmetadata', () => { durEl.textContent = ft(eng.duration); });
+eng.addEventListener('ended', () => { playing = false; setPlayBtn(); if (tracks.length > 1) setTrack(idx + 1); });
+bar.addEventListener('click', e => { if (eng.duration) { const r = bar.getBoundingClientRect(); eng.currentTime = (e.clientX - r.left) / r.width * eng.duration; } });
+fileIn.addEventListener('change', async () => {
+  const f = fileIn.files[0]; fileIn.value = '';
+  if (!f?.type.startsWith('audio/')) return;
+  tracks.push({ ref: await asset.put(f), name: f.name.replace(/[\t\n]/g, ' ') });
+  slot.value = tracks.map(t => t.ref + '\t' + t.name).join('\n');
+  idx = tracks.length - 1; show(); eng.play().catch(() => {});
+});
+show(); setPlayBtn();
+</script>
+</template>

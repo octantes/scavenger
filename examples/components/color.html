@@ -1,0 +1,22 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>color - scavenger component</title>
+<template data-scv-comp="color">
+<style>
+  .cc { display:flex; align-items:center; gap:10px; padding:12px 14px; background:#252727; border-radius:5px; font:13px 'SF Mono',ui-monospace,monospace; color:#AAABAC; }
+  .cc input[type=color] { width:16px; height:16px; border:0; background:none; padding:0; cursor:pointer; }
+  .cc input[type=color]::-webkit-color-swatch { border:0; border-radius:4px; }
+  .cc input[type=color]::-webkit-color-swatch-wrapper { padding:0; }
+  .cc .hex { color:#8AB6BB; text-transform:uppercase; }
+</style>
+
+<div class="cc">
+  <input type="color" value="#8AB6BB" data-scv-slot="color">
+  <span class="hex" data-scv-slot="hex">#8AB6BB</span>
+</div>
+
+<script>
+const c = root.querySelector('input'), hex = root.querySelector('[data-scv-slot=hex]');
+c.addEventListener('input', () => { hex.textContent = c.value; emit(c.value, c); });
+</script>
+</template>

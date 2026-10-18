@@ -1,0 +1,24 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>counter - scavenger component</title>
+<template data-scv-comp="counter">
+<style>
+  .ct { display:flex; align-items:center; gap:10px; padding:10px 12px; background:#252727; border-radius:5px; font:14px 'SF Mono',ui-monospace,monospace; color:#AAABAC; }
+  .ct button { width:26px; height:26px; border:0; border-radius:5px; background: none; color:#986C98; cursor:pointer; font:inherit; }
+  .ct .val { min-width:34px; text-align:center; color:#8AB6BB; }
+</style>
+
+<div class="ct">
+  <button data-op="-">-</button>
+  <span class="val" data-scv-slot="count">0</span>
+  <button data-op="+">+</button>
+</div>
+
+<script>
+const v = root.querySelector('[data-scv-slot=count]');
+root.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+  v.textContent = +v.textContent + (b.dataset.op === '+' ? 1 : -1);
+  emit(+v.textContent, v);
+}));
+</script>
+</template>

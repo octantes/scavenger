@@ -1,0 +1,45 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>chart-candle - scavenger component</title>
+<template data-scv-comp="chart-candle">
+<style>
+.cc { background: var(--background-sunk, #1A1C1C); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); padding: 14px 16px 10px; font: 11px var(--font-mono, 'SF Mono', monospace); color: var(--text-dim, #888888); width: 440px; box-sizing: border-box; }
+.cc-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.cc-title { color: var(--text-base, #AAABAC); font-weight: 600; letter-spacing: 1px; }
+.cc-last { font-size: 18px; color: var(--input, #8AB6BB); }
+svg { display: block; width: 100%; height: 180px; }
+.up { fill: var(--success, #6FAC67); stroke: var(--success, #6FAC67); }
+.dn { fill: var(--danger, #985954); stroke: var(--danger, #985954); }
+</style>
+
+<div class="cc">
+  <div class="cc-head"><span class="cc-title" data-scv-slot="title">BTC / USDT</span><span class="cc-last" data-scv-slot="last">—</span></div>
+  <svg viewBox="0 0 440 180" preserveAspectRatio="none"></svg>
+</div>
+
+<script>
+const svg = root.querySelector('svg'), last = root.querySelector('[data-scv-slot=last]');
+const SAMPLES_PER = 3, MAX = 26, NS = 'http://www.w3.org/2000/svg', W = 440, H = 180;
+const candles = [];
+let cur = null, n = 0;
+const shape = (tag, attrs) => { const el = document.createElementNS(NS, tag); for (const k in attrs) el.setAttribute(k, attrs[k]); return el; };
+const draw = () => {
+  const all = cur ? candles.concat([cur]) : candles;
+  let lo = Math.min(...all.map(c => c.l)), hi = Math.max(...all.map(c => c.h));
+  if (hi === lo) { hi += 1; lo -= 1; } const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
+  const cw = W / MAX, bw = cw * 0.6, y = v => H - ((v - lo) / (hi - lo)) * H;
+  svg.replaceChildren(...all.flatMap((c, i) => {
+    const x = i * cw + cw / 2, cls = c.c >= c.o ? 'up' : 'dn', bt = y(Math.max(c.o, c.c)), bb = y(Math.min(c.o, c.c));
+    return [shape('line', { x1: x, x2: x, y1: y(c.h), y2: y(c.l), class: cls, 'stroke-width': 1 }), shape('rect', { x: x - bw / 2, y: bt, width: bw, height: Math.max(1, bb - bt), class: cls })];
+  }));
+};
+host.addEventListener('scv-receive', e => {
+  const p = parseFloat(String(e.detail).replace(/[^0-9.]/g, '')); if (isNaN(p)) return;
+  patch(last, { text: '$' + p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) });
+  if (!cur) { cur = { o: p, h: p, l: p, c: p }; n = 1; }
+  else { cur.h = Math.max(cur.h, p); cur.l = Math.min(cur.l, p); cur.c = p; n++; }
+  if (n >= SAMPLES_PER) { candles.push(cur); if (candles.length > MAX) candles.shift(); cur = null; n = 0; }
+  draw();
+}, { signal });
+</script>
+</template>

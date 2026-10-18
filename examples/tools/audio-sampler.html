@@ -1,0 +1,650 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>audio-sampler - scavenger component</title>
+<template data-scv-comp="audio-sampler">
+<style>
+  :host { display: block; }
+  .sp { width: 980px; box-sizing: border-box; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); padding: 8px 10px 10px; font-family: var(--font-mono, 'SF Mono', ui-monospace, monospace); user-select: none; -webkit-user-select: none; color: var(--text-base, #AAABAC); }
+  .sp-title { text-align: center; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-base, #AAABAC); margin-bottom: 6px; }
+  .sp-main { display: flex; gap: 8px; }
+  .sp-modes { display: flex; flex-direction: column; gap: 8px; width: 86px; flex: none; }
+  .sp-modes .sp-btn { width: 100%; flex: 1; }
+  .sp-frame { position: relative; flex: 1; height: 210px; background: var(--background-sunk, #1A1C1C); border-radius: var(--corner-low, 5px); overflow: hidden; touch-action: none; cursor: crosshair; }
+  .sp-frame canvas { display: block; width: 100%; height: 100%; border: 0; padding: 0; margin: 0; }
+  .sp-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-dim, #888); letter-spacing: 1px; cursor: pointer; background: var(--background-sunk, #1A1C1C); }
+  .sp-empty[hidden] { display: none; }
+  .sp-empty::before { content: '+'; font-size: 26px; line-height: 1; color: var(--input, #8AB6BB); }
+
+  .sp-port { display: flex; gap: 18px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border, #3A3C3C); align-items: stretch; }
+  .sp-col { display: flex; flex-direction: column; justify-content: space-between; gap: 4px; }
+  .sp-col-outs { align-items: flex-end; }
+  .sp-p { position: relative; display: flex; align-items: center; gap: 6px; font-size: 9px; letter-spacing: 1px; text-transform: lowercase; white-space: nowrap; }
+  .sp-p::before { content: ''; width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .sp-in { color: var(--input, #8AB6BB); } .sp-in::before { background: var(--input, #8AB6BB); }
+  .sp-out { color: var(--output, #986C98); } .sp-out::before { background: var(--output, #986C98); }
+
+  .sp-ctl { flex: 1; display: flex; gap: 20px; align-items: center; justify-content: center; }
+  .sp-left { display: flex; gap: 8px; align-items: center; }
+  .sp-leftcol { display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+  .sp-num { width: 60px; height: 24px; box-sizing: border-box; border: none; border-radius: var(--corner-low, 5px); background: var(--background-sunk, #1A1C1C); color: var(--text-base, #AAABAC); font: 11px var(--font-mono, ui-monospace, monospace); text-align: center; outline: none; padding: 0 4px; }
+  .sp-num::-webkit-outer-spin-button, .sp-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .sp-num { -moz-appearance: textfield; appearance: textfield; }
+  .sp-num::placeholder { color: var(--text-dim, #888); opacity: .8; }
+  .sp-kbtxt { width: 60px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; box-sizing: border-box; cursor: pointer; border-radius: var(--corner-low, 5px); background: var(--background-sunk, #1A1C1C); color: var(--text-base, #AAABAC); }
+  .sp-kbtxt:hover { color: var(--input, #8AB6BB); }
+  .sp-kbtxt.on { background: var(--output, #986C98); color: var(--background-sunk, #1A1C1C); }
+  .sp-kbtxt.on:hover { color: var(--background-sunk, #1A1C1C); }
+  .sp-oct { width: 60px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--input, #8AB6BB); box-sizing: border-box; }
+
+  .sp-knobs { display: flex; gap: 10px; align-items: flex-start; flex-wrap: nowrap; white-space: nowrap; }
+  .sp-knob { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .sp-knob-label { font-size: 8px; letter-spacing: 1px; color: var(--text-dim, #888); text-transform: uppercase; }
+  .sp-knob-read { font-size: 9px; color: var(--input, #8AB6BB); min-width: 44px; text-align: center; }
+  .sp-dial { position: relative; width: 38px; height: 38px; cursor: ns-resize; touch-action: none; }
+  .sp-dial svg { display: block; width: 38px; height: 38px; overflow: visible; pointer-events: none; }
+  .sp-dial svg * { pointer-events: none; }
+
+  .sp-btn { display: flex; align-items: center; justify-content: center; box-sizing: border-box; height: 24px; border: none; border-radius: var(--corner-low, 5px); background: var(--background-sunk, #1A1C1C); color: var(--text-base, #AAABAC); font: 9px var(--font-mono, ui-monospace, monospace); text-transform: uppercase; letter-spacing: 1px; cursor: pointer; padding: 0 8px; }
+  .sp-btn:hover { color: var(--input, #8AB6BB); }
+  .sp-btn.on { background: var(--output, #986C98); color: var(--background-sunk, #1A1C1C); }
+  .sp-wbtn { width: 100%; box-sizing: border-box; }
+  .sp-select { height: 24px; box-sizing: border-box; border: none; border-radius: var(--corner-low, 5px); background: var(--background-sunk, #1A1C1C); color: var(--text-base, #AAABAC); font: 9px var(--font-mono, ui-monospace, monospace); text-transform: uppercase; letter-spacing: 1px; padding: 0 6px; outline: none; cursor: pointer; display: none; }
+  .sp-file-in { display: none; }
+  textarea[data-scv-slot] { display: none; }
+</style>
+
+<div class="sp">
+  <div class="sp-title">audio-sampler</div>
+
+  <div class="sp-main">
+    <div class="sp-modes" data-sp="mode">
+      <button type="button" class="sp-btn" data-sp="mode-classic">classic</button>
+      <button type="button" class="sp-btn" data-sp="mode-oneshot">one-shot</button>
+      <button type="button" class="sp-btn" data-sp="mode-slice">slice</button>
+    </div>
+    <div class="sp-frame" data-sp="frame">
+      <div class="sp-empty" data-sp="empty" hidden>load sample</div>
+      <canvas data-sp="canvas" hidden></canvas>
+    </div>
+  </div>
+
+  <div class="sp-port">
+    <div class="sp-col">
+      <div class="sp-p sp-in" title="take {id, ref}, cmd, transport, note {on, note, velocity} or a bpm number"><span>in</span></div>
+    </div>
+
+    <div class="sp-ctl">
+      <div class="sp-left">
+        <div class="sp-leftcol">
+          <button type="button" class="sp-btn sp-wbtn" data-sp="warp-re-pitch">re-pitch</button>
+          <button type="button" class="sp-btn sp-wbtn" data-sp="warp-beats">beats</button>
+        </div>
+        <div class="sp-leftcol">
+          <input type="number" class="sp-num" data-sp="bpm" placeholder="bpm" min="20" max="300">
+          <input type="number" class="sp-num" data-sp="root" placeholder="root" min="0" max="127" value="60">
+        </div>
+        <div class="sp-leftcol">
+          <div class="sp-kbtxt" data-sp="kbtn">kb</div>
+          <div class="sp-oct" data-sp="oct">oct 4</div>
+        </div>
+      </div>
+
+      <div class="sp-knobs">
+        <div class="sp-knob"><div class="sp-knob-label">gain</div><div class="sp-dial" data-sp-dial="gain"><svg viewBox="0 0 38 38" aria-hidden="true"><path class="sp-dial-base" d="M 9.1 9.1 A 14 14 0 1 1 9.1 28.9" stroke="#3A3C3C" stroke-width="4" stroke-linecap="round" fill="none"></path><path class="sp-dial-value" stroke="#8AB6BB" stroke-width="4" stroke-linecap="round" fill="none"></path><line class="sp-dial-pointer" x1="19" y1="19" stroke="#AAABAC" stroke-width="2" stroke-linecap="round"></line></svg></div><div class="sp-knob-read" data-sp="read-gain">0.0db</div></div>
+        <div class="sp-knob"><div class="sp-knob-label">trn</div><div class="sp-dial" data-sp-dial="semi"><svg viewBox="0 0 38 38" aria-hidden="true"><path class="sp-dial-base" d="M 9.1 9.1 A 14 14 0 1 1 9.1 28.9" stroke="#3A3C3C" stroke-width="4" stroke-linecap="round" fill="none"></path><path class="sp-dial-value" stroke="#8AB6BB" stroke-width="4" stroke-linecap="round" fill="none"></path><line class="sp-dial-pointer" x1="19" y1="19" stroke="#AAABAC" stroke-width="2" stroke-linecap="round"></line></svg></div><div class="sp-knob-read" data-sp="read-semi">+0</div></div>
+        <div class="sp-knob"><div class="sp-knob-label">f-in</div><div class="sp-dial" data-sp-dial="fadein"><svg viewBox="0 0 38 38" aria-hidden="true"><path class="sp-dial-base" d="M 9.1 9.1 A 14 14 0 1 1 9.1 28.9" stroke="#3A3C3C" stroke-width="4" stroke-linecap="round" fill="none"></path><path class="sp-dial-value" stroke="#8AB6BB" stroke-width="4" stroke-linecap="round" fill="none"></path><line class="sp-dial-pointer" x1="19" y1="19" stroke="#AAABAC" stroke-width="2" stroke-linecap="round"></line></svg></div><div class="sp-knob-read" data-sp="read-fadein">10ms</div></div>
+        <div class="sp-knob"><div class="sp-knob-label">f-out</div><div class="sp-dial" data-sp-dial="fadeout"><svg viewBox="0 0 38 38" aria-hidden="true"><path class="sp-dial-base" d="M 9.1 9.1 A 14 14 0 1 1 9.1 28.9" stroke="#3A3C3C" stroke-width="4" stroke-linecap="round" fill="none"></path><path class="sp-dial-value" stroke="#8AB6BB" stroke-width="4" stroke-linecap="round" fill="none"></path><line class="sp-dial-pointer" x1="19" y1="19" stroke="#AAABAC" stroke-width="2" stroke-linecap="round"></line></svg></div><div class="sp-knob-read" data-sp="read-fadeout">10ms</div></div>
+        <div class="sp-knob"><div class="sp-knob-label">a</div><div class="sp-dial" data-sp-dial="attack"><svg viewBox="0 0 38 38" aria-hidden="true"><path class="sp-dial-base" d="M 9.1 9.1 A 14 14 0 1 1 9.1 28.9" stroke="#3A3C3C" stroke-width="4" stroke-linecap="round" fill="none"></path><path class="sp-dial-value" stroke="#8AB6BB" stroke-width="4" stroke-linecap="round" fill="none"></path><line class="sp-dial-pointer" x1="19" y1="19" stroke="#AAABAC" stroke-width="2" stroke-linecap="round"></line></svg></div><div class="sp-knob-read" data-sp="read-attack">5ms</div></div>
+        <div class="sp-knob"><div class="sp-knob-label">d</div><div class="sp-dial" data-sp-dial="decay"><svg viewBox="0 0 38 38" aria-hidden="true"><path class="sp-dial-base" d="M 9.1 9.1 A 14 14 0 1 1 9.1 28.9" stroke="#3A3C3C" stroke-width="4" stroke-linecap="round" fill="none"></path><path class="sp-dial-value" stroke="#8AB6BB" stroke-width="4" stroke-linecap="round" fill="none"></path><line class="sp-dial-pointer" x1="19" y1="19" stroke="#AAABAC" stroke-width="2" stroke-linecap="round"></line></svg></div><div class="sp-knob-read" data-sp="read-decay">100ms</div></div>
+        <div class="sp-knob"><div class="sp-knob-label">s</div><div class="sp-dial" data-sp-dial="sustain"><svg viewBox="0 0 38 38" aria-hidden="true"><path class="sp-dial-base" d="M 9.1 9.1 A 14 14 0 1 1 9.1 28.9" stroke="#3A3C3C" stroke-width="4" stroke-linecap="round" fill="none"></path><path class="sp-dial-value" stroke="#8AB6BB" stroke-width="4" stroke-linecap="round" fill="none"></path><line class="sp-dial-pointer" x1="19" y1="19" stroke="#AAABAC" stroke-width="2" stroke-linecap="round"></line></svg></div><div class="sp-knob-read" data-sp="read-sustain">0.80</div></div>
+        <div class="sp-knob"><div class="sp-knob-label">r</div><div class="sp-dial" data-sp-dial="release"><svg viewBox="0 0 38 38" aria-hidden="true"><path class="sp-dial-base" d="M 9.1 9.1 A 14 14 0 1 1 9.1 28.9" stroke="#3A3C3C" stroke-width="4" stroke-linecap="round" fill="none"></path><path class="sp-dial-value" stroke="#8AB6BB" stroke-width="4" stroke-linecap="round" fill="none"></path><line class="sp-dial-pointer" x1="19" y1="19" stroke="#AAABAC" stroke-width="2" stroke-linecap="round"></line></svg></div><div class="sp-knob-read" data-sp="read-release">200ms</div></div>
+        <div class="sp-knob"><div class="sp-knob-label">voices</div><div class="sp-dial" data-sp-dial="voices"><svg viewBox="0 0 38 38" aria-hidden="true"><path class="sp-dial-base" d="M 9.1 9.1 A 14 14 0 1 1 9.1 28.9" stroke="#3A3C3C" stroke-width="4" stroke-linecap="round" fill="none"></path><path class="sp-dial-value" stroke="#8AB6BB" stroke-width="4" stroke-linecap="round" fill="none"></path><line class="sp-dial-pointer" x1="19" y1="19" stroke="#AAABAC" stroke-width="2" stroke-linecap="round"></line></svg></div><div class="sp-knob-read" data-sp="read-voices">4</div></div>
+        <div class="sp-knob"><div class="sp-knob-label">slice</div><div class="sp-dial" data-sp-dial="sens"><svg viewBox="0 0 38 38" aria-hidden="true"><path class="sp-dial-base" d="M 9.1 9.1 A 14 14 0 1 1 9.1 28.9" stroke="#3A3C3C" stroke-width="4" stroke-linecap="round" fill="none"></path><path class="sp-dial-value" stroke="#8AB6BB" stroke-width="4" stroke-linecap="round" fill="none"></path><line class="sp-dial-pointer" x1="19" y1="19" stroke="#AAABAC" stroke-width="2" stroke-linecap="round"></line></svg></div><div class="sp-knob-read" data-sp="read-sens">50%</div></div>
+      </div>
+    </div>
+
+    <div class="sp-col sp-col-outs">
+      <div class="sp-p sp-out" data-out="audio" title="AudioBuffer of loaded clip">audio</div>
+    </div>
+  </div>
+
+  <input type="file" accept="audio/*" class="sp-file-in" data-sp="file">
+  <textarea data-scv-slot="state" hidden></textarea>
+</div>
+
+<script>
+const $ = s => root.querySelector(s);
+const out = k => $(`[data-out="${k}"]`);
+const ac = shared('audio', () => new AudioContext(), a => a.close());
+const decode = shared('audio-decode', () => b => ac.decodeAudioData(b)); // one decode per take per page
+const resume = () => ac.state === 'suspended' ? ac.resume() : Promise.resolve();
+const setOn = (el, c, on) => el?.classList.toggle(c, !!on);
+const setTxt = (el, t) => patch(el, { text: t });
+const setVal = (el, v) => patch(el, { value: v });
+
+let clip = null;
+let mode = 'classic', warp = 're-pitch';
+let gain = 1.0, attack = 0.005, decay = 0.1, sustain = 0.8, release = 0.2;
+let fadeIn = 0.01, fadeOut = 0.01, sensVal = 50, semi = 0;
+let clipStart = 0, clipEnd = 1;
+let slices = [], autoSlices = [];
+let rootNote = 60, bpm = 120, voices = 4, curKey = null;
+let viewStart = 0, viewSpan = 1, waveStatic = null;
+const STATIC_W = 2048;
+let voicesActive = [], clipRef = '', raf = 0;
+const outGain = ac.createGain();
+outGain.gain.value = gain;
+outGain.connect(ac.destination);
+let kbOn = false, kbOct = 4;
+const held = {};
+let transportEnv = null, beatQ = [], beatTimer = null, beatToken = 0;
+
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+// ---- Ableton-style gain: dB display, amp storage (0dB default == amp 1.0, +6dB full) ----
+// dial v in [0,1] -> db in [-60, +6], 0dB rests at ~0.75 rotation
+const gainDB = v => 6 - 60 * Math.pow(1 - v, 1.65);
+const gainV = db => 1 - Math.pow((6 - db) / 60, 1 / 1.65);
+const ampFromDB = db => Math.pow(10, db / 20);
+const dbFromAmp = a => a <= 0 ? -120 : 20 * Math.log10(a);
+const gainDBRo = v => { const db = Math.max(-60, Math.min(6, 6 - 60 * Math.pow(1 - v, 1.65))); return db; };
+
+function detectTransients() {
+  autoSlices = [];
+  if (!clip || sensVal <= 0) return;
+  const data = clip.getChannelData(0), len = data.length, sr = clip.sampleRate;
+  const winSize = Math.max(1, Math.round(sr * 0.01)), hopSize = Math.max(1, Math.round(sr * 0.005));
+  const nFrames = Math.floor((len - winSize) / hopSize) + 1;
+  if (nFrames < 3) return;
+  const env = new Float32Array(nFrames);
+  for (let f = 0; f < nFrames; f++) { const o = f * hopSize; let s = 0; for (let j = o; j < o + winSize; j++) s += data[j] * data[j]; env[f] = Math.sqrt(s / winSize); }
+  const onset = new Float32Array(nFrames);
+  for (let f = 1; f < nFrames; f++) onset[f] = Math.max(0, env[f] - env[f - 1]);
+  let mx = 0; for (let f = 0; f < nFrames; f++) if (onset[f] > mx) mx = onset[f];
+  if (mx === 0) return;
+  const thr = mx * (1.0 - clamp(sensVal, 1, 100) / 100 * 0.95);
+  const md = Math.max(1, Math.round(sr * 0.03 / hopSize));
+  const pk = [];
+  for (let f = 1; f < nFrames - 1; f++) if (onset[f] > thr && onset[f] >= onset[f - 1] && onset[f] >= onset[f + 1]) if (!pk.length || f - pk[pk.length - 1] >= md) pk.push(f);
+  autoSlices = pk.map(f => f * hopSize / len);
+}
+function setClip(buf) {
+  clip = buf; clipStart = 0; clipEnd = 1; slices = []; detectTransients(); waveStatic = null;
+  if (curKey) loadSetup();
+  applyVisibility();
+  emitLive(); redraw();
+}
+function loadRef(ref) { // bytes live once in file - ref is all sampler keeps
+  clipRef = ref; persist();
+  asset.decode(ref, decode).then(b => { if (b && clipRef === ref) setClip(b); }).catch(e => console.warn('[audio-sampler] decode failed', e));
+}
+
+// ---- region-relative slice reachability ----
+const inRegion = f => f > clipStart && f < clipEnd;
+function currentSlices() {
+  if (slices.length) return slices.filter(inRegion).map(f => (f - clipStart) / (clipEnd - clipStart));
+  if (autoSlices.length) return autoSlices.filter(inRegion).map(f => (f - clipStart) / (clipEnd - clipStart));
+  return [];
+}
+function reachToStored(relIdx) {
+  let n = -1;
+  for (let i = 0; i < slices.length; i++) { if (inRegion(slices[i])) { n++; if (n === relIdx) return i; } }
+  return -1;
+}
+
+function killVoice(v) {
+  try { v.src.stop(); } catch {}
+  try { v.envGain.disconnect(); } catch {}
+  const i = voicesActive.indexOf(v); if (i >= 0) voicesActive.splice(i, 1);
+}
+function killAll() { for (const v of voicesActive.slice()) killVoice(v); voicesActive = []; }
+function lastVoice() { return voicesActive[voicesActive.length - 1] || null; }
+
+function noteOn(note, velocity, time) {
+  if (!clip) return;
+  while (voicesActive.length >= Math.max(1, voices)) killVoice(voicesActive[0]);
+  const sr = clip.sampleRate;
+  const isSlice = mode === 'slice';
+  const oneshot = mode === 'oneshot';
+  let cs = Math.floor(clipStart * clip.length), ce = Math.floor(clipEnd * clip.length), loop = false, playToEnd = false;
+  let rate;
+  if (isSlice) {
+    const rel = currentSlices();
+    const idx = clamp(note - rootNote, 0, rel.length - 1);
+    const lag = Math.max(rel.length - 1, 0);
+    const span = clipEnd - clipStart;
+    cs = Math.floor((clipStart + rel[idx] * span) * clip.length);
+    ce = idx < lag ? Math.floor((clipStart + rel[idx + 1] * span) * clip.length) : Math.floor(clipEnd * clip.length);
+    loop = false; playToEnd = false;
+    rate = Math.pow(2, semi / 12);
+  } else if (oneshot) {
+    playToEnd = true; loop = false;
+    rate = Math.pow(2, (note - rootNote + semi) / 12);
+  } else {
+    loop = true;
+    rate = Math.pow(2, (note - rootNote + semi) / 12);
+  }
+  if (ce <= cs) ce = cs + 1;
+  const amp = gain * (velocity / 127);
+  const env = ac.createGain(); env.gain.value = 0; env.connect(outGain);
+  const t = Math.max(ac.currentTime, time || 0);
+  const atk = Math.max(0.001, attack), dec = Math.max(0.001, decay), sus = Math.max(0.001, sustain);
+  const offset = cs / sr, endTime = ce / sr, dur = (ce - cs) / sr;
+  const g = env.gain;
+  g.setValueAtTime(0, t);
+  g.linearRampToValueAtTime(amp, t + atk);
+  g.linearRampToValueAtTime(amp * sus, t + atk + dec);
+  if (playToEnd) {
+    const fo = Math.max(0.001, Math.min(fadeOut, dur * 0.5));
+    g.linearRampToValueAtTime(0.0001, t + atk + dec + Math.max(0.001, dur - atk - dec) - fo);
+  }
+  let src = ac.createBufferSource(); src.buffer = clip;
+  src.playbackRate.value = rate;
+  src.loop = loop;
+  if (loop) { src.loopStart = offset; src.loopEnd = endTime; }
+  src.connect(env);
+  src.start(t, offset, (loop || playToEnd) ? (playToEnd ? dur : undefined) : dur);
+  const voice = { src, envGain: env, amp, oneshot: playToEnd, loop, cs, ce, startT: t };
+  src.onended = () => { const i = voicesActive.indexOf(voice); if (i >= 0) voicesActive.splice(i, 1); try { voice.envGain.disconnect(); } catch {} };
+  voicesActive.push(voice);
+  if (!raf) raf = requestAnimationFrame(playhead);
+  emitLive();
+}
+function noteOffAll() {
+  const t = ac.currentTime, rel = Math.max(0.001, release);
+  for (const v of voicesActive) {
+    if (v.oneshot) continue;
+    const g = v.envGain.gain; g.cancelScheduledValues(t);
+    g.setValueAtTime(Math.max(v.amp * sustain, 0.0001), t); g.linearRampToValueAtTime(0.0001, t + rel);
+    try { v.src.stop(t + rel + 0.01); } catch {}
+    const i = voicesActive.indexOf(v); if (i >= 0) voicesActive.splice(i, 1);
+  }
+}
+function playhead() { redraw(); raf = voicesActive.length ? requestAnimationFrame(playhead) : 0; }
+function emitLive() { if (clip) emit(clip, out('audio')); }
+
+// ---- beat-quantized note queue (transport-in) ----
+function fireQueued(atTime) {
+  if (!beatQ.length) return;
+  const q = beatQ; beatQ = [];
+  for (const n of q) noteOn(n.note, n.velocity, atTime);
+}
+function scheduleBeatFlush() {
+  if (!beatQ.length || !transportEnv) return;
+  const now = ac.currentTime;
+  const next = Number(transportEnv.next);
+  if (!Number.isFinite(next) || next <= now + 0.005) { fireQueued(); return; }
+  const tk = ++beatToken;
+  if (beatTimer) { clearTimeout(beatTimer); beatTimer = null; }
+  beatTimer = setTimeout(() => { beatTimer = null; if (tk === beatToken) fireQueued(); }, Math.max(0, (next - now) * 1000 + 1));
+}
+
+function currentPlaySample() {
+  const v = lastVoice();
+  if (!v) return null;
+  const sr = clip.sampleRate, elapsed = Math.max(0, ac.currentTime - v.startT);
+  const len = Math.max(1, v.ce - v.cs);
+  if (v.loop) return v.cs + (elapsed * sr % len);
+  return Math.min(v.ce, v.cs + elapsed * sr);
+}
+
+// ---- waveform static buffer ----
+function buildStatic(w, h) {
+  const W = STATIC_W;
+  waveStatic = document.createElement('canvas'); waveStatic.width = W; waveStatic.height = h;
+  const sc = waveStatic.getContext('2d');
+  const data = clip.getChannelData(0), total = clip.length;
+  const step = Math.max(1, Math.floor(total / (W * 2)));
+  sc.fillStyle = 'rgba(0,0,0,0.25)'; sc.fillRect(0, 0, W, h);
+  sc.strokeStyle = 'rgba(138,182,187,0.85)'; sc.lineWidth = 1;
+  sc.beginPath();
+  for (let x = 0; x < W; x++) {
+    const s0 = Math.floor((x / W) * total), s1 = Math.floor(((x + 1) / W) * total) || s0 + 1;
+    let mn = 1, mx = -1;
+    for (let j = Math.max(0, s0); j < Math.min(total, s1); j += step) { const v = data[j]; if (v < mn) mn = v; if (v > mx) mx = v; }
+    if (mn > mx) { mn = 0; mx = 0; } if (mx - mn < 0.02) { mn -= 0.01; mx += 0.01; }
+    const mid = h * 0.5; sc.moveTo(x + 0.5, mid - mx * mid * 0.86); sc.lineTo(x + 0.5, mid - mn * mid * 0.86);
+  }
+  sc.stroke();
+}
+function applyVisibility() {
+  const e = $('[data-sp="empty"]'), c = $('[data-sp="canvas"]');
+  if (e && e.hidden !== !!clip) e.hidden = !!clip;
+  if (c && c.hidden !== !clip) c.hidden = !clip;
+}
+function redraw() {
+  const fr = $('[data-sp="frame"]'); if (!fr) return;
+  const cv = $('[data-sp="canvas"]'); if (!cv) return;
+  applyVisibility();
+  const w = fr.clientWidth, h = fr.clientHeight;
+  if (!w || !h || !clip) return;
+  cv.width = w; cv.height = h;
+  const c = cv.getContext('2d');
+  c.clearRect(0, 0, w, h);
+  if (!waveStatic) buildStatic(w, h);
+  const W = waveStatic.width;
+  c.drawImage(waveStatic, viewStart * W, 0, viewSpan * W, h, 0, 0, w, h);
+  const total = clip.length, sr = clip.sampleRate;
+  const sStart = viewStart * total, sView = viewSpan * total, sEnd = sStart + sView;
+  const spb = sr * (60 / clamp(bpm, 20, 300));
+  const firstBeat = Math.ceil(sStart / spb), lastBeat = Math.floor(sEnd / spb);
+  for (let b = firstBeat; b <= lastBeat; b++) {
+    const x = ((b * spb - sStart) / sView) * w;
+    c.strokeStyle = (b % 4 === 0) ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.07)';
+    c.lineWidth = 1; c.beginPath(); c.moveTo(x + 0.5, 0); c.lineTo(x + 0.5, h); c.stroke();
+  }
+  const X = f => ((f * total - sStart) / sView) * w;
+  const flag = (f, dir) => {
+    const x = X(f); if (x < -14 || x > w + 14) return;
+    c.strokeStyle = '#986C98'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(x + 0.5, 0); c.lineTo(x + 0.5, h); c.stroke();
+    c.fillStyle = '#986C98';
+    c.beginPath();
+    if (dir === '>') { c.moveTo(x, 0); c.lineTo(x + 12, 0); c.lineTo(x + 12, 9); c.lineTo(x, 9); }
+    else            { c.moveTo(x, 0); c.lineTo(x - 12, 0); c.lineTo(x - 12, 9); c.lineTo(x, 9); }
+    c.closePath(); c.fill();
+  };
+  flag(clipStart, '>');
+  flag(clipEnd, '<');
+  const rel = mode === 'slice' ? currentSlices() : [];
+  c.strokeStyle = '#8AB6BB'; c.lineWidth = 1;
+  for (const r of rel) {
+    const f = clipStart + r * (clipEnd - clipStart);
+    const x = X(f); if (x < 0 || x > w) continue;
+    c.beginPath(); c.moveTo(x + 0.5, 0); c.lineTo(x + 0.5, h); c.stroke();
+  }
+  const ps = currentPlaySample();
+  if (ps != null) {
+    const px = X(ps / total);
+    if (px >= 0 && px <= w) { c.strokeStyle = '#FFFFFF'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(px + 0.5, 0); c.lineTo(px + 0.5, h); c.stroke(); }
+  }
+}
+
+// ---- knobs ----
+function arcPath(cx, cy, r, a0, a1) {
+  const p = a => { const rad = a * Math.PI / 180; return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)]; };
+  const [x0, y0] = p(a0), [x1, y1] = p(a1);
+  const big = (a1 - a0) > 180 ? 1 : 0;
+  return 'M ' + x0.toFixed(1) + ' ' + y0.toFixed(1) + ' A ' + r + ' ' + r + ' 0 ' + big + ' 1 ' + x1.toFixed(1) + ' ' + y1.toFixed(1);
+}
+function knobPaint(sp, get, lo, hi, fmt, curveV) {
+  const dl = $('[data-sp-dial="' + sp + '"]'); if (!dl) return;
+  const val = dl.querySelector('.sp-dial-value'),
+        ptr = dl.querySelector('.sp-dial-pointer'),
+        rk  = $('[data-sp="read-' + sp + '"]');
+  const rv = clamp(curveV ? curveV(get()) : (get() - lo) / (hi - lo), 0, 1);
+  const a = 225 + rv * 270, rad = a * Math.PI / 180;
+  const x2 = (19 + 14 * Math.cos(rad)).toFixed(1),
+        y2 = (19 + 14 * Math.sin(rad)).toFixed(1),
+        d  = arcPath(19, 19, 14, 225, a);
+  if (val && val.getAttribute('d') !== d) val.setAttribute('d', d);
+  if (ptr && ptr.getAttribute('x2') !== x2) ptr.setAttribute('x2', x2);
+  if (ptr && ptr.getAttribute('y2') !== y2) ptr.setAttribute('y2', y2);
+  const txt = fmt(get());
+  if (rk && rk.textContent !== String(txt)) rk.textContent = String(txt);
+}
+// gain: dial v -> db(-60..+6, 0dB at .75) -> amp; amp <-> db via log/exp
+const GAIN = {
+  get: () => () => gain,
+  set: () => v => { gain = ampFromDB(gainDBRo(v)); },
+  norm: a => gainV(clamp(dbFromAmp(a), -60, 6)),
+  fmt: a => { const db = clamp(dbFromAmp(a), -60, 6); if (db <= -59) return '-inf'; return (db >= 0 ? '+' : '') + db.toFixed(1) + 'db'; }
+};
+const KNOBS = [
+  ['gain',   GAIN.get(), GAIN.set(), 0, 1, GAIN.fmt, GAIN.norm],
+  ['semi',   () => semi,   v => semi   = Math.round(-12 + v * 24), -12, 12, s => (s >= 0 ? '+' : '') + s, null],
+  ['fadein', () => fadeIn, v => fadeIn = v * 5, 0, 5, x => Math.round(x * 1000) + 'ms', null],
+  ['fadeout',() => fadeOut,v => fadeOut= v * 5, 0, 5, x => Math.round(x * 1000) + 'ms', null],
+  ['attack', () => attack, v => attack = v * 5, 0, 5, x => Math.round(x * 1000) + 'ms', null],
+  ['decay',  () => decay,  v => decay  = v * 5, 0, 5, x => Math.round(x * 1000) + 'ms', null],
+  ['sustain',() => sustain,v => sustain= v,      0, 1, x => x.toFixed(2), null],
+  ['release',() => release,v => release= v * 5, 0, 5, x => Math.round(x * 1000) + 'ms', null],
+  ['voices', () => voices, v => voices = clamp(Math.round(1 + v * 63), 1, 64), 1, 64, x => String(x), null],
+  ['sens',   () => sensVal, v => sensVal = clamp(Math.round(v * 100), 0, 100), 0, 100, x => String(x) + '%', null]
+];
+function startKnobDrag(sp, el, ev) {
+  const k = KNOBS.find(kx => kx[0] === sp); if (!k) return;
+  const [, get2, set2, lo, hi, fmt, curveV] = k;
+  ev.preventDefault();
+  const norm = () => { const rv = curveV ? curveV(get2()) : (get2() - lo) / (hi - lo); return rv; };
+  const drag = { id: ev.pointerId, y0: ev.clientY, v0: norm() };
+  const apply = m => { if (!drag || m.pointerId !== drag.id) return; const rv = clamp(drag.v0 + (drag.y0 - m.clientY) / 60, 0, 1); set2(rv); knobPaint(k[0], get2, lo, hi, fmt, curveV); };
+  const end = m => { if (!drag || m.pointerId !== drag.id) return; window.removeEventListener('pointermove', apply); window.removeEventListener('pointerup', end); window.removeEventListener('pointercancel', end); persist(); };
+  window.addEventListener('pointermove', apply);
+  window.addEventListener('pointerup', end);
+  window.addEventListener('pointercancel', end);
+  try { el.setPointerCapture(ev.pointerId); } catch {}
+}
+
+// ---- interactions ----
+let dMode = null, dX = 0, dY = 0, dVSpan = 0, dAnchor = 0, dRatio = 0, dF = 0;
+const F = () => $('[data-sp="frame"]');
+const XT = f => { const fr = F(); return fr ? ((f - viewStart) / viewSpan) * fr.clientWidth : 0; };
+function zoomAt(cx, factor) {
+  const fr = F(); if (!fr) return;
+  const cw = fr.clientWidth, ratio = cx / cw, anchor = viewStart + ratio * viewSpan;
+  const ns = Math.max(0.005, Math.min(1, viewSpan * factor));
+  viewSpan = ns; viewStart = ns >= 1 ? 0 : Math.max(0, Math.min(1 - ns, anchor - ratio * ns)); redraw();
+}
+function panBy(dx) {
+  const fr = F(); if (!fr) return;
+  const ns = viewSpan, cw = fr.clientWidth;
+  viewStart = ns >= 1 ? 0 : Math.max(0, Math.min(1 - ns, viewStart - (dx / cw) * ns)); redraw();
+}
+function sliceHit(x) {
+  const rel = mode === 'slice' ? currentSlices() : [];
+  for (let i = 0; i < rel.length; i++) {
+    const f = clipStart + rel[i] * (clipEnd - clipStart);
+    if (Math.abs(x - XT(f)) < 6) return i;
+  }
+  return -1;
+}
+function frameDown(e) {
+  const fr = F(); if (!fr) return;
+  if (e.button === 1) { dMode = 'pan'; dX = e.clientX; e.preventDefault(); try { fr.setPointerCapture(e.pointerId); } catch {} return; }
+  if (!clip) return;
+  const rect = fr.getBoundingClientRect(); const x = e.clientX - rect.left, cw = fr.clientWidth;
+  dX = e.clientX; dY = e.clientY; dVSpan = viewSpan; dRatio = x / cw; dAnchor = viewStart + dRatio * viewSpan;
+  const sx = XT(clipStart), ex = XT(clipEnd);
+  dMode = null; dF = -1;
+  if (Math.abs(x - sx) < 12) dMode = 'start';
+  else if (Math.abs(x - ex) < 12) dMode = 'end';
+  else { const si = sliceHit(x); if (si >= 0) { dMode = 'slice'; dF = si; } }
+  if (dMode === null) dMode = 'view';
+  e.preventDefault(); try { fr.setPointerCapture(e.pointerId); } catch {}
+}
+function frameMove(e) {
+  const fr = F(); if (!fr) return;
+  if (dMode === 'pan') { panBy(e.clientX - dX); dX = e.clientX; return; }
+  if (dMode === 'view') {
+    const factor = Math.exp(-(e.clientY - dY) * 0.008);
+    const ns = Math.max(0.005, Math.min(1, dVSpan * factor));
+    viewSpan = ns;
+    viewStart = ns >= 1 ? 0 : Math.max(0, Math.min(1 - ns, dAnchor - dRatio * ns));
+    redraw(); return;
+  }
+  if (dMode === null) {
+    if (!clip) return;
+    const rect = fr.getBoundingClientRect(), x = e.clientX - rect.left, cw = fr.clientWidth;
+    const sx = ((clipStart - viewStart) / viewSpan) * cw, ex = ((clipEnd - viewStart) / viewSpan) * cw;
+    fr.style.cursor = (Math.abs(x - sx) < 12 || Math.abs(x - ex) < 12 || sliceHit(x) >= 0) ? 'ew-resize' : 'crosshair'; return;
+  }
+  const rect = fr.getBoundingClientRect();
+  const x = Math.max(0, Math.min(fr.clientWidth, e.clientX - rect.left));
+  const f = clamp(viewStart + (x / fr.clientWidth) * viewSpan, 0, 1);
+  if (dMode === 'start') { clipStart = Math.min(f, clipEnd - 0.001); redraw(); }
+  else if (dMode === 'end') { clipEnd = Math.max(f, clipStart + 0.001); redraw(); }
+  else if (dMode === 'slice') {
+    const span = clipEnd - clipStart;
+    const relVal = clamp((f - clipStart) / span, 0, 1);
+    if (slices.length) {
+      const si = reachToStored(dF);
+      if (si >= 0) slices[si] = clipStart + relVal * span;
+    } else {
+      slices = autoSlices.slice();
+      slices[dF] = clipStart + relVal * span;
+    }
+    redraw();
+  }
+}
+function frameUp() { if (dMode === 'start' || dMode === 'end' || dMode === 'slice') persist(); dMode = null; }
+
+// ---- keyboard as midi ----
+const KEYMAP = { a: 0, w: 1, s: 2, e: 3, d: 4, f: 5, t: 6, g: 7, y: 8, h: 9, u: 10, j: 11, k: 12, o: 13, l: 14 };
+function kbOctave() { return (kbOct + 1) * 12; }
+const onKbd = e => {
+  if (!kbOn) return;
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) return;
+  const k = e.key.toLowerCase();
+  if (k === 'z') { kbOct = Math.max(0, kbOct - 1); syncUI(); e.preventDefault(); return; }
+  if (k === 'x') { kbOct = Math.min(6, kbOct + 1); syncUI(); e.preventDefault(); return; }
+  if (!(k in KEYMAP) || held[k]) return;
+  held[k] = true;
+  const note = kbOctave() + KEYMAP[k];
+  if (clip) resume().then(() => noteOn(note, 100));
+};
+const offKbd = e => {
+  const k = e.key.toLowerCase(); if (held[k]) { held[k] = false; noteOffAll(); }
+};
+addEventListener('keydown', onKbd, { signal });
+addEventListener('keyup', offKbd, { signal });
+
+// ---- paint ----
+function syncUI() {
+  for (const k of ['classic', 'oneshot', 'slice']) setOn($('[data-sp="mode-' + k + '"]'), 'on', mode === k);
+  for (const w of ['re-pitch', 'beats']) setOn($('[data-sp="warp-' + w + '"]'), 'on', warp === w);
+  setOn($('[data-sp="kbtn"]'), 'on', kbOn);
+  setTxt($('[data-sp="oct"]'), 'oct ' + (kbOct + 1));
+  const bpmIn = $('[data-sp="bpm"]'), rootIn = $('[data-sp="root"]');
+  if (bpmIn !== root.activeElement) setVal(bpmIn, bpm);
+  if (rootIn !== root.activeElement) setVal(rootIn, rootNote);
+  applyVisibility();
+  for (const k of KNOBS) knobPaint(k[0], k[1], k[3], k[4], k[5], k[6]);
+}
+
+// ---- per-take setup, keyed by take id ----
+function persist() {
+  const slotEl = $('[data-scv-slot="state"]'); if (!slotEl) return;
+  const key = curKey || (clip ? 'self' : null);
+  const head = (slotEl.value.split('\n--\n')[0] || '').split('\n').filter(l => l && (key ? !l.startsWith(key + '\t') : true));
+  if (key) head.push([key, clipStart, clipEnd, mode, warp, gain, attack, decay, sustain, release, bpm, rootNote, slices.join(','), kbOn ? 1 : 0, kbOct, fadeIn, fadeOut, sensVal, voices, semi].join('\t'));
+  slotEl.value = head.join('\n') + '\n--\n' + [(curKey || ''), bpm, rootNote, clipRef].join('|');
+}
+function loadSetup() {
+  const slotEl = $('[data-scv-slot="state"]'); if (!slotEl) return;
+  const head = (slotEl.value || '').split('\n--\n')[0] || '';
+  for (const ln of head.split('\n')) {
+    if (!ln.startsWith(curKey + '\t')) continue;
+    const p = ln.split('\t');
+    if (p.length >= 12) {
+      clipStart = clamp(Number(p[1]) || 0, 0, 1); clipEnd = clamp(Number(p[2]) || 1, 0, 1); if (clipEnd <= clipStart) clipEnd = Math.min(1, clipStart + 0.001);
+      mode = p[3] || 'classic'; warp = p[4] || 're-pitch'; gain = Number(p[5]) || 1; attack = Number(p[6]) || 0.005; decay = Number(p[7]) || 0.1; sustain = Number(p[8]) || 0.8; release = Number(p[9]) || 0.2; bpm = Number(p[10]) || 120; rootNote = Number(p[11]) || 60;
+      slices = p[12] ? p[12].split(',').map(Number).filter(x => Number.isFinite(x) && x > 0 && x < 1) : [];
+      kbOn = p[13] === '1'; kbOct = Math.min(6, Math.max(0, Number(p[14]) || 4));
+      fadeIn = Number(p[15]) || 0.01; fadeOut = Number(p[16]) || 0.01; sensVal = clamp(Number(p[17]) || 50, 0, 100);
+      voices = clamp(Number(p[18]) || 4, 1, 64);
+      semi = clamp(Number(p[19]) || 0, -12, 12);
+    }
+    break;
+  }
+  detectTransients(); syncUI(); redraw();
+}
+
+// ---- delegated events ----
+root.addEventListener('pointerdown', e => {
+  const dl = e.target && e.target.closest ? e.target.closest('[data-sp-dial]') : null;
+  if (dl) { startKnobDrag(dl.dataset.spDial, dl, e); return; }
+  const frEl = e.target && e.target.closest ? e.target.closest('[data-sp="frame"]') : null;
+  if (frEl) frameDown(e);
+}, { signal });
+root.addEventListener('pointermove', frameMove, { signal });
+root.addEventListener('pointerup', frameUp, { signal });
+root.addEventListener('pointercancel', frameUp, { signal });
+root.addEventListener('auxclick', e => { if (e.button === 1) e.preventDefault(); }, { signal });
+root.addEventListener('wheel', e => {
+  const frEl = e.target && e.target.closest ? e.target.closest('[data-sp="frame"]') : null;
+  if (!frEl || !clip) return;
+  e.preventDefault();
+  const fr = F(); const rect = fr.getBoundingClientRect();
+  const cx = Math.max(0, Math.min(fr.clientWidth, e.clientX - rect.left));
+  zoomAt(cx, e.deltaY < 0 ? 0.85 : 1.18);
+}, { passive: false, signal });
+root.addEventListener('dblclick', e => {
+  const dl = e.target && e.target.closest ? e.target.closest('[data-sp-dial]') : null;
+  if (dl) {
+    const k = KNOBS.find(kx => kx[0] === dl.dataset.spDial);
+    if (k) { k[2](0); knobPaint(k[0], k[1], k[3], k[4], k[5], k[6]); persist(); }
+    return;
+  }
+  const frEl = e.target && e.target.closest ? e.target.closest('[data-sp="frame"]') : null;
+  if (!frEl || !clip) return;
+  const fr = F(); const rect = fr.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const hit = sliceHit(x);
+  if (hit >= 0) {
+    if (!slices.length) slices = autoSlices.slice();
+    const si = reachToStored(hit);
+    if (si >= 0) slices.splice(si, 1);
+  } else {
+    const f = clamp(viewStart + (x / fr.clientWidth) * viewSpan, clipStart, clipEnd);
+    if (!slices.length && autoSlices.length) slices = autoSlices.slice();
+    slices.push(f); slices.sort((a, b) => a - b);
+  }
+  redraw(); persist();
+}, { signal });
+root.addEventListener('click', e => {
+  if (e.target && e.target.closest && e.target.closest('[data-sp="empty"]')) { resume(); const fi = $('[data-sp="file"]'); if (fi) fi.click(); return; }
+  const modeEl = e.target && e.target.closest ? e.target.closest('[data-sp^="mode-"]') : null;
+  if (modeEl) { mode = modeEl.dataset.sp.slice(5); killAll(); slices = []; syncUI(); redraw(); persist(); return; }
+  const warpEl = e.target && e.target.closest ? e.target.closest('[data-sp^="warp-"]') : null;
+  if (warpEl) { warp = warpEl.dataset.sp.slice(5); syncUI(); persist(); return; }
+  const kbEl = e.target && e.target.closest ? e.target.closest('[data-sp="kbtn"]') : null;
+  if (kbEl) { kbOn = !kbOn; if (!kbOn) noteOffAll(); syncUI(); persist(); }
+}, { signal });
+root.addEventListener('input', e => {
+  const t = e.target && e.target.dataset ? e.target.dataset.sp : null;
+  if (t === 'bpm') { const b = Number(e.target.value); if (b) { bpm = clamp(b, 20, 300); redraw(); persist(); } }
+  else if (t === 'root') { rootNote = clamp(Math.round(Number(e.target.value) || 60), 0, 127); persist(); }
+}, { signal });
+root.addEventListener('change', e => {
+  const fi = e.target && e.target.dataset && e.target.dataset.sp === 'file' ? e.target : null;
+  if (!fi) return;
+  const f = fi.files[0];
+  if (f && f.type.startsWith('audio/')) { curKey = null; asset.put(f).then(loadRef); }
+  fi.value = '';
+}, { signal });
+
+host.addEventListener('scv-receive', e => { // take from a track, cmd and transport from a transport, notes, or a bpm number
+  const v = e.detail;
+  if (v instanceof AudioBuffer) return setClip(v);
+  if (typeof v?.ref === 'string') { curKey = v.id || null; loadRef(v.ref); return; }
+  if (typeof v?.t === 'string') {
+    if (v.t === 'stop' || v.t === 'reset') { clearTimeout(beatTimer); beatTimer = null; beatToken++; beatQ = []; killAll(); }
+    else if (v.t === 'start') resume();
+    return;
+  }
+  if (v && 'run' in v) {
+    transportEnv = v;
+    if (v.run) { if (beatQ.length) scheduleBeatFlush(); }
+    else { clearTimeout(beatTimer); beatTimer = null; beatToken++; fireQueued(); }
+    return;
+  }
+  if (v && typeof v === 'object' && 'on' in v) { // quantized to next beat while transport runs
+    if (v.on === 1 || v.on === true) {
+      const quant = !!transportEnv?.run && Number.isFinite(Number(transportEnv.next));
+      if (quant) beatQ.push({ note: v.note ?? 60, velocity: v.velocity ?? 100 });
+      resume().then(() => { if (quant) scheduleBeatFlush(); else noteOn(v.note ?? 60, v.velocity ?? 100); });
+    }
+    else if (v.on === 0 || v.on === false) noteOffAll();
+    return;
+  }
+  const b = Number(v);
+  if (v !== '' && Number.isFinite(b)) { bpm = clamp(b, 20, 300); syncUI(); redraw(); }
+}, { signal });
+
+onTeardown(() => { clearTimeout(beatTimer); beatQ = []; killAll(); cancelAnimationFrame(raf); outGain.disconnect(); });
+
+const footer = ($('[data-scv-slot="state"]').value || '').split('\n--\n')[1]; // key|bpm|root|ref
+if (footer) { const st = footer.split('|'); curKey = st[0] || null; bpm = Number(st[1]) || 120; rootNote = clamp(Number(st[2]) || 60, 0, 127); if (st[3]) loadRef(st[3]); }
+syncUI();
+</script>
+</template>

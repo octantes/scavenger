@@ -1,0 +1,19 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>clock - scavenger component</title>
+<template data-scv-comp="clock">
+<style>
+.clock { font: 600 30px var(--font-mono, 'SF Mono', monospace); color: var(--input, #8AB6BB); letter-spacing: 2px; padding: 14px 20px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); text-align: center; }
+.date { display: block; font-size: var(--fs-a, 12px); color: var(--text-dim, #888888); letter-spacing: 1px; margin-top: 4px; }
+</style>
+
+<div class="clock"><span data-scv-slot="time">--:--:--</span><span class="date" data-scv-slot="date">----</span></div>
+
+<script>
+const t = root.querySelector('[data-scv-slot=time]'), d = root.querySelector('[data-scv-slot=date]');
+const tick = () => { const n = new Date(); patch(t, { text: n.toLocaleTimeString() }); patch(d, { text: n.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }) }); };
+tick();
+const id = setInterval(tick, 1000);
+onTeardown(() => clearInterval(id));
+</script>
+</template>

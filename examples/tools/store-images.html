@@ -1,0 +1,65 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>store-images - scavenger component</title>
+<template data-scv-comp="store-images">
+<style>
+  :host { display: block; }
+  .ga { width: 260px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); padding: 8px 10px 10px; box-sizing: border-box; font-family: var(--font-mono, 'SF Mono', ui-monospace, monospace); }
+  .ga-lab { color: var(--text-faint, #666666); font-size: 10px; text-transform: lowercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .ga-stage { display: flex; align-items: stretch; gap: 4px; margin-bottom: 4px; }
+  .ga-nav { flex: none; width: 24px; background: var(--background-sunk, #1A1C1C); border: none; border-radius: var(--corner-low, 5px); color: var(--text-base, #AAABAC); font: 14px var(--font-mono, 'SF Mono', monospace); cursor: pointer; }
+  .ga-nav:hover { color: var(--input, #8AB6BB); }
+  .ga-thumb { position: relative; flex: 1; aspect-ratio: 1; border-radius: var(--corner-low, 5px); background: var(--background-sunk, #1A1C1C); overflow: hidden; }
+  .ga-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; border: 0; outline: 0; }
+  .ga-thumb img:not([src]) { display: none; }
+  .ga-add { display: flex; gap: 4px; }
+  .ga-input { flex: 1; min-width: 0; box-sizing: border-box; background: var(--background-sunk, #1A1C1C); border: none; border-radius: var(--corner-low, 5px); color: var(--text-dim, #888888); font: 10px var(--font-mono, 'SF Mono', monospace); padding: 6px 8px; outline: none; }
+  .ga-input:focus { color: var(--text-base, #AAABAC); border-color: var(--input, #8AB6BB); }
+  .ga-file { position: relative; flex: none; width: 24px; height: 24px; border: none; border-radius: var(--corner-low, 5px); background: var(--background-sunk, #1A1C1C); color: var(--input, #8AB6BB); font: 16px/1 var(--font-mono, 'SF Mono', monospace); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .ga-file:hover { border-color: var(--input, #8AB6BB); }
+  .ga-file input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  textarea[hidden] { display: none; }
+</style>
+
+<div class="ga">
+  <div class="ga-lab" data-scv-slot="label">gallery</div>
+  <div class="ga-stage">
+    <button type="button" class="ga-nav" data-ga="prev">◀</button>
+    <div class="ga-thumb">
+      <img alt="" data-ga="img">
+    </div>
+    <button type="button" class="ga-nav" data-ga="next">▶</button>
+  </div>
+  <div class="ga-add">
+    <input type="text" class="ga-input" data-ga="paste" placeholder="paste an image here" spellcheck="false">
+    <label class="ga-file" title="add image">+<input type="file" accept="image/*" data-ga="file"></label>
+  </div>
+  <textarea data-scv-slot="images" hidden></textarea>
+</div>
+
+<script>
+const imgEl = root.querySelector('[data-ga="img"]'), prev = root.querySelector('[data-ga="prev"]'),
+      next = root.querySelector('[data-ga="next"]'), pasteIn = root.querySelector('[data-ga="paste"]'),
+      fileIn = root.querySelector('[data-ga="file"]'), slot = root.querySelector('[data-scv-slot="images"]');
+const refs = slot.value.split('\n').map(s => s.trim()).filter(Boolean); // asset refs - bytes live once in file
+let idx = Math.max(0, refs.indexOf(imgEl.dataset.scvSrc));
+const show = () => {
+  if (!refs.length) { imgEl.removeAttribute('src'); delete imgEl.dataset.scvSrc; return; }
+  idx = (idx + refs.length) % refs.length;
+  imgEl.dataset.scvSrc = refs[idx];
+  imgEl.src = asset.url(refs[idx]) || '';
+};
+const emitCurrent = () => { if (refs.length) emit(asset.url(refs[idx]), imgEl); }; // live url - refs resolve only inside this file
+const add = async f => {
+  if (!f?.type.startsWith('image/')) return;
+  refs.push(await asset.put(f)); idx = refs.length - 1;
+  slot.value = refs.join('\n'); show();
+};
+prev.addEventListener('click', () => { if (refs.length) { idx--; show(); emitCurrent(); } });
+next.addEventListener('click', () => { if (refs.length) { idx++; show(); emitCurrent(); } });
+imgEl.addEventListener('click', emitCurrent);
+pasteIn.addEventListener('paste', e => { const f = e.clipboardData?.files[0]; if (f?.type.startsWith('image/')) { e.preventDefault(); add(f); } });
+fileIn.addEventListener('change', () => { add(fileIn.files[0]); fileIn.value = ''; });
+show();
+</script>
+</template>

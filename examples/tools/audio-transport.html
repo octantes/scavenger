@@ -1,0 +1,214 @@
+<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
+<meta charset="utf-8">
+<title>audio-transport - scavenger component</title>
+<template data-scv-comp="audio-transport">
+<style>
+  :host { display: block; --tr-pad: 10px; }
+  .tr { width: 260px; background: var(--background-raised, #252727); border: 1px solid var(--border, #3A3C3C); border-radius: var(--corner-high, 8px); padding: var(--tr-pad); box-sizing: border-box; font-family: var(--font-mono, 'SF Mono', ui-monospace, monospace); user-select: none; -webkit-user-select: none; }
+  .tr-title { text-align: center; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-base, #AAABAC); }
+  .tr-sig-readout { text-align: center; font-size: 26px; font-weight: 600; color: var(--output, #986C98); margin: 12px 0 8px; letter-spacing: 2px; line-height: 1; }
+  .tr-sig-readout.dim { color: var(--text-dim, #888); opacity: .55; }
+  .tr-row { display: flex; gap: 4px; }
+  .tr-f { flex: 1; min-width: 0; }
+  .tr-input { width: 100%; box-sizing: border-box; height: 28px; padding: 0 8px; border: none; border-radius: var(--corner-low, 5px); background: var(--background-sunk, #1A1C1C); color: var(--text-base, #AAABAC); font: 11px var(--font-mono, ui-monospace, monospace); text-align: center; outline: none; }
+  .tr-input::placeholder { color: var(--text-dim, #888); opacity: .8; }
+  .tr-input:focus { border-color: var(--input, #8AB6BB); }
+  .tr-input::-webkit-outer-spin-button,
+  .tr-input::-webkit-inner-spin-button,
+  .tr-sigbox input::-webkit-outer-spin-button,
+  .tr-sigbox input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .tr-input, .tr-sigbox input { -moz-appearance: textfield; appearance: textfield; }
+  .tr-sigbox { flex: 1; min-width: 0; display: flex; align-items: stretch; height: 28px; border: none; border-radius: var(--corner-low, 5px); background: var(--background-sunk, #1A1C1C); overflow: hidden; }
+  .tr-sigbox input { flex: 1; width: auto; min-width: 0; box-sizing: border-box; border: none; background: transparent; color: var(--text-base, #AAABAC); font: 11px var(--font-mono, ui-monospace, monospace); text-align: center; outline: none; padding: 0 4px; }
+  .tr-sigbox input::placeholder { color: var(--text-dim, #888); opacity: .8; }
+  .tr-sigbox .tr-sep { display: flex; align-items: center; color: var(--text-dim, #888); font-size: 12px; padding: 0 1px; }
+  .tr-sigbox:focus-within { border-color: var(--input, #8AB6BB); }
+  .tr-actions { display: flex; gap: 4px; margin-top: 4px; }
+  .tr-btn { flex: 1; height: 26px; box-sizing: border-box; border: none; border-radius: var(--corner-low, 5px); background: var(--background-sunk, #1A1C1C); color: var(--text-base, #AAABAC); font: 9px var(--font-mono, ui-monospace, monospace); text-transform: uppercase; letter-spacing: 1px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px; }
+  .tr-btn svg { fill: currentColor; display: block; pointer-events: none; width: 11px; height: 11px; }
+  .tr-btn:hover { color: var(--input, #8AB6BB); }
+  .tr-btn.on { background: var(--output, #986C98); color: var(--background-sunk, #1A1C1C); }
+  .tr-btn.on:hover { color: var(--background-sunk, #1A1C1C); }
+  .tr-port { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border, #3A3C3C); }
+  .tr-ins, .tr-outs { display: flex; flex-direction: column; gap: 4px; }
+  .tr-p { display: flex; align-items: center; gap: 6px; font-size: 9px; letter-spacing: 1px; text-transform: lowercase; position: relative; }
+  .tr-p::before { content: ''; width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .tr-in { color: var(--input, #8AB6BB); } .tr-in::before { background: var(--input, #8AB6BB); }
+  .tr-out { color: var(--output, #986C98); } .tr-out::before { background: var(--output, #986C98); }
+  textarea[data-scv-slot] { display: none; }
+</style>
+
+<div class="tr">
+  <div class="tr-title">transport</div>
+  <div class="tr-sig-readout dim" data-tr="sigread"><span data-tr="sigN">4</span> : <span data-tr="sigD">4</span></div>
+
+  <div class="tr-row">
+    <div class="tr-f">
+      <input class="tr-input" type="number" data-tr="bpm" placeholder="bpm" min="20" max="300">
+    </div>
+    <div class="tr-sigbox">
+      <input type="number" data-tr="num" placeholder="4" min="1" max="32">
+      <span class="tr-sep">/</span>
+      <input type="number" data-tr="den" placeholder="4" min="1" max="32">
+    </div>
+    <div class="tr-f">
+      <input class="tr-input" type="number" data-tr="count" placeholder="count-in" min="1" max="4" step="1">
+    </div>
+  </div>
+
+  <div class="tr-actions">
+    <button type="button" class="tr-btn" data-tr="playbtn">
+      <svg viewBox="0 0 24 24" data-tr="playico"><path d="M8 5v14l11-7z"/></svg>
+      <span>play</span>
+    </button>
+    <button type="button" class="tr-btn" data-tr="metbtn">met</button>
+    <button type="button" class="tr-btn" data-tr="armbtn">arm</button>
+  </div>
+
+  <div class="tr-port">
+    <div class="tr-ins">
+      <div class="tr-p tr-in" title="cmd {t, targetTime, rec} from another transport, or a bpm number"><span>in</span></div>
+    </div>
+    <div class="tr-outs">
+      <div class="tr-p tr-out" data-out="beat" title="{beat, bar, bpm, play, num, denom}">beat</div>
+      <div class="tr-p tr-out" data-out="bpm" title="bpm number">bpm</div>
+      <div class="tr-p tr-out" data-out="cmd" title="{t, targetTime, rec}">cmd</div>
+      <div class="tr-p tr-out" data-out="transport" title="{run, play, count, rec, bar, beat, bpm, pos, time, next, spb}">transport</div>
+    </div>
+  </div>
+
+  <textarea data-scv-slot="state" hidden></textarea>
+</div>
+
+<script>
+const $ = s => root.querySelector(s);
+const out = k => $(`[data-out="${k}"]`);
+const ac = shared('audio', () => new AudioContext(), a => a.close());
+const resume = () => { if (ac.state === 'suspended') ac.resume(); }; // autoplay waits for a gesture
+addEventListener('pointerdown', resume, { signal });
+addEventListener('keydown', resume, { signal });
+
+const ICON_PLAY = '<path d="M8 5v14l11-7z"/>', ICON_STOP = '<rect x="6" y="6" width="12" height="12"/>';
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const slot = $('[data-scv-slot="state"]');
+let [bpm, num, den, countLen, arm, met] = (slot.value || '').split('|'); // bpm|num|den|count|arm|met
+bpm = bpm ? Number(bpm) : null; num = Number(num) || 4; den = Number(den) || 4; countLen = Number(countLen) || 1; arm = arm === '1'; met = met === '1';
+let state = 'stop', beat = 0, bar = 0, tick = 0; // stop | counting | playing
+let timer = null, nextBeatTime = 0, barStartTime = 0, nextCmdStart = 0;
+const running = () => state !== 'stop';
+const spb = () => 60 / (Number(bpm) || 120) * (4 / den);
+const persist = () => { slot.value = [bpm ?? '', num, den, countLen, arm ? 1 : 0, met ? 1 : 0].join('|'); };
+
+const paint = () => {
+  patch($('[data-tr="playico"]'), { html: running() ? ICON_STOP : ICON_PLAY });
+  $('[data-tr="playbtn"]').classList.toggle('on', running());
+  patch($('[data-tr="playbtn"] span'), { text: running() ? 'stop' : 'play' });
+  $('[data-tr="armbtn"]').classList.toggle('on', arm);
+  $('[data-tr="metbtn"]').classList.toggle('on', met);
+  patch($('[data-tr="sigN"]'), { text: num });
+  patch($('[data-tr="sigD"]'), { text: den });
+  $('[data-tr="sigread"]').classList.toggle('dim', state !== 'playing');
+  const fields = { bpm: bpm ?? '', num, den, count: countLen };
+  for (const k in fields) { const el = $(`[data-tr="${k}"]`); if (root.activeElement !== el) patch(el, { value: fields[k] }); }
+};
+
+const emitBeat = () => emit({ beat, bar, bpm: Number(bpm) || 120, play: state === 'playing' ? 1 : 0, num, denom: den }, out('beat'));
+const emitBpm = () => { if (Number.isFinite(Number(bpm))) emit(Number(bpm), out('bpm')); };
+const emitCmd = (t, targetTime, rec) => emit(rec === undefined ? { t, targetTime } : { t, targetTime, rec }, out('cmd'));
+const emitTransport = () => emit({
+  run: running() ? 1 : 0, play: state === 'playing' ? 1 : 0, count: state === 'counting' ? 1 : 0, rec: arm ? 1 : 0,
+  bar, beat, num, denom: den, bpm: Number(bpm) || 120, pos: tick, time: nextBeatTime, next: nextBeatTime + spb(), spb: spb(),
+}, out('transport'));
+
+const clickAt = t => {
+  if (!met) return;
+  const osc = ac.createOscillator(), g = ac.createGain();
+  osc.type = 'square'; osc.frequency.value = 1480;
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.3, t + 0.002);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+  osc.connect(g).connect(ac.destination);
+  osc.start(t); osc.stop(t + 0.06);
+};
+
+const schedule = () => { // 100ms ahead on audio clock
+  while (nextBeatTime <= ac.currentTime + 0.1) {
+    const t = nextBeatTime;
+    beat++; tick++;
+    if (beat % num === 1) { barStartTime = t; bar++; }
+    clickAt(t);
+    if (state === 'counting' && t + 1e-4 >= nextCmdStart) { state = 'playing'; paint(); } // count-in ends on aligned downbeat
+    emitBeat(); emitTransport();
+    nextBeatTime += spb();
+  }
+};
+
+const start = (targetTime, recOverride) => {
+  if (running()) return;
+  resume();
+  bpm ??= 120;
+  beat = bar = tick = 0;
+  const now = ac.currentTime, barSec = num * spb(), recOn = recOverride ?? arm;
+  nextBeatTime = now + 0.05;
+  let t = Number(targetTime);
+  if (!(t > now + 0.02)) { // next whole bar, count-in bars on top when recording
+    t = nextBeatTime + Math.max(1, Math.ceil((now + 0.2 - nextBeatTime) / barSec)) * barSec;
+    if (recOn) t += Math.max(0, countLen - 1) * barSec;
+  }
+  nextCmdStart = t;
+  state = recOn ? 'counting' : 'playing';
+  paint();
+  emitCmd('start', t, recOn ? 1 : 0);
+  emitTransport();
+  timer = setInterval(schedule, 25);
+  emitBpm();
+};
+const stop = () => {
+  clearInterval(timer); timer = null;
+  state = 'stop';
+  paint();
+  emitCmd('stop', ac.currentTime);
+  emitBeat(); emitTransport();
+};
+const punch = on => { // rec in/out at next downbeat at least 200ms away
+  if (!running()) return;
+  const now = ac.currentTime, barSec = num * spb();
+  let t = (barStartTime || now) + barSec;
+  while (t - now < 0.2) t += barSec;
+  emitCmd(on ? 'rec' : 'recOff', t);
+};
+onTeardown(() => { clearInterval(timer); state = 'stop'; });
+
+root.addEventListener('click', e => {
+  const t = e.target.closest?.('[data-tr]')?.dataset.tr;
+  if (t === 'playbtn') running() ? stop() : start();
+  else if (t === 'armbtn') { arm = !arm; paint(); persist(); punch(arm); }
+  else if (t === 'metbtn') { met = !met; paint(); persist(); }
+}, { signal });
+root.addEventListener('input', e => {
+  const el = e.target, t = el.dataset?.tr;
+  if (t === 'bpm') { bpm = el.value === '' ? null : Number(el.value); emitBpm(); }
+  else if (t === 'num') num = clamp(Number(el.value) || 4, 1, 32);
+  else if (t === 'den') den = clamp(Number(el.value) || 4, 1, 32);
+  else if (t === 'count') countLen = Math.round(clamp(Number(el.value) || 1, 1, 4));
+  else return;
+  paint(); persist();
+}, { signal });
+
+host.addEventListener('scv-receive', e => { // cmd from another transport, or a bpm number
+  const v = e.detail;
+  if (typeof v?.t === 'string') {
+    const tt = Number(v.targetTime), tgt = tt > ac.currentTime + 0.02 ? tt : undefined;
+    if (v.t === 'start') { if (state === 'playing') return; if (running()) stop(); start(tgt, !!v.rec); }
+    else if (v.t === 'stop') { if (running()) stop(); }
+    else if (v.t === 'reset') { beat = bar = tick = 0; emitBeat(); emitTransport(); }
+    else if (v.t === 'rec' || v.t === 'recOff') { arm = v.t === 'rec'; paint(); persist(); punch(arm); }
+    return;
+  }
+  const b = Number(v);
+  if (v !== '' && Number.isFinite(b)) { bpm = clamp(b, 20, 300); paint(); persist(); emitBpm(); emitBeat(); emitTransport(); }
+}, { signal });
+
+paint();
+</script>
+</template>

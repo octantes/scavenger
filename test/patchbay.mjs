@@ -980,6 +980,41 @@ try {
   })()`);
   ok(perPb && perPb[0] === '9' && perPb[1] === '7', `each patchbay reads its own quest api (${perPb})`);
 
+  // embedding - parent talks to framed file by message
+
+  await nav(base + '/pb');
+  const bridged = await js(`(async () => {
+    const f = document.createElement('iframe'); f.sandbox = 'allow-scripts'; f.src = location.origin + '/pb'; document.body.append(f);
+    await new Promise(r => { f.onload = r; });
+    const got = [], post = m => f.contentWindow.postMessage(m, '*');
+    addEventListener('message', e => { if (e.source === f.contentWindow && e.data?.scv === 'receive') got.push(e.data); });
+    const t = performance.timeOrigin + performance.now();
+    post({ scv: 'listen', channel: 'x' });
+    post({ scv: 'route', channel: 'x', value: 5 });
+    post({ scv: 'route', channel: 'x', value: { scv: 'pulse', t } });
+    post({ scv: 'route', channel: 'y', value: 6 });
+    post({ scv: 'unlisten', channel: 'x' });
+    post({ scv: 'route', channel: 'x', value: 7 });
+    await new Promise(r => setTimeout(r, 300));
+    f.remove();
+    return { values: got.map(g => g.channel + ':' + (g.value?.scv || g.value)), dt: Math.abs((got[1]?.value?.t ?? 1e9) - t) };
+  })()`);
+  ok(bridged?.values.join() === 'x:5,x:pulse' && bridged.dt < 0.01, `sandboxed frame routes parent messages, sends back only listened channel, pulse keeps its time (${JSON.stringify(bridged)})`);
+
+  const foreign = await js(`(async () => {
+    const f = document.createElement('iframe'); f.src = location.origin + '/pb'; document.body.append(f);
+    await new Promise(r => { f.onload = r; });
+    const got = []; addEventListener('message', e => { if (e.data?.scv === 'receive') got.push(e.data.value); });
+    f.contentWindow.postMessage({ scv: 'listen', channel: 'z' }, '*');
+    await new Promise(r => setTimeout(r, 50));
+    f.contentWindow.Function("postMessage({ scv: 'route', channel: 'z', value: 'self' }, '*')")(); // source is frame itself
+    f.contentWindow.postMessage({ scv: 'route', channel: 'z', value: 'parent' }, '*');
+    await new Promise(r => setTimeout(r, 200));
+    f.remove();
+    return got;
+  })()`);
+  ok(foreign?.join() === 'parent', `frame ignores messages not from its parent (${foreign})`);
+
   // clock wakes
 
   await send('Page.addScriptToEvaluateOnNewDocument', { source: `window.__timeouts = 0; const _st = window.setTimeout; window.setTimeout = (...a) => { window.__timeouts++; return _st(...a); };` });

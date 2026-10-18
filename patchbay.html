@@ -998,6 +998,42 @@ builtIn('quest', '0', {
   unmount(ctx) { ctx.mem.live?.remove(); ctx.mem.live = null; ctx.mem.liveRef = null; },
 });
 
+// parent frame reaches this file's patchbay by message - channel values only
+
+const _wire = v => isPulse(v) ? { scv: 'pulse', t: v.t + performance.timeOrigin } // each document's clock starts at own zero
+  : typeof AudioBuffer === 'function' && v instanceof AudioBuffer ? { scv: 'audio', sampleRate: v.sampleRate, channels: Array.from({ length: v.numberOfChannels }, (_, i) => v.getChannelData(i).slice()) }
+  : v;
+const _unwire = v => {
+  if (v?.scv === 'pulse') return pulse(v.t - performance.timeOrigin);
+  if (v?.scv !== 'audio' || typeof AudioBuffer !== 'function') return v;
+  const b = new AudioBuffer({ numberOfChannels: v.channels.length, length: v.channels[0].length, sampleRate: v.sampleRate });
+  v.channels.forEach((c, i) => b.copyToChannel(c, i));
+  return b;
+};
+let _bridged = false;
+const _bridge = () => {
+  if (_bridged || window.parent === window) return;
+  _bridged = true;
+  const to = new Map(), hooked = new WeakSet(), dropped = new Set(); // channel > origin its listen came from
+  addEventListener('message', e => {
+    const m = e.data, pb = document.querySelector('scv-patchbay');
+    if (e.source !== window.parent || typeof m?.scv !== 'string' || !pb) return;
+    const ch = String(m.channel);
+    if (m.scv === 'route') return pb.routeSend(ch, _unwire(m.value));
+    if (m.scv === 'unlisten') return to.delete(ch);
+    if (m.scv !== 'listen') return;
+    to.set(ch, e.origin === 'null' ? '*' : e.origin);
+    if (hooked.has(pb)) return;
+    hooked.add(pb);
+    pb.onRoute((c, v) => {
+      if (!to.has(c)) return;
+      const w = _wire(v);
+      try { window.parent.postMessage({ scv: 'receive', channel: c, value: w }, to.get(c), w?.scv === 'audio' ? w.channels.map(a => a.buffer) : []); } // only own copies transfer - frame receivers still get original
+      catch (err) { if (!dropped.has(c)) { dropped.add(c); console.warn('[scav] ' + c + ' value cannot cross frame, dropped', err); } }
+    });
+  });
+};
+
 const UNKNOWN = { name: '', icon: '◆' }; // def may arrive later
 const SAFE_INPUTS = new Set(['text', 'number', 'email', 'url', 'tel', 'password']); // def-supplied type must not inject attributes
 
@@ -1226,6 +1262,7 @@ class ScvPatchbay extends HTMLElement {
   static boot() { // asset table to blobs, authored defs registered - before harvest defs run
     asset.boot();
     window.routeSend ??= (channel, value) => document.querySelector('scv-patchbay')?.routeSend(channel, value); // same-origin parent reaches standalone file through it
+    _bridge();
     document.querySelectorAll('template[data-scv-comp]').forEach(defineComponent);
     document.querySelectorAll('script[type="scv/node"]').forEach(s => runNodeSource(s.textContent));
   }

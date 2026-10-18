@@ -191,6 +191,7 @@ const _emitters = new WeakSet(); // script emits for these - native listeners sk
 const createRouter = (root, {
   shouldRoute = () => true,
   onRoute     = () => {},
+  onRefuse    = () => {},
 } = {}) => {
   let _depth = 0;
   let _cache = null; // channel > receivers in walk order
@@ -281,11 +282,13 @@ const createRouter = (root, {
     });
   };
 
-  const _write = (node, value) => { // primitives into controls and leaves - objects, pulses and markup by event
+  const _keeps = n => !!n.shadowRoot || (!!n.firstElementChild && (!!n.querySelector('input, textarea, select, button, ' + WIRING_SEL) || [...n.querySelectorAll('*')].some(c => c.localName.includes('-')))); // text would wipe controls, components or wires
+  const _write = (node, value) => { // primitives only - objects and pulses by event
     if (!PRIMITIVE.has(typeof value)) return;
     if (FORM_TAGS.has(node.tagName) && (node.type === 'checkbox' || node.type === 'radio')) node.checked = [true, 1, '1', 'true', 'on', 'checked'].includes(value);
     else if (FORM_TAGS.has(node.tagName)) node.value = value; // text would wipe select options
-    else if (!node.shadowRoot && !node.firstElementChild) node.textContent = value;
+    else if (_keeps(node)) onRefuse(node);
+    else node.textContent = value;
   };
 
   const _deliver = (node, channel, value) => {
@@ -1236,6 +1239,7 @@ class ScvPatchbay extends HTMLElement {
     this._router = createRouter(this, {
       shouldRoute: kind => kind === 'scv-emit' || !this.editing, // raw gestures held while authoring - emit is intentional
       onRoute: (ch, v) => this._routeHooks.forEach(fn => fn(ch, v)),
+      onRefuse: el => this._onRefuse?.(el),
     });
     this._installed = new Set();
     new MutationObserver(records => { // refs arriving later - paste, drop, undo
@@ -2049,12 +2053,14 @@ const studio = pb => {
 
   // paste, drop and duplicate share import - only authored defs run code
 
-  const note = msg => { // short message at pointer
-    const r = rectOf();
+  const note = (msg, el) => { // short message at pointer or element
+    const r = rectOf(), b = el?.getBoundingClientRect() || { left: st.pointer.x + 15, top: st.pointer.y + 15 };
     tip.textContent = msg; tip.hidden = false;
-    Object.assign(tip.style, { left: st.pointer.x - r.left + 15 + 'px', top: st.pointer.y - r.top + 15 + 'px', transform: '' });
+    Object.assign(tip.style, { left: b.left - r.left + 'px', top: b.top - r.top + 'px', transform: '' });
     clearTimeout(st.noteT); st.noteT = setTimeout(() => { tip.hidden = true; }, 2500);
   };
+  const refused = new WeakSet();
+  pb._onRefuse = el => { if (pb.editing && !refused.has(el)) { refused.add(el); note('value not written - would wipe its controls', el); } }; // once per element
   const wiredIn = (u, fn) => { if (u.matches(kit.WIRING_SEL)) fn(u); walk(u, kit.WIRING_SEL, fn); };
   const putAt = (u, x, y) => { u.style.left = Math.round(x) + 'px'; u.style.top = Math.round(y) + 'px'; return u; };
   const itemFor = (child, x, y) => { const it = document.createElement('scv-item'); it.append(child); return putAt(it, x, y); };

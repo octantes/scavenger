@@ -555,6 +555,17 @@ try {
     })()`);
     return [r.join() === 'inline-size,150px,true', r];
   });
+  await run('refused value floats note once in edit mode, never in use', async () => {
+    const r = await js(`(() => {
+      const tip = T.shadow('.tip'), mk = () => { const d = document.createElement('div'); d.innerHTML = '<button>b</button>'; d.setAttribute('data-scv-receives', 'rf'); T.pb.append(d); return d; };
+      T.pb.setMode('use'); mk(); tip.hidden = true; T.pb.routeSend('rf', 1); const use = tip.hidden;
+      T.pb.setMode('edit'); T.pb.routeSend('rf', 2); const first = !tip.hidden && tip.textContent;
+      tip.hidden = true; T.pb.routeSend('rf', 3); const again = tip.hidden;
+      T.pb.querySelectorAll('[data-scv-receives="rf"]').forEach(d => d.remove());
+      return [use, first, again];
+    })()`);
+    return [r[0] === true && r[1] === 'value not written - would wipe its controls' && r[2] === true, r];
+  });
   await run('1.0 file refused with note, 1.1 taken', async () => {
     const r = await js(`(() => { const n = T.pb.children.length, a = T.pb.import('<html data-scv-runtime="1.0.0"><body><scv-item><p data-scv-id="o">old</p></scv-item></body></html>'), b = T.pb.import('<div class="comp-wrapper"></div>'), c = T.pb.import('<html data-scv-runtime="1.1.0"><body><scv-item><p data-scv-id="n">new</p></scv-item></body></html>'); return [a.length + b.length, c.length, T.pb.children.length === n + 1, T.shadow('.tip').textContent]; })()`);
     return [r[0] === 0 && r[1] === 1 && r[2] && r[3] === '1.0 file, open it directly', r];

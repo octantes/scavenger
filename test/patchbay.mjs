@@ -136,10 +136,17 @@ try {
     return [d.textContent === 'kept' && d.log[0] === obj, d.textContent];
   });
 
-  await run('container gets value by event only, markup kept', async () => {
-    const pb = T.pb(), d = T.sink(pb, 'c'); d.innerHTML = '<b>kept</b>';
+  await run('styled text takes value - span holding small', async () => {
+    const pb = T.pb(), d = T.sink(pb, 'c', 'span'); d.innerHTML = '$<small>9</small>';
+    pb.routeSend('c', '12');
+    return [d.innerHTML === '12', d.innerHTML];
+  });
+
+  await run('element holding control, component or wire gets event only, markup kept', async () => {
+    const pb = T.pb(), held = ['<button>b</button>', '<scv-kept1></scv-kept1>', '<i data-scv-receives="z">w</i>'];
+    const ds = held.map(h => { const d = T.sink(pb, 'c'); d.innerHTML = h; return d; });
     pb.routeSend('c', 'v');
-    return [d.innerHTML === '<b>kept</b>' && d.log[0] === 'v', d.innerHTML];
+    return [ds.every((d, i) => d.innerHTML === held[i] && d.log[0] === 'v'), ds.map(d => d.innerHTML)];
   });
 
   await run('component host gets value by event only, no text in light dom', async () => {

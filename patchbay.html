@@ -172,12 +172,14 @@ const _cssVar = hash => {
   _cssVars.add(hash);
   _assetSheet.insertRule(`:host { --scv-asset-${hash}: url("${url}"); }`, _assetSheet.cssRules.length);
 };
-const resolveRefs = root => { // data-scv-src > src, through shadows
+const REF_SEL = '[data-scv-src],[data-scv-href]';
+const _resolve = el => ['src', 'href'].forEach(a => { const u = asset.url(el.getAttribute('data-scv-' + a)); if (u && el.getAttribute(a) !== u) el.setAttribute(a, u); });
+const resolveRefs = root => { // ref attrs > live urls, through shadows
   const walk = r => {
-    r.querySelectorAll('[data-scv-src]').forEach(el => { const u = asset.url(el.dataset.scvSrc); if (u && el.getAttribute('src') !== u) el.setAttribute('src', u); });
+    r.querySelectorAll(REF_SEL).forEach(_resolve);
     r.querySelectorAll('*').forEach(n => { if (n.shadowRoot && n.localName !== 'scv-logic') walk(n.shadowRoot); });
   };
-  if (root.matches?.('[data-scv-src]')) { const u = asset.url(root.dataset.scvSrc); if (u) root.setAttribute('src', u); }
+  if (root.matches?.(REF_SEL)) _resolve(root);
   walk(root);
 };
 
@@ -229,6 +231,7 @@ const createRouter = (root, {
       if (!arg) return;
       if (verb === 'prop') {
         const v = value !== undefined ? value : '';
+        if ((arg === 'src' || arg === 'href') && asset.hashOf(v)) { node.setAttribute('data-scv-' + arg, v); return _resolve(node); } // ref saved, live url beside it
         if (!arg.startsWith('style.')) return node[arg] = v;
         const p = arg.slice(6);
         p.startsWith('--') ? node.style.setProperty(p, v) : node.style[p] = v;
@@ -1247,7 +1250,7 @@ class ScvPatchbay extends HTMLElement {
         if (r.type === 'attributes') resolveRefs(r.target);
         else r.addedNodes.forEach(n => { if (n.nodeType === 1) resolveRefs(n); });
       }
-    }).observe(this, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-scv-src'] });
+    }).observe(this, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-scv-src', 'data-scv-href'] });
   }
   connectedCallback() { _addons.forEach(a => this._install(a)); }
   attributeChangedCallback(name, old, val) { // extent - page size publish scrolls to

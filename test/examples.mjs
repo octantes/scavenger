@@ -109,6 +109,18 @@ try {
     return got.map(b => b.beat + ':' + b.play);
   })()`);
   ok(beats?.length >= 2 && beats.at(-1).endsWith(':0'), `transport play sends beats, stop sends play 0 (${beats})`);
+  const shown = await js(`(async () => { // gallery ref lands in plain img through prop:src
+    const ga = pb.querySelector('scv-store-images').shadowRoot, input = ga.querySelector('[data-ga="file"]'), dt = new DataTransfer();
+    const c = document.createElement('canvas'); c.width = c.height = 4;
+    dt.items.add(new File([await new Promise(r => c.toBlob(r))], 'dot.png', { type: 'image/png' })); input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise(r => setTimeout(r, 100));
+    const img = document.createElement('img'); img.setAttribute('data-scv-action', 'prop:src'); pb.append(img);
+    pb.wire(ga.querySelector('[data-ga="img"]'), img);
+    ga.querySelector('[data-ga="img"]').click();
+    return [img.dataset.scvSrc, img.getAttribute('src')?.slice(0, 5)];
+  })()`);
+  ok(/^scv-asset:/.test(shown?.[0] || '') && shown[1] === 'blob:', `gallery emits ref, img receiver keeps it and shows live url (${shown})`);
   ok(!errors.length, `wiring examples throws nothing (${errors.slice(0, 2).join(' | ')})`);
 } catch (e) {
   fails++; console.log('  ✗ examples tier threw:', e.message);

@@ -49,7 +49,7 @@ const show = () => {
   imgEl.dataset.scvSrc = refs[idx];
   imgEl.src = asset.url(refs[idx]) || '';
 };
-const emitCurrent = () => { if (refs.length) emit(asset.url(refs[idx]), imgEl); }; // live url - refs resolve only inside this file
+const emitCurrent = () => { if (refs.length) emit(refs[idx], imgEl); };
 const add = async f => {
   if (!f?.type.startsWith('image/')) return;
   refs.push(await asset.put(f)); idx = refs.length - 1;

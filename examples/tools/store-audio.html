@@ -78,7 +78,7 @@ $('[data-au="fwd"]').addEventListener('click', () => { if (tracks.length) { play
 play.addEventListener('click', () => { if (tracks.length) eng.paused ? eng.play().catch(() => {}) : eng.pause(); });
 $('[data-au="stop"]').addEventListener('click', doStop);
 $('[data-au="add"]').addEventListener('click', () => fileIn.click());
-eng.addEventListener('play', () => { playing = true; setPlayBtn(); emit(eng.src, eng); }); // live url - refs resolve only inside this file
+eng.addEventListener('play', () => { playing = true; setPlayBtn(); emit(tracks[idx].ref, eng); });
 eng.addEventListener('pause', () => { playing = false; setPlayBtn(); });
 eng.addEventListener('timeupdate', () => { curEl.textContent = ft(eng.currentTime); fill.style.width = (eng.duration ? eng.currentTime / eng.duration * 100 : 0) + '%'; });
 eng.addEventListener('loadedmetadata', () => { durEl.textContent = ft(eng.duration); });

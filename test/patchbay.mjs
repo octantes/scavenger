@@ -713,6 +713,13 @@ try {
     return [n === 1 && a === 2 && b === 2, { n, a, b }];
   });
 
+  await run('asset ref through prop:src keeps ref in dom, live url beside it', async () => {
+    const pb = T.pb(), ref = await T.kit.asset.put(new Blob(['ps'], { type: 'image/png' }));
+    const img = T.el('<img data-scv-receives="c" data-scv-action="prop:src">'); pb.append(img);
+    pb.routeSend('c', ref);
+    return [img.dataset.scvSrc === ref && img.getAttribute('src') === T.kit.asset.url(ref) && img.src.startsWith('blob:'), [img.dataset.scvSrc, img.getAttribute('src')]];
+  });
+
   await run('asset css variable reaches component shadow', async () => {
     const pb = T.pb();
     const ref = await T.kit.asset.put(new Blob([new Uint8Array([7, 7, 7])], { type: 'image/png' }));

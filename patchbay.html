@@ -675,6 +675,7 @@ const NODE_CSS = `
 :host(:hover), :host(:focus-within), :host(:state(selected)), :host(:state(chained)) { --cs: var(--input); }
 :host(:hover)::before, :host(:focus-within)::before { opacity: 1; }
 :host(:state(dragging)) { box-shadow: 0 0 0 2px var(--background-sunk), 0 0 0 4px var(--cs), 0 0 24px rgba(0,0,0,.55); }
+:host(:state(busy)) { --cs: var(--success); }
 :host(:state(error)), :host(:state(danger)) { --cs: var(--danger); }
 .dot { position: relative; width: 32px; height: 32px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   background: var(--node); color: var(--glyph); font-weight: bold; user-select: none; }
@@ -1106,8 +1107,8 @@ class ScvLogic extends HTMLElement {
     if (name === 'data-type') { this._stop(); this._start(); return; }
     const def = this._def, ctx = this._ctx;
     if (name === 'value' || name === 'last') this._syncInput();
-    if (name === 'value') this._call('onValue', () => def.onValue?.(ctx));
-    if (name === 'mode') this._call('onMode', () => def.onMode?.(ctx.mode, ctx));
+    if (name === 'value') this._call('onValue', c => def.onValue?.(c));
+    if (name === 'mode') this._call('onMode', c => def.onMode?.(ctx.mode, c));
     this._paint();
   }
 
@@ -1140,7 +1141,7 @@ class ScvLogic extends HTMLElement {
     input.hidden = def.inputType === false;
     this._parts.caret.toggleAttribute('hidden', input.hidden);
     this._syncInput(true); this._paint();
-    this._call('init', () => def.init?.(this._ctx));
+    this._call('init', c => def.init?.(c));
   }
   _stop() {
     if (!this._live) return;
@@ -1149,10 +1150,26 @@ class ScvLogic extends HTMLElement {
     this._scope.release();
   }
 
-  _call(where, fn) { // error state sticks until next success
+  _call(where, fn, latest) { // error sticks until next success - promise awaited, newer call supersedes pending one
     this._errored = false;
-    try { fn(); } catch (e) { this.flashError(where, e); }
+    let call = null, r;
+    if (latest) { if (this._pend) { this._pend.gone = true; this._pend.ac?.abort(); this._pend = null; } call = {}; }
+    try { r = fn(call ? this._view(call) : this._ctx); } catch (e) { this.flashError(where, e); }
+    if (typeof r?.then === 'function') { if (call) this._pend = call; return void this._wait(where, r, call); }
     if (!this._errored) this._internals.states.delete('error');
+  }
+  _view(call) { // ctx as one call sees it - emits of superseded call dropped, its callSignal aborts
+    const ctx = this._ctx, own = { emit: v => { if (!call.gone) ctx.emit(v); }, output: v => { if (!call.gone) ctx.output(v); } };
+    return new Proxy(ctx, {
+      get: (t, k) => k in own ? own[k] : k === 'callSignal' ? (call.sig ??= AbortSignal.any([t.signal, (call.ac ??= new AbortController()).signal])) : Reflect.get(t, k),
+      set: (t, k, v) => Reflect.set(t, k, v),
+    });
+  }
+  async _wait(where, p, call) {
+    this._busy = (this._busy || 0) + 1; this._internals.states.add('busy');
+    try { await p; if (this._live && !call?.gone) this._internals.states.delete('error'); }
+    catch (e) { if (this._live && !call?.gone && e?.name !== 'AbortError') this.flashError(where, e); }
+    finally { if (!--this._busy) this._internals.states.delete('busy'); if (this._pend === call) this._pend = null; }
   }
   _modeDef() { const ms = this.def.modes; if (!ms?.length) return null; const m = this.getAttribute('mode'); return ms.find(x => x.id === m) || ms[0]; }
   _commit() { // once per draft - enter and change both land here
@@ -1223,13 +1240,13 @@ class ScvLogic extends HTMLElement {
 
   trigger() {
     if (!this._live) return;
-    if (this._def.onClick) this._call('onClick', () => this._def.onClick(this._ctx));
-    else this._call('onPulse', () => this._def.onPulse?.(this._ctx, pulse()));
+    if (this._def.onClick) this._call('onClick', c => this._def.onClick(c), true);
+    else this._call('onPulse', c => this._def.onPulse?.(c, pulse()), true);
   }
   receive(v, ch) {
     if (!this._live) return;
-    if (isPulse(v)) this._call('onPulse', () => this._def.onPulse?.(this._ctx, v));
-    else this._call('onReceive', () => this._def.onReceive?.(v, this._ctx, ch));
+    if (isPulse(v)) this._call('onPulse', c => this._def.onPulse?.(c, v), true);
+    else this._call('onReceive', c => this._def.onReceive?.(v, c, ch), true);
   }
   cycleMode() {
     if (!this._live) return;

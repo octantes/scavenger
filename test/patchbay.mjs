@@ -557,6 +557,31 @@ try {
     return [f.textContent === '50' && writes === 1, [f.textContent, writes]];
   });
 
+  await run('async hook: newer call wins, older emit dropped', async () => {
+    const pb = T.pb(); T.kit.defineNode({ name: 'as-wins', async onReceive(v, ctx) { await T.sleep(v); ctx.emit(v); } });
+    const n = T.node(pb, 'as-wins', { 'data-scv-emits': 'aw' }), d = T.sink(pb, 'aw');
+    n.receive(80, 'x'); n.receive(10, 'x'); await T.sleep(150);
+    return [d.log.join() === '10', d.log];
+  });
+
+  await run('async hook: busy while pending, rejection is error, next success clears it', async () => {
+    const pb = T.pb(); T.kit.defineNode({ name: 'as-err', async onReceive(v) { await T.sleep(20); if (v === 'bad') throw new Error('no'); } });
+    const n = T.node(pb, 'as-err'), s = () => ['busy', 'error'].filter(k => n.states.has(k)).join('+') || 'idle';
+    n.receive('bad', 'x'); const pending = s(); await T.sleep(50); const failed = s();
+    n.receive('ok', 'x'); await T.sleep(50);
+    return [pending === 'busy' && failed === 'error' && s() === 'idle', [pending, failed, s()]];
+  });
+
+  await run('async hook: abort is no error, teardown aborts callSignal', async () => {
+    const pb = T.pb(), sigs = [];
+    T.kit.defineNode({ name: 'as-abort', onReceive(v, ctx) { sigs.push(ctx.callSignal); return new Promise((_, rej) => ctx.callSignal.addEventListener('abort', () => rej(new DOMException('gone', 'AbortError')))); } });
+    const n = T.node(pb, 'as-abort');
+    n.receive(1, 'x'); n.receive(2, 'x'); await T.sleep(10);
+    const superseded = sigs[0].aborted && !n.states.has('error');
+    n.remove(); await T.frame(); await T.frame();
+    return [superseded && sigs[1].aborted, [sigs.map(g => g.aborted), n.states.has('error')]];
+  });
+
   await run('custom node: onPulse, onReceive and re-point on redefine', async () => {
     const pb = T.pb();
     T.kit.runNodeSource("defineNode({ name: 'dbl', onReceive(v, ctx) { ctx.emit(v * 2); }, onPulse(ctx) { ctx.emit('p'); } })");

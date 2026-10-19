@@ -771,8 +771,9 @@ builtIn('variable', '3', {
   modes: [{ id: 'let', icon: ICON.let }, { id: 'const', icon: ICON.const }],
   stored: ctx => ctx.mem.in !== undefined ? ctx.mem.in : ctx.last,
   release(ctx) {
-    const s = varsOf(ctx.el), w = ctx.mem.var;
+    const w = ctx.mem.var;
     if (!w) return;
+    const s = w.store; // removed node has no patchbay left to look up
     if (s.owners.get(w.name) === ctx.el) { s.values.delete(w.name); s.owners.delete(w.name); } // shared let outlives earlier publishers
     if (w.ownsConst) s.consts.delete(w.name);
     ctx.mem.var = null;
@@ -781,7 +782,7 @@ builtIn('variable', '3', {
     const name = ctx.value.trim(), s = varsOf(ctx.el);
     if (ctx.mem.var && ctx.mem.var.name !== name) this.release(ctx);
     if (!isVarName(name)) return false;
-    const w = ctx.mem.var ??= { name, ownsConst: false };
+    const w = ctx.mem.var ??= { name, ownsConst: false, store: s };
     const v = this.stored(ctx);
     if (v === undefined || (s.consts.has(name) && !w.ownsConst)) return false;
     s.values.set(name, v); s.owners.set(name, ctx.el);

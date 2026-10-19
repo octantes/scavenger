@@ -191,6 +191,14 @@ try {
     return [b.log.join() === '2', b.log];
   });
 
+  await run('deleted const variable frees its name', async () => {
+    const pb = T.pb(), a = T.node(pb, 'variable', { value: 'freed', mode: 'const' });
+    a.receive(1, 'x'); a.remove(); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const b = T.node(pb, 'variable', { value: 'freed', 'data-scv-emits': 'fv' }), d = T.sink(pb, 'fv');
+    b.receive(2, 'x');
+    return [d.log.join() === '2', d.log];
+  });
+
   await run('cache follows dom: added receiver gets next value', async () => {
     const pb = T.pb(); T.sink(pb, 'c');
     pb.routeSend('c', 1);

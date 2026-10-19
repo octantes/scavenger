@@ -199,6 +199,16 @@ try {
     return [d.log.join() === '2', d.log];
   });
 
+  await run('nested patchbay keeps its routing - neither side reaches the other', async () => {
+    const outer = T.pb(), it = document.createElement('scv-item'), inner = document.createElement('scv-patchbay');
+    it.append(inner); outer.append(it); inner.setMode?.('use');
+    const o = T.sink(outer, 'nx'), i = T.sink(inner, 'nx'), oc = T.sink(outer, 'nc'), ic = T.sink(inner, 'nc');
+    const b = document.createElement('button'); b.setAttribute('data-scv-emits', 'nc'); b.textContent = 'press'; inner.append(b);
+    outer.routeSend('nx', 'from outer'); inner.routeSend('nx', 'from inner'); b.click();
+    b.dispatchEvent(new CustomEvent('scv-emit', { detail: 'emitted', bubbles: true, composed: true })); // script emit never stops propagation
+    return [o.log.join() === 'from outer' && i.log.join() === 'from inner' && oc.log.length === 0 && ic.log.length === 2 && ic.log[1] === 'emitted', [o.log, i.log, oc.log, ic.log]];
+  });
+
   await run('cache follows dom: added receiver gets next value', async () => {
     const pb = T.pb(); T.sink(pb, 'c');
     pb.routeSend('c', 1);

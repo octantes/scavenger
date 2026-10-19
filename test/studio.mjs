@@ -443,6 +443,21 @@ try {
     await key('Escape'); const off = await js(`T.shadow('.intro').classList.contains('open')`);
     return [on === true && off === false, [on, off]];
   });
+  await run('ctrl+a and save see nested patchbay as one item', async () => {
+    const r = await js(`(async () => {
+      const it = document.createElement('scv-item'); it.style.cssText = 'left:900px;top:600px';
+      it.innerHTML = '<scv-patchbay style="width:120px;height:80px"><scv-logic data-type="gate" style="left:10px;top:10px"></scv-logic></scv-patchbay>';
+      T.pb.append(it); const inner = it.querySelector('scv-patchbay'); inner.setMode('use');
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      T.pb.shadowRoot.querySelector('.layer').focus();
+      T.pb.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true, composed: true }));
+      const sel = T.pb.selection(), html = await (await T.pb.save('quine')).text();
+      const saved = html.slice(html.indexOf('<scv-patchbay style="width:120px'), html.indexOf('</scv-patchbay>', html.indexOf('<scv-patchbay style="width:120px')));
+      T.pb.select([]); it.remove();
+      return [sel.includes(it), sel.some(u => inner.contains(u)), /shadowrootmode/.test(saved), /data-type="gate"/.test(saved)];
+    })()`);
+    return [r?.join() === 'true,false,false,true', r];
+  });
   await run('open key list blurs canvas, click outside closes it', async () => {
     await key('?', SHIFT); const on = await js(`T.shadow('.blur').classList.contains('on')`);
     await click(20, 700); const r = await js(`[T.shadow('.blur').classList.contains('on'), T.shadow('.intro').classList.contains('open')]`);

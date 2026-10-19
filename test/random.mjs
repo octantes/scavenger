@@ -50,13 +50,15 @@ const FIXTURES = [
   harvest('scv-rzh1'), harvest('scv-rzh2'),
   '<template data-scv-comp="rzc"><style>p{margin:0}</style><p><button>+</button> <b>0</b></p><script>const b = root.querySelector("b"); root.querySelector("button").addEventListener("click", () => { b.textContent = +b.textContent + 1; emit(+b.textContent, b); }, { signal });<\/script></template>',
   '<div style="padding:4px;background:#222;color:#ccc">plain <span>text</span></div>',
+  '<scv-item><scv-patchbay style="width:200px;height:120px"><scv-logic data-type="accumulator" data-scv-emits="ch_in" style="left:20px;top:20px"></scv-logic><scv-logic data-type="gate" data-scv-receives="ch_in" style="left:100px;top:20px"></scv-logic></scv-patchbay></scv-item>', // nested patchbay - one item to its parent
 ];
 const TYPES = ['accumulator', 'variable', 'gate', 'comparator', 'mutator', 'sample', 'action']; // clock, delay, quest act on their own - routing would move state undo can't see
 const VALUES = ['3', '-2', 'x', 'v + 1', 'v * 2', 'v > 2 ? v : undefined', 'pulse', 'toggle', 'increment', ''];
 
 const helpers = () => {
   const pb = window.pb = document.querySelector('scv-patchbay'), kit = window.kit = customElements.get('scv-patchbay').kit;
-  const deep = root => { const out = []; const rec = r => r.querySelectorAll('*').forEach(e => { out.push(e); if (e.shadowRoot && e.localName !== 'scv-logic') rec(e.shadowRoot); }); rec(root); return out; };
+  const own = e => kit.patchbayOf(e) === pb;
+  const deep = root => { const out = []; const rec = r => r.querySelectorAll('*').forEach(e => { if (!own(e)) return; out.push(e); if (e.shadowRoot && e.localName !== 'scv-logic') rec(e.shadowRoot); }); rec(root); return out; };
   const units = () => [...pb.children].filter(c => c.localName === 'scv-item' || c.localName === 'scv-logic');
   const ends = () => deep(pb).filter(e => (e.localName === 'scv-logic' || e.localName === 'scv-item' || e.getRootNode() !== document) && !/^(style|script|template|link)$/.test(e.localName)); // what a pointer can land on
   const key = (k, o = {}) => pb.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, composed: true, cancelable: true, ...o }));

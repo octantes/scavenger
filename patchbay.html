@@ -83,6 +83,7 @@ const hostOf = el => el?.getRootNode?.()?.host || null;
 const _up = (el, tag) => { for (let n = el; n; n = n.parentElement || hostOf(n)) if (n.localName === tag) return n; return null; }; // crosses shadow roots
 const itemOf = el => _up(el, 'scv-item');
 const patchbayOf = el => _up(el, 'scv-patchbay');
+const patchbayOfEvent = e => e.composedPath().find(n => n.localName === 'scv-patchbay') || null; // innermost - nested patchbay owns its events
 
 const PULSE = Symbol.for('scv.pulse');
 const pulse = (t = performance.now()) => Object.freeze({ [PULSE]: true, t }); // t: grid time it was due
@@ -223,16 +224,18 @@ const createRouter = (root, {
   };
   _observe(root, true); // shadows watch wiring attrs only - text churn must not drop cache every frame
 
+  const _own = n => patchbayOf(n) === root; // nested patchbay keeps its own wiring
   const _rebuild = () => { // light dom first, then component shadows by host
     const cache = new Map();
     const walk = r => {
       r.querySelectorAll(`[${ATTR_RECEIVES}],[${ATTR_ACTION}]`).forEach(n => {
+        if (!_own(n)) return;
         const chs = new Set(splitWords(n.getAttribute(ATTR_RECEIVES))); // receive + action on one channel fires once
         splitWords(n.getAttribute(ATTR_ACTION)).forEach(t => { const c = channelOf(t); if (c) chs.add(c); });
         chs.forEach(c => { if (!cache.has(c)) cache.set(c, []); cache.get(c).push(n); });
       });
       r.querySelectorAll('*').forEach(n => {
-        if (!n.shadowRoot || n.localName === 'scv-logic') return;
+        if (!n.shadowRoot || n.localName === 'scv-logic' || !_own(n)) return;
         _observe(n.shadowRoot, false); walk(n.shadowRoot);
       });
     };
@@ -354,7 +357,7 @@ const createRouter = (root, {
       if (n === root) return null;
       if (n.nodeType !== 1) continue;
       if (n.localName === 'scv-logic' || _emitters.has(n)) return null;
-      if (n.hasAttribute(ATTR_EMITS)) return n;
+      if (n.hasAttribute(ATTR_EMITS)) return _own(n) ? n : null;
     }
     return null;
   };
@@ -394,7 +397,7 @@ const createRouter = (root, {
   root.addEventListener('scv-emit', e => { // from el or nearest wired ancestor
     if (!shouldRoute('scv-emit')) return;
     const src = e.composedPath().find(n => n.nodeType === 1 && n.hasAttribute(ATTR_EMITS));
-    if (src && src !== root) _fan(src, e.detail);
+    if (src && src !== root && _own(src)) _fan(src, e.detail);
   });
 
   return { routeSend, applyAction, invalidate };
@@ -1367,7 +1370,7 @@ class ScvPatchbay extends HTMLElement {
 Object.assign(kit, {
   ATTR_EMITS, ATTR_RECEIVES, ATTR_ACTION, WIRING_SEL, NODE_TYPES, VERBS,
   splitWords, uid, px, debug, channelOf, collectChannels, hostOf, itemOf, patchbayOf, onFrame, whenGone, whenReady,
-  pulse, isPulse, asset, quests, clock, shared, unshare, isShared: key => _shared.has(key), patch, resolveRefs,
+  pulse, isPulse, asset, quests, clock, shared, unshare, isShared: key => _shared.has(key), patch, resolveRefs, patchbayOfEvent,
   isEmitter: el => _emitters.has(el), defineNode, runNodeSource, nodeSources: _nodeSources, defineComponent, comps: _comps, compTag,
   mountHarvest, harvestOf, defineHarvest, defang, remap, reframe, morphShadow, extractShadowMarkup, boxScopeCss, snapSlots, restoreSlots, slotValue, setSlot,
 });
@@ -1402,7 +1405,7 @@ const CANVAS_CSS = `
 `;
 let _sheet = null;
 
-PB.use(pb => {
+PB.use((pb, kit) => {
   const root = pb.shadowRoot;
   pb.states.add('canvas');
   if (!_sheet) { _sheet = new CSSStyleSheet(); _sheet.replaceSync(CANVAS_CSS); }
@@ -1434,6 +1437,7 @@ PB.use(pb => {
   Object.defineProperty(pb, 'view', { get: () => ({ ...view }), configurable: true });
 
   pb.addEventListener('wheel', e => {
+    if (kit.patchbayOfEvent(e) !== pb) return;
     e.preventDefault();
     if (e.ctrlKey || e.metaKey) pb.setZoom(view.zoom * (1 - e.deltaY * 0.001), e.clientX, e.clientY); // trackpad pinch arrives as ctrl-wheel
     else pb.setView(view.x - e.deltaX, view.y - e.deltaY);
@@ -1441,7 +1445,7 @@ PB.use(pb => {
 
   let pan = null; // middle drag
   pb.addEventListener('pointerdown', e => {
-    if (e.button !== 1) return;
+    if (e.button !== 1 || kit.patchbayOfEvent(e) !== pb) return;
     e.preventDefault();
     pan = { id: e.pointerId, x: e.clientX - view.x, y: e.clientY - view.y };
     pb.setPointerCapture(e.pointerId);
@@ -1646,6 +1650,7 @@ const studio = pb => {
   const withUndo = (els, label, fn, merge, extend) => { const before = els.map(attrsOf); fn(); recordAttrs(els, before, label, merge, extend); };
 
   pb.addEventListener('scv-commit', e => {
+    if (!own(e.target)) return;
     const node = e.target, { name, old } = e.detail, now = node.getAttribute(name);
     const put = v => v == null ? node.removeAttribute(name) : node.setAttribute(name, v);
     if (now !== old) record(() => put(now), () => put(old), 'edit');
@@ -1653,7 +1658,12 @@ const studio = pb => {
 
   // items and nodes - selection and looks are custom states
 
-  const units = () => [...pb.querySelectorAll('scv-item, scv-logic')];
+  const own = n => { const p = kit.patchbayOf(n); return !p || p === pb; }; // nested patchbay keeps its units and wires
+  const ownPath = e => { // nested patchbay owns its events while editing, else it is plain item content
+    const p = e.composedPath(), i = p.findIndex(n => n.localName === 'scv-patchbay');
+    return i < 0 || p[i] === pb ? p : p[i].editing ? null : p.slice(i);
+  };
+  const units = () => [...pb.querySelectorAll('scv-item, scv-logic')].filter(own);
   const isUnit = n => n?.localName === 'scv-item' || n?.localName === 'scv-logic';
   const selection = () => units().filter(u => u.states.has('selected'));
   const movable = list => list.filter(u => !list.some(o => o !== u && o.contains(u))); // nested node rides its item
@@ -1722,8 +1732,8 @@ const studio = pb => {
     sr.addEventListener('scroll', e => { const u = itemOf(e.target); if (u) remeasure(u); }, { capture: true, passive: true });
   };
   const walk = (r, sel, fn) => {
-    r.querySelectorAll(sel).forEach(fn);
-    r.querySelectorAll('*').forEach(n => { if (n.shadowRoot && n.localName !== 'scv-logic') { watchShadow(n.shadowRoot); walk(n.shadowRoot, sel, fn); } });
+    r.querySelectorAll(sel).forEach(n => { if (own(n)) fn(n); });
+    r.querySelectorAll('*').forEach(n => { if (n.shadowRoot && n.localName !== 'scv-logic' && own(n) && n.localName !== 'scv-patchbay') { watchShadow(n.shadowRoot); walk(n.shadowRoot, sel, fn); } });
   };
   const rebuild = () => {
     wiresDirty = false;
@@ -1747,7 +1757,7 @@ const studio = pb => {
     for (const [k, c] of cables) if (!next.has(k)) { c.path?.remove(); c.src.states?.delete('danger'); }
     cables.clear(); next.forEach((c, k) => cables.set(k, c));
     const sources = new Set([...cables.values()].map(c => c.src));
-    pb.querySelectorAll('scv-logic').forEach(n => sources.has(n) ? n.states.add('wired') : n.states.delete('wired'));
+    units().forEach(n => { if (n.localName === 'scv-logic') sources.has(n) ? n.states.add('wired') : n.states.delete('wired'); });
   };
   const render = () => {
     if (!pb.editing) return;
@@ -1887,7 +1897,7 @@ const studio = pb => {
     for (const r of rs) {
       if (r.type === 'childList') {
         wiresDirty = true;
-        r.addedNodes.forEach(n => { if (n.nodeType !== 1) return; [n, ...n.querySelectorAll('scv-item, scv-logic')].filter(isUnit).forEach(u => ro.observe(u)); if (pb.editing) shadowsIn(n).concat(n.shadowRoot && n.localName !== 'scv-logic' ? [n.shadowRoot] : []).forEach(sr => hover(sr, true)); });
+        r.addedNodes.forEach(n => { if (n.nodeType !== 1) return; [n, ...n.querySelectorAll('scv-item, scv-logic')].filter(u => isUnit(u) && own(u)).forEach(u => ro.observe(u)); if (pb.editing) shadowsIn(n).concat(n.shadowRoot && n.localName !== 'scv-logic' ? [n.shadowRoot] : []).forEach(sr => hover(sr, true)); });
       } else if (r.attributeName !== 'style') wiresDirty = true;
     }
     chrome(); draw(); paint();
@@ -2030,8 +2040,8 @@ const studio = pb => {
   pb.cancelGesture = () => { if (g) finish(null, 'cancel'); };
 
   pb.addEventListener('pointerdown', e => {
-    if (e.button !== 0 || (isMac && e.ctrlKey) || g) return; // mac ctrl-click is right click
-    const path = e.composedPath();
+    const path = ownPath(e);
+    if (e.button !== 0 || (isMac && e.ctrlKey) || g || !path) return; // mac ctrl-click is right click
     if (path.some(n => n === st.menu || n === bg || n === intro)) return;
     closeMenu();
     if (!pb.editing) return;
@@ -2051,7 +2061,7 @@ const studio = pb => {
     begin(lassoGesture(e, e.shiftKey));
   });
   pb.addEventListener('dblclick', e => { // ctrl-double-click opens node input
-    const node = e.composedPath().find(n => n.localName === 'scv-logic');
+    const node = ownPath(e)?.find(n => n.localName === 'scv-logic');
     if (node && pb.editing && mod(e)) { node.expand(); node.states.add('selected'); paint(); draw(); } // second click toggled it off
   });
 
@@ -2074,8 +2084,9 @@ const studio = pb => {
   pb.menu = () => st.menu && [...st.menu.querySelectorAll('button')].map(b => b.firstChild.textContent);
   const nodeItems = fn => [...kit.NODE_TYPES.values()].sort((a, b) => (+a.key || 99) - (+b.key || 99)).map(d => ({ label: '[node] - ' + d.name, fn: () => { setMode('edit'); fn(d.name); } }));
   pb.addEventListener('contextmenu', e => {
+    const path = ownPath(e); if (!path) return;
     e.preventDefault();
-    const node = e.composedPath().find(n => n.localName === 'scv-logic');
+    const node = path.find(n => n.localName === 'scv-logic');
     if (node && pb.editing) { const b = [attrsOf(node)]; node.cycleMode(); recordAttrs([node], b, 'mode'); return closeMenu(); }
     const p = toCanvas(e.clientX, e.clientY);
     if (st.chain && st.last) st.lock = mod(e);
@@ -2090,7 +2101,7 @@ const studio = pb => {
     st.pointer = { x: e.clientX, y: e.clientY };
     if (st.chain && st.last) showTemp(st.last, e);
     if (g || !pb.editing) return;
-    const path = e.composedPath(), t = targetAt(path);
+    const path = ownPath(e), t = path && targetAt(path);
     if (!t || selection().length || path.some(n => n === st.menu || n === bg || n === intro)) { tip.hidden = true; return; }
     const r = rectOf(), right = e.clientX > r.left + r.width / 2, low = e.clientY > r.top + r.height / 2;
     tip.textContent = t.localName === 'scv-logic' ? t.label : t.id ? '#' + t.id : t.localName;
@@ -2102,7 +2113,7 @@ const studio = pb => {
   svg.addEventListener('pointerout', e => danger(e, false));
   pb.addEventListener('pointerover', e => {
     if (!pb.editing || selection().length || g) return;
-    const u = e.composedPath().find(isUnit);
+    const u = ownPath(e)?.find(isUnit);
     if (u && u !== st.hover) { st.hover = u; paint(); }
   });
   pb.addEventListener('pointerout', e => {
@@ -2114,6 +2125,7 @@ const studio = pb => {
   // keys need patchbay focus - embedded ones never steal host shortcuts
 
   pb.addEventListener('keydown', e => {
+    if (!ownPath(e)) return;
     const t = e.composedPath()[0], typing = !!(t?.closest?.('input, textarea, select') || t?.isContentEditable);
     const k = e.key, m = mod(e), node = typing && e.composedPath().find(n => n.localName === 'scv-logic');
     if (node && (k === 'Escape' || k === 'Enter')) { node.expand(false); layer.focus({ preventScroll: true }); draw(); return; } // node already committed or dropped draft
@@ -2154,7 +2166,7 @@ const studio = pb => {
     }
     if (st.chain && k.length === 1) disarm();
   });
-  pb.addEventListener('keyup', e => { if ((e.key === 'Control' || e.key === 'Meta') && st.chain) temp.classList.toggle('rev', reversed(e)); });
+  pb.addEventListener('keyup', e => { if (ownPath(e) && (e.key === 'Control' || e.key === 'Meta') && st.chain) temp.classList.toggle('rev', reversed(e)); });
 
   // background is state on patchbay, grid dots follow its luminance
 
@@ -2268,13 +2280,13 @@ const studio = pb => {
   const typingIn = e => { const t = e.composedPath()[0]; return !!(t?.closest?.('input, textarea, select') || t?.isContentEditable); };
   pb.copy = () => clip(movable(selection()));
   pb.addEventListener('copy', e => {
-    if (typingIn(e) || !selection().length) return;
+    if (typingIn(e) || !ownPath(e) || !selection().length) return;
     e.preventDefault();
     const html = pb.copy(); // assets read async - clipboard takes promise
     navigator.clipboard.write([new ClipboardItem({ 'text/html': html, 'text/plain': new Blob([`${selection().length} scavenger items`], { type: 'text/plain' }) })]).catch(err => kit.debug('copy not written', err));
   });
   pb.addEventListener('paste', e => {
-    if (typingIn(e)) return;
+    if (typingIn(e) || !ownPath(e)) return;
     const d = e.clipboardData, file = [...(d?.files || [])].find(f => f.type.startsWith('image/')), html = d?.getData('text/html') || '', text = d?.getData('text/plain') || '';
     const at = toCanvas(st.pointer.x, st.pointer.y), scv = /<scv-|data-scv-/i;
     if (file) { e.preventDefault(); return void imageItem(file, at); }
@@ -2304,6 +2316,7 @@ const studio = pb => {
   };
   pb.follow = follow;
   pb.addEventListener('drop', async e => {
+    if (!ownPath(e)) return;
     e.preventDefault();
     const item = [...(e.dataTransfer?.items || [])].find(i => i.kind === 'file'), handle = item?.getAsFileSystemHandle?.(); // only answers inside the event
     const file = e.dataTransfer?.files?.[0], at = toCanvas(e.clientX, e.clientY);
@@ -2390,7 +2403,7 @@ const _item = async (el, defs, used) => { // component shadows only where they d
     for (const n of r.querySelectorAll('*')) {
       if (n.localName.includes('-')) used.tags.add(n.localName);
       if (n.localName === 'scv-logic') { used.nodes.add(n.dataset.type); continue; }
-      if (!n.shadowRoot) continue;
+      if (!n.shadowRoot || n.localName === 'scv-patchbay') continue; // nested patchbay saves its light dom, chrome rebuilds
       freeze(n.shadowRoot); roots.push(n.shadowRoot);
       if (await _asDef(n, defs)) { n.shadowRoot.querySelectorAll('*').forEach(c => { if (c.localName.includes('-')) used.tags.add(c.localName); }); continue; } // def rebuilds it - defs it uses still ship
       shadows.push(n.shadowRoot); await walk(n.shadowRoot);

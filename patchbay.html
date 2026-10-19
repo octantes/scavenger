@@ -1416,7 +1416,10 @@ class ScvPatchbay extends HTMLElement {
   routeSend(channel, value) { this._router.routeSend(channel, _pulseOf(value)); }
   invalidate() { this._router.invalidate(); }
   onRoute(fn) { this._routeHooks.add(fn); return () => this._routeHooks.delete(fn); }
-  nodeType(name) { const d = NODE_TYPES.get(name); return d ? { ...d } : null; } // registered def for static checks - a copy, registry stays ours
+  nodeType(name) { // registered def for static checks - a copy, registry stays ours
+    const d = NODE_TYPES.get(name), ports = l => l?.map(p => ({ ...p }));
+    return d ? { ...d, inputs: ports(d.inputs), outputs: ports(d.outputs) } : null;
+  }
 }
 
 Object.assign(kit, {

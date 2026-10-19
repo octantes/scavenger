@@ -61,16 +61,19 @@ try {
   ok(misc?.routeSend, 'patchbay file keeps window.routeSend');
 
   // nodeType: def as registered, ports included, unknown is null, a copy can't rewrite registry
-  const nt = await js(`(() => {
+  const nt = await js(`(async () => {
     const pb = document.querySelector('scv-patchbay');
     pb.import('<script data-scv-node>defineNode({ name: "surf-port", inputs: [{ name: "a", type: "text" }], outputs: [{ name: "v" }], kind: "probe", onReceive() {} });<\\/script>', { redefine: true });
     const d = pb.nodeType('surf-port'), clock = pb.nodeType('clock');
-    d.kind = 'rewritten';
-    return { inputs: d.inputs, outputs: d.outputs, kept: pb.nodeType('surf-port').kind, clock: clock?.name, unknown: pb.nodeType('no-such'), placed: !!pb.querySelector('scv-logic[data-type="surf-port"]') };
+    const inputs = JSON.parse(JSON.stringify(d.inputs)), outputs = d.outputs;
+    d.kind = 'rewritten'; d.inputs.push({ name: 'x' }); d.inputs[0].name = 'zz';
+    const again = pb.nodeType('surf-port'), saved = await (await pb.save('publish')).text();
+    return { inputs, outputs, kept: [again.kind, again.inputs.map(p => p.name).join()].join(), clock: clock?.name, unknown: pb.nodeType('no-such'),
+      placed: !!pb.querySelector('scv-logic[data-type="surf-port"]'), saved: saved.includes('name: "surf-port"') };
   })()`);
   ok(nt?.inputs?.[0]?.type === 'text' && nt?.outputs?.[0]?.name === 'v', `nodeType gives declared ports with extra fields (${JSON.stringify(nt && { i: nt.inputs, o: nt.outputs })})`);
-  ok(nt?.kept === 'probe', `nodeType hands a copy - registry keeps its def (got ${nt?.kept})`);
-  ok(nt && !nt.placed, 'import with redefine registers node type without placing one');
+  ok(nt?.kept === 'probe,a', `nodeType hands a copy, port lists too - registry keeps its def (got ${nt?.kept})`);
+  ok(nt && !nt.placed && nt.saved, `import with redefine registers node type without placing one, save keeps it (${JSON.stringify(nt && { p: nt.placed, s: nt.saved })})`);
   ok(nt?.clock === 'clock' && nt?.unknown === null, `nodeType knows built-ins, unknown is null (${JSON.stringify(nt && { c: nt.clock, u: nt.unknown })})`);
 
   // each script runs standalone in foreign document - runtime routes alone, canvas and studio add their methods

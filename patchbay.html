@@ -74,9 +74,13 @@ const debug = (msg, err, once) => { // swallowed failure, verbose level only
 };
 
 const channelOf = token => { const [verb, a1, a2] = token.split(':'); return COMPOUND_VERBS.includes(verb) ? a2 : a1; }; // verb:ch or verb:arg:ch
+const chOf = t => t.split('@')[0]; // wiring token is channel@port - routing reads channel only
+const portAngle = (dir, i, n) => (dir === 'out' ? -60 : 240) + (dir === 'out' ? 1 : -1) * 120 * (i + 0.5) / n; // degrees, outputs right half, inputs left
+const portOf = t => t.split('@')[1] || '';
+const channels = (el, attr) => splitWords(el.getAttribute(attr)).map(chOf);
 const collectChannels = (el, emits, recvs) => {
-  splitWords(el.getAttribute(ATTR_EMITS)).forEach(c => emits.add(c));
-  splitWords(el.getAttribute(ATTR_RECEIVES)).forEach(c => recvs.add(c));
+  channels(el, ATTR_EMITS).forEach(c => emits.add(c));
+  channels(el, ATTR_RECEIVES).forEach(c => recvs.add(c));
   splitWords(el.getAttribute(ATTR_ACTION)).forEach(t => { const c = channelOf(t); if (c) recvs.add(c); });
 };
 const hostOf = el => el?.getRootNode?.()?.host || null;
@@ -231,7 +235,7 @@ const createRouter = (root, {
     const walk = r => {
       r.querySelectorAll(`[${ATTR_RECEIVES}],[${ATTR_ACTION}]`).forEach(n => {
         if (!_own(n)) return;
-        const chs = new Set(splitWords(n.getAttribute(ATTR_RECEIVES))); // receive + action on one channel fires once
+        const chs = new Set(channels(n, ATTR_RECEIVES)); // receive + action on one channel fires once
         splitWords(n.getAttribute(ATTR_ACTION)).forEach(t => { const c = channelOf(t); if (c) chs.add(c); });
         chs.forEach(c => { if (!cache.has(c)) cache.set(c, []); cache.get(c).push(n); });
       });
@@ -313,15 +317,15 @@ const createRouter = (root, {
   };
 
   const _deliver = (node, channel, value) => {
-    const isRecv = splitWords(node.getAttribute(ATTR_RECEIVES)).includes(channel);
+    const toks = splitWords(node.getAttribute(ATTR_RECEIVES)).filter(t => chOf(t) === channel), isRecv = toks.length > 0;
     if (isRecv) {
-      if (node.localName === 'scv-logic') node.receive?.(value, channel);
+      if (node.localName === 'scv-logic') toks.forEach(t => node.receive?.(value, channel, portOf(t)));
       else {
         _write(node, value);
         const ev = new CustomEvent('scv-receive', { detail: value, bubbles: true, composed: true });
         ev.channel = channel;
         node.dispatchEvent(ev); // before own verb
-        if (_depth < 20) splitWords(node.getAttribute(ATTR_EMITS)).forEach(c => { if (c !== channel) routeSend(c, value); }); // pass through, never back out incoming channel
+        if (_depth < 20) channels(node, ATTR_EMITS).forEach(c => { if (c !== channel) routeSend(c, value); }); // pass through, never back out incoming channel
       }
     }
     _runAction(node, channel, value, isRecv);
@@ -342,7 +346,7 @@ const createRouter = (root, {
 
   const applyAction = (verb, channel, value) => { // action node: verb on every receiver of channel
     _receivers(channel)?.forEach(node => {
-      const isRecv = splitWords(node.getAttribute(ATTR_RECEIVES)).includes(channel);
+      const isRecv = channels(node, ATTR_RECEIVES).includes(channel);
       const listed = splitWords(node.getAttribute(ATTR_ACTION)).some(t => t.split(':')[0] === verb && (channelOf(t) === channel || !channelOf(t)));
       if (isRecv) {
         const [v, arg] = verb.split(':');
@@ -364,7 +368,7 @@ const createRouter = (root, {
   };
   const _origin = e => e.composedPath().find(n => n.nodeType === 1 && (n.value !== undefined || n.isContentEditable)) || e.composedPath()[0];
   const _valueOf = n => n.value !== undefined ? n.value : n.textContent;
-  const _fan = (src, value) => splitWords(src.getAttribute(ATTR_EMITS)).forEach(c => routeSend(c, value));
+  const _fan = (src, value) => channels(src, ATTR_EMITS).forEach(c => routeSend(c, value));
 
   root.addEventListener('click', e => {
     if (!shouldRoute('click')) return;
@@ -687,6 +691,9 @@ const NODE_CSS = `
 .input { display: none; width: var(--w, 70px); height: 100%; border: none; outline: none; background: transparent; color: var(--node);
   font: bold var(--fs-a) var(--font-mono); padding: 0 8px; text-align: center; }
 .input::selection { background: color-mix(in srgb, var(--node) 35%, transparent); }
+.port { position: absolute; left: 16px; top: 16px; width: 7px; height: 7px; margin: -3.5px; border-radius: 50%; background: var(--background-sunk);
+  box-shadow: 0 0 0 1.5px var(--cs); transform: rotate(var(--a)) translate(20px); z-index: 1; }
+.port::after { content: ''; position: absolute; inset: -4px; border-radius: 50%; } /* bigger hit target */
 .input::-webkit-inner-spin-button, .input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .input[type="number"] { appearance: textfield; }
 :host(:state(expanded)) { background: var(--background-sunk); }
@@ -823,7 +830,7 @@ builtIn('comparator', '5', {
   icon: ICON.eq, inputType: false,
   modes: [{ id: 'eq', icon: ICON.eq }, { id: 'ne', icon: ICON.ne }],
   check(ctx) { // latest of each wire - one wire: latest against previous
-    const seen = ctx.mem.cmp ??= new Map(), wires = splitWords(ctx.el.getAttribute(ATTR_RECEIVES));
+    const seen = ctx.mem.cmp ??= new Map(), wires = channels(ctx.el, ATTR_RECEIVES);
     let vals;
     if (wires.length > 1) { if (!wires.every(c => seen.has(c))) return; vals = wires.map(c => seen.get(c).latest); }
     else { const e = seen.get(wires[0]); if (!e || !e.hasPrev) return; vals = [e.prev, e.latest]; }
@@ -831,7 +838,7 @@ builtIn('comparator', '5', {
     if (eq === (ctx.mode !== 'ne')) ctx.emit(pulse());
   },
   onPulse(ctx) { this.check(ctx); },
-  onReceive(v, ctx, ch) {
+  onReceive(v, ctx, port, ch) {
     const seen = ctx.mem.cmp ??= new Map(), e = seen.get(ch);
     seen.set(ch, e ? { prev: e.latest, latest: v, hasPrev: true } : { latest: v, hasPrev: false });
     this.check(ctx);
@@ -878,7 +885,7 @@ builtIn('delay', '8', {
 
 builtIn('action', '9', {
   icon: ICON.action, defaultVal: 'toggle',
-  fire(ctx, payload) { const verb = ctx.value.trim() || 'toggle'; const r = routerOf(ctx.el); if (r) splitWords(ctx.el.getAttribute(ATTR_EMITS)).forEach(c => r.applyAction(verb, c, payload === undefined ? verb : payload)); },
+  fire(ctx, payload) { const verb = ctx.value.trim() || 'toggle'; const r = routerOf(ctx.el); if (r) channels(ctx.el, ATTR_EMITS).forEach(c => r.applyAction(verb, c, payload === undefined ? verb : payload)); },
   onPulse(ctx) { this.fire(ctx); },
   onReceive(v, ctx) { this.fire(ctx, v); },
   alt(ctx) { ctx.value = VERBS[(VERBS.indexOf(ctx.value.trim()) + 1) % VERBS.length]; ctx.showFloat(ctx.value); },
@@ -929,8 +936,8 @@ const defineHarvest = h => { // element built from markup, canonical def written
   document.body.append(s);
   return true;
 };
-const remap = (el, map) => { // mapped channels renamed, others keep name
-  for (const a of [ATTR_EMITS, ATTR_RECEIVES]) { const v = el.getAttribute(a); if (v) el.setAttribute(a, splitWords(v).map(c => map.get(c) || c).join(' ')); }
+const remap = (el, map) => { // mapped channels renamed, others keep name - port stays
+  for (const a of [ATTR_EMITS, ATTR_RECEIVES]) { const v = el.getAttribute(a); if (v) el.setAttribute(a, splitWords(v).map(t => map.has(chOf(t)) ? map.get(chOf(t)) + t.slice(chOf(t).length) : t).join(' ')); }
   const acts = el.getAttribute(ATTR_ACTION);
   if (acts) el.setAttribute(ATTR_ACTION, splitWords(acts).map(t => { const p = t.split(':'), i = COMPOUND_VERBS.includes(p[0]) ? 2 : 1; if (map.has(p[i])) p[i] = map.get(p[i]); return p.join(':'); }).join(' '));
 };
@@ -1008,6 +1015,7 @@ builtIn('quest', '0', {
     const parsed = raw ? quests.parseInputLine(mode === 'component' ? _compLine(raw) : raw) : null;
     const ch = scrape ? parsed?.channel : (parsed?.channel || raw.split(',')[0].trim()); // output names channel same way input does
     const old = ctx.mem.q;
+    if (ch?.includes('@')) { this.unbind(ctx, !!old); return ctx.showFloat('no @ in names'); } // @ marks a port
     this.unbind(ctx, !!old && old.channel !== ch);
     if (!ch) return;
     const q = ctx.mem.q = { channel: ch, mode, scrape: scrape && !!parsed.url, base: quests.api(ctx.el) };
@@ -1141,6 +1149,11 @@ class ScvLogic extends HTMLElement {
     input.hidden = def.inputType === false;
     this._parts.caret.toggleAttribute('hidden', input.hidden);
     this._syncInput(true); this._paint();
+    this._parts.ports?.forEach(a => a.remove());
+    this._parts.ports = [['in', def.inputs], ['out', def.outputs]].flatMap(([dir, list]) => (list || []).map((p, i) => { // anchors placed by index, never measured
+      const a = document.createElement('span'); a.className = 'port'; a.dataset.port = p.name; a.dataset.dir = dir;
+      a.style.setProperty('--a', portAngle(dir, i, list.length) + 'deg'); this._parts.root.append(a); return a;
+    }));
     this._call('init', c => def.init?.(c));
   }
   _stop() {
@@ -1159,7 +1172,7 @@ class ScvLogic extends HTMLElement {
     if (!this._errored) this._internals.states.delete('error');
   }
   _view(call) { // ctx as one call sees it - emits of superseded call dropped, its callSignal aborts
-    const ctx = this._ctx, own = { emit: v => { if (!call.gone) ctx.emit(v); }, output: v => { if (!call.gone) ctx.output(v); } };
+    const ctx = this._ctx, own = { emit: (v, p) => { if (!call.gone) ctx.emit(v, p); }, output: (v, p) => { if (!call.gone) ctx.output(v, p); } };
     return new Proxy(ctx, {
       get: (t, k) => k in own ? own[k] : k === 'callSignal' ? (call.sig ??= AbortSignal.any([t.signal, (call.ac ??= new AbortController()).signal])) : Reflect.get(t, k),
       set: (t, k, v) => Reflect.set(t, k, v),
@@ -1216,8 +1229,8 @@ class ScvLogic extends HTMLElement {
       get y() { return px(el, 'top'); },
       setPosition(x, y) { el.style.left = x + 'px'; el.style.top = y + 'px'; },
       live: () => el._live && el._ctx === ctx,
-      emit: v => el.emit(v),
-      output: v => { el.showFloat(v); el.emit(v); },
+      emit: (v, port) => el.emit(v, port),
+      output: (v, port) => { el.showFloat(v); el.emit(v, port); },
       showFloat: v => el.showFloat(v),
       flashError: (where, err) => el.flashError(where, err),
       shared: (k, create, release) => el._scope.shared(k, create, release),
@@ -1243,10 +1256,10 @@ class ScvLogic extends HTMLElement {
     if (this._def.onClick) this._call('onClick', c => this._def.onClick(c), true);
     else this._call('onPulse', c => this._def.onPulse?.(c, pulse()), true);
   }
-  receive(v, ch) {
+  receive(v, ch, port = '') {
     if (!this._live) return;
-    if (isPulse(v)) this._call('onPulse', c => this._def.onPulse?.(c, v), true);
-    else this._call('onReceive', c => this._def.onReceive?.(v, c, ch), true);
+    if (isPulse(v)) this._call('onPulse', c => this._def.onPulse?.(c, v, port), true);
+    else this._call('onReceive', c => this._def.onReceive?.(v, c, port, ch), true);
   }
   cycleMode() {
     if (!this._live) return;
@@ -1263,10 +1276,10 @@ class ScvLogic extends HTMLElement {
     if (on) { this._parts.input.focus(); this._parts.input.select?.(); }
     return on;
   }
-  emit(v) {
+  emit(v, port = '') { // named port reaches its own wires, bare emit unported ones
     const r = routerOf(this); if (!r) return;
     v = _pulseOf(v);
-    splitWords(this.getAttribute(ATTR_EMITS)).forEach(c => r.routeSend(c, v));
+    splitWords(this.getAttribute(ATTR_EMITS)).forEach(t => { if (portOf(t) === port) r.routeSend(chOf(t), v); });
   }
   showFloat(v) {
     this._parts.text = floatText(v);
@@ -1389,7 +1402,7 @@ class ScvPatchbay extends HTMLElement {
 Object.assign(kit, {
   ATTR_EMITS, ATTR_RECEIVES, ATTR_ACTION, WIRING_SEL, NODE_TYPES, VERBS,
   splitWords, uid, px, debug, channelOf, collectChannels, hostOf, itemOf, patchbayOf, onFrame, whenGone, whenReady,
-  pulse, isPulse, asset, quests, clock, shared, unshare, isShared: key => _shared.has(key), patch, resolveRefs, patchbayOfEvent,
+  pulse, isPulse, asset, quests, clock, shared, unshare, isShared: key => _shared.has(key), patch, resolveRefs, patchbayOfEvent, chOf, portOf, channels, portAngle,
   isEmitter: el => _emitters.has(el), defineNode, runNodeSource, nodeSources: _nodeSources, defineComponent, comps: _comps, compTag,
   mountHarvest, harvestOf, defineHarvest, defang, remap, reframe, morphShadow, extractShadowMarkup, boxScopeCss, snapSlots, restoreSlots, slotValue, setSlot,
 });
@@ -1709,9 +1722,11 @@ const studio = pb => {
     return { x: x + c.l * s, y: y + c.t * s, w: (z.w - c.l - c.r) * s, h: (z.h - c.t - c.b) * s };
   };
   const unitOf = el => el.localName === 'scv-logic' ? el : itemOf(el);
-  const endOf = el => { // node glyph, item centre, or measured inner element
+  const endOf = (el, pn, dir) => { // node glyph or port anchor, item centre, or measured inner element
     if (el.localName === 'scv-logic') {
       const { x, y, s } = place(el), cx = x + 16 * s, cy = y + 16 * s, r = { x: cx, y: cy, w: 32 * s + RING, h: 32 * s + RING };
+      const ps = pn && el.def[dir === 'out' ? 'outputs' : 'inputs'], i = ps ? ps.findIndex(p => p.name === pn) : -1;
+      if (i >= 0) { const a = kit.portAngle(dir, i, ps.length) * Math.PI / 180; return { x: cx + Math.cos(a) * 20 * s, y: cy + Math.sin(a) * 20 * s, w: 0, h: 0 }; }
       if (el.states.has('expanded')) { const w = (sizes.get(el)?.w || 32) * s; r.fb = { x: x + w / 2, y: cy, w: w + RING, h: 32 * s + RING }; }
       return r;
     }
@@ -1743,7 +1758,8 @@ const studio = pb => {
   let wiresDirty = true;
   const ids = new WeakMap(); let idN = 0;
   const idOf = el => { let i = ids.get(el); if (!i) ids.set(el, i = ++idN); return i; };
-  const shadowMo = new MutationObserver(rs => { for (const r of rs) { if (r.type === 'attributes' && r.attributeName.startsWith('data-scv-')) wiresDirty = true; const u = itemOf(r.target); if (u) remeasure(u); } draw(); });
+  const onShadow = rs => { for (const r of rs) { if (r.type === 'attributes' && r.attributeName.startsWith('data-scv-')) wiresDirty = true; const u = itemOf(r.target); if (u) remeasure(u); } draw(); };
+  const shadowMo = new MutationObserver(onShadow);
   const watched = new WeakSet();
   const watchShadow = sr => { // content or scroll moves inner ends
     if (watched.has(sr)) return;
@@ -1759,12 +1775,14 @@ const studio = pb => {
     wiresDirty = false;
     const byCh = new Map(), next = new Map();
     walk(pb, `[${ATTR_RECEIVES}],[${ATTR_ACTION}]`, n => { const chs = new Set(); kit.collectChannels(n, new Set(), chs); chs.forEach(c => { if (!byCh.has(c)) byCh.set(c, []); byCh.get(c).push(n); }); });
-    walk(pb, `[${ATTR_EMITS}]`, src => splitWords(src.getAttribute(ATTR_EMITS)).forEach(ch => (byCh.get(ch) || []).forEach(tgt => {
+    walk(pb, `[${ATTR_EMITS}]`, src => splitWords(src.getAttribute(ATTR_EMITS)).forEach(t => { const ch = kit.chOf(t), sp = kit.portOf(t); (byCh.get(ch) || []).forEach(tgt => {
       if (tgt === src) return;
-      const key = ch + ' ' + idOf(src) + ' ' + idOf(tgt);
+      const tps = splitWords(tgt.getAttribute(ATTR_RECEIVES)).filter(r => kit.chOf(r) === ch).map(kit.portOf);
+      (tps.length ? tps : ['']).forEach(tp => { // one cable per input port, action-only receiver has none
+      const key = ch + ' ' + idOf(src) + ' ' + idOf(tgt) + (tp ? '@' + tp : '');
       let c = cables.get(key);
       if (!c) {
-        c = { key, ch, src, tgt, fresh: true };
+        c = { key, ch, src, tgt, sp, tp, fresh: true };
         const h = pend.handoff;
         if (h && h.src === src && h.tgt === tgt) { // drawn already - pending path just changes state
           pend.handoff = null;
@@ -1773,7 +1791,8 @@ const studio = pb => {
         }
       }
       next.set(key, c);
-    })));
+      });
+    }); }));
     for (const [k, c] of cables) if (!next.has(k)) { c.path?.remove(); c.src.states?.delete('danger'); }
     cables.clear(); next.forEach((c, k) => cables.set(k, c));
     const sources = new Set([...cables.values()].map(c => c.src));
@@ -1789,7 +1808,7 @@ const studio = pb => {
     }
     untrack(ends);
     for (const c of cables.values()) {
-      const a = endOf(c.src), b = endOf(c.tgt), r = a && b && arrow(a, b);
+      const a = endOf(c.src, c.sp, 'out'), b = endOf(c.tgt, c.tp, 'in'), r = a && b && arrow(a, b);
       if (!c.path) { c.path = svgEl('path', 'cable'); c.path._cable = c; c.path.dataset.ch = c.ch; svg.append(c.path); }
       const d = r ? r.d : '';
       if (c.d === d) continue;
@@ -1799,7 +1818,10 @@ const studio = pb => {
     tint();
   };
   const draw = () => onFrame(render, render);
-  pb.cables = () => { render(); return [...cables.values()].map(c => ({ ch: c.ch, src: c.src, tgt: c.tgt, d: c.d })); };
+  pb.cables = () => { // wiring changed this turn counts now
+    const rs = mo.takeRecords(), ss = shadowMo.takeRecords();
+    if (rs.length) onMut(rs); if (ss.length) onShadow(ss);
+    render(); return [...cables.values()].map(c => ({ ch: c.ch, src: c.src, tgt: c.tgt, sp: c.sp, tp: c.tp, d: c.d })); };
 
   const flashed = new Set(); // channels routed this frame
   const running = new WeakMap(); // el > its flash - restarted, never stacked
@@ -1844,13 +1866,15 @@ const studio = pb => {
 
   // channel minted per source, receives on target
 
-  const inUse = ch => { let hit = false; walk(pb, `[${ATTR_EMITS}~="${CSS.escape(ch)}"],[${ATTR_RECEIVES}~="${CSS.escape(ch)}"]`, () => { hit = true; }); return hit; };
+  const inUse = ch => { let hit = false; walk(pb, kit.WIRING_SEL, n => { hit ||= kit.channels(n, ATTR_EMITS).includes(ch) || kit.channels(n, ATTR_RECEIVES).includes(ch); }); return hit; };
   const mint = () => { let c; do c = 'ch_' + uid(8); while (inUse(c)); return c; };
   const addWord = (el, attr, w) => { const l = splitWords(el.getAttribute(attr)); if (!l.includes(w)) l.push(w); el.setAttribute(attr, l.join(' ')); };
-  const wire = (src, tgt) => {
+  const portFor = (n, dir) => n.localName === 'scv-logic' && n.def[dir === 'out' ? 'outputs' : 'inputs']?.[0]?.name || ''; // body of ported node means its first port
+  const tok = (ch, port) => port ? ch + '@' + port : ch;
+  const wire = (src, tgt, sp = portFor(src, 'out'), tp = portFor(tgt, 'in')) => { // channel minted per source port
     if (!src || !tgt || src === tgt) return null;
-    const ch = splitWords(src.getAttribute(ATTR_EMITS))[0] || mint();
-    withUndo([src, tgt], 'wire', () => { addWord(src, ATTR_EMITS, ch); addWord(tgt, ATTR_RECEIVES, ch); });
+    const ch = splitWords(src.getAttribute(ATTR_EMITS)).filter(t => kit.portOf(t) === sp).map(kit.chOf)[0] || mint();
+    withUndo([src, tgt], 'wire', () => { addWord(src, ATTR_EMITS, tok(ch, sp)); addWord(tgt, ATTR_RECEIVES, tok(ch, tp)); });
     if (pend.from === src || pend.from === tgt) { // pending path turns into this cable, held hidden until index takes it
       pend.handoff?.path.remove();
       temp.style.display = 'none';
@@ -1861,8 +1885,8 @@ const studio = pb => {
   };
   pb.wire = wire;
   const cut = c => withUndo([c.tgt], 'cut', () => { // one layer per click - receives first, then action token
-    const r = splitWords(c.tgt.getAttribute(ATTR_RECEIVES));
-    if (r.includes(c.ch)) { const k = r.filter(x => x !== c.ch); k.length ? c.tgt.setAttribute(ATTR_RECEIVES, k.join(' ')) : c.tgt.removeAttribute(ATTR_RECEIVES); return; }
+    const r = splitWords(c.tgt.getAttribute(ATTR_RECEIVES)), t = tok(c.ch, c.tp);
+    if (r.includes(t)) { const k = r.filter(x => x !== t); k.length ? c.tgt.setAttribute(ATTR_RECEIVES, k.join(' ')) : c.tgt.removeAttribute(ATTR_RECEIVES); return; }
     const a = splitWords(c.tgt.getAttribute(ATTR_ACTION)).filter(t => kit.channelOf(t) !== c.ch);
     a.length ? c.tgt.setAttribute(ATTR_ACTION, a.join(' ')) : c.tgt.removeAttribute(ATTR_ACTION);
   });
@@ -1913,7 +1937,7 @@ const studio = pb => {
     blur.classList.toggle('on', pb.editing && st.introOpen);
   };
 
-  const mo = new MutationObserver(rs => {
+  const onMut = rs => {
     for (const r of rs) {
       if (r.type === 'childList') {
         wiresDirty = true;
@@ -1921,7 +1945,8 @@ const studio = pb => {
       } else if (r.attributeName !== 'style') wiresDirty = true;
     }
     chrome(); draw(); paint();
-  });
+  };
+  const mo = new MutationObserver(onMut);
   mo.observe(pb, { subtree: true, childList: true, attributes: true, attributeFilter: [ATTR_EMITS, ATTR_RECEIVES, ATTR_ACTION, 'style'] });
   units().forEach(u => ro.observe(u));
 
@@ -1930,8 +1955,9 @@ const studio = pb => {
   const endTemp = () => { pend.from = null; temp.style.display = 'none'; };
   const disarm = () => { st.chain = false; st.lock = null; endTemp(); pb.querySelectorAll('scv-logic').forEach(n => n.states.delete('chained')); };
   const reversed = e => st.lock ?? mod(e);
-  const showTemp = (from, e) => {
-    const a = endOf(from); if (!a) return;
+  const showTemp = (from, e, sp = pend.from === from ? pend.sp : undefined) => {
+    const a = endOf(from, sp ?? portFor(from, 'out'), 'out'); if (!a) return;
+    pend.sp = sp;
     const p = toCanvas(e.clientX, e.clientY);
     pend.from = from; temp.style.display = ''; temp.classList.toggle('rev', reversed(e));
     temp.setAttribute('d', curve(a, p.x, p.y));
@@ -1980,18 +2006,19 @@ const studio = pb => {
       cancel() { list?.forEach(t => { t.m.states.delete('dragging'); setAttrs(t.m, t.before); }); },
     };
   };
-  const wireGesture = (e, from, click) => {
+  const anchorIn = (path, dir) => path.find(n => n.classList?.contains('port') && n.dataset.dir === dir)?.dataset.port;
+  const wireGesture = (e, from, click, sp) => { // sp - output anchor it started on
     const s = { x: e.clientX, y: e.clientY };
     let on = false;
     return {
-      move(ev) { if (!on && !moved(ev, s)) return; on = true; tip.hidden = true; showTemp(from, ev); },
+      move(ev) { if (!on && !moved(ev, s)) return; on = true; tip.hidden = true; showTemp(from, ev, sp); },
       end(ev) {
         if (!on) return click();
-        const tgt = targetAt(ev.composedPath());
-        if (tgt) { if (tgt !== from) mod(ev) ? wire(tgt, from) : wire(from, tgt); return endTemp(); }
+        const path = ev.composedPath(), tgt = targetAt(path);
+        if (tgt) { if (tgt !== from) mod(ev) ? wire(tgt, from) : wire(from, tgt, sp, anchorIn(path, 'in')); return endTemp(); }
         const p = toCanvas(ev.clientX, ev.clientY), rev = mod(ev);
-        showTemp(from, ev);
-        menu(nodeItems((type) => { const n = spawn(type, p.x - 16, p.y - 16); rev ? wire(n, from) : wire(from, n); }), ev.clientX, ev.clientY, endTemp);
+        showTemp(from, ev, sp);
+        menu(nodeItems((type) => { const n = spawn(type, p.x - 16, p.y - 16); rev ? wire(n, from) : wire(from, n, sp); }), ev.clientX, ev.clientY, endTemp);
       },
       cancel: () => endTemp(),
     };
@@ -2076,7 +2103,7 @@ const studio = pb => {
     if (unit && mod(e)) return begin(moveGesture(e, unit));
     const edge = item && e.shiftKey && !node && edgeAt(item, e);
     if (edge) return begin(cropGesture(e, item, edge));
-    if (node) return begin(wireGesture(e, node, () => { const b = [attrsOf(node)]; node.trigger(); recordAttrs([node], b, 'click'); }));
+    if (node) return begin(wireGesture(e, node, () => { const b = [attrsOf(node)]; node.trigger(); recordAttrs([node], b, 'click'); }, anchorIn(path, 'out')));
     if (item) return begin(wireGesture(e, sourceAt(path, item), () => e.shiftKey ? toggle(item) : select([item])));
     begin(lassoGesture(e, e.shiftKey));
   });
@@ -2124,7 +2151,8 @@ const studio = pb => {
     const path = ownPath(e), t = path && targetAt(path);
     if (!t || selection().length || path.some(n => n === st.menu || n === bg || n === intro)) { tip.hidden = true; return; }
     const r = rectOf(), right = e.clientX > r.left + r.width / 2, low = e.clientY > r.top + r.height / 2;
-    tip.textContent = t.localName === 'scv-logic' ? t.label : t.id ? '#' + t.id : t.localName;
+    const port = path.find(n => n.classList?.contains('port'));
+    tip.textContent = port ? port.dataset.dir + ' ' + port.dataset.port : t.localName === 'scv-logic' ? t.label : t.id ? '#' + t.id : t.localName;
     tip.hidden = false;
     Object.assign(tip.style, { left: e.clientX - r.left + (right ? -15 : 15) + 'px', top: e.clientY - r.top + (low ? -4 : 15) + 'px', transform: `translate(${right ? '-100%' : '0'}, ${low ? '-100%' : '0'})` }); // flips toward centre, no measuring
   });

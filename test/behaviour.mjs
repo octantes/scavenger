@@ -132,6 +132,22 @@ const build = async () => {
       out.pairs.push(t);
     }
   }
+  // ports - custom node answering on output named after input port
+  kit.defineNode({ name: 'b-port', inputs: [{ name: 'a' }, { name: 'b' }], outputs: [{ name: 'x' }, { name: 'y' }],
+    onReceive(v, ctx, port) { ctx.emit(v, port === 'a' ? 'x' : port === 'b' ? 'y' : ''); }, onPulse(ctx, p, port) { ctx.emit(p, port === 'a' ? 'x' : port === 'b' ? 'y' : ''); } });
+  out.ports = { cols: ['3', 'pulse'], rows: [] };
+  for (const [label, ch] of [['into port a', 'pa'], ['into port b', 'pb'], ['into unported wire', 'pu']]) {
+    const row = [label];
+    for (const make of [() => 3, () => kit.pulse()]) {
+      const node = document.createElement('scv-logic'); node.dataset.type = 'b-port';
+      node.setAttribute('data-scv-receives', 'pa@a pb@b pu'); node.setAttribute('data-scv-emits', 'px@x py@y pz'); pb.append(node);
+      const sinks = ['px', 'py', 'pz'].map(sink);
+      pb.routeSend(ch, make()); await tick(1);
+      row.push(['x', 'y', 'unported'].map((w, i) => sinks[i].log.length ? w + ' ' + sinks[i].log.map(say).join(', ') : null).filter(Boolean).join(' · ') || '—');
+      await gone(node, ...sinks);
+    }
+    out.ports.rows.push(row);
+  }
   console.warn = warn;
   return out;
 };
@@ -148,6 +164,7 @@ try {
   for (const n of t.nodes) md += `\n### ${n.name}\n\n` + table('input', n.cols, n.rows);
   md += '\n## nodes with memory - two inputs\n';
   for (const p of t.pairs) md += `\n### ${p.name}\n\n` + table('first', p.cols, p.rows);
+  md += '\n## ports - custom node, inputs a b, outputs x y, answering on output named after input\n\nCell: which output wires got what.\n\n' + table('sent', t.ports.cols, t.ports.rows);
   ok(!errors.length, `table builds without uncaught errors (${errors.slice(0, 2).join(' | ')})`);
   if (process.argv.includes('--save')) { writeFileSync(tablePath, md); console.log('saved test/behaviour.md'); }
   else if (!existsSync(tablePath)) ok(false, 'no test/behaviour.md yet - run with --save and review it');

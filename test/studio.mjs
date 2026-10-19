@@ -126,6 +126,22 @@ try {
     const u = await js(`[T.nodes()[0].getAttribute('data-scv-emits'), T.nodes()[1].getAttribute('data-scv-receives')]`);
     return [w[0] && w[0] === w[1] && u[0] === null && u[1] === null, { w, u }];
   });
+  await run('drag from output anchor to input anchor wires those ports, cut removes only that token', async () => {
+    const at = await js(`(async () => {
+      T.kit.defineNode({ name: 'st-port', inputs: [{ name: 'i1' }, { name: 'i2' }], outputs: [{ name: 'o1' }, { name: 'o2' }] });
+      const a = window.__pa = T.node('st-port', 300, 650), b = window.__pbn = T.node('st-port', 520, 650); await T.frame();
+      const c = el => { const r = el.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; };
+      return [...c(a.shadowRoot.querySelector('.port[data-port="o2"]')), ...c(b.shadowRoot.querySelector('.port[data-port="i2"]'))];
+    })()`);
+    await drag(at[0], at[1], at[2], at[3]);
+    const wired = await js(`(() => { T.pb.wire(window.__pa, window.__pbn, 'o2', 'i1'); return [window.__pa.getAttribute('data-scv-emits'), window.__pbn.getAttribute('data-scv-receives'), T.pb.cables().filter(c => c.src === window.__pa).map(c => c.sp + '>' + c.tp).sort().join()]; })()`);
+    await frames();
+    const mid = await js(`(() => { const p = [...T.pb.shadowRoot.querySelectorAll('.cable')].find(p => p._cable?.src === window.__pa && p._cable.tp === 'i2'), m = p.getPointAtLength(p.getTotalLength() / 2), q = new DOMPoint(m.x, m.y).matrixTransform(p.getScreenCTM()); return [q.x, q.y]; })()`);
+    await click(mid[0], mid[1]);
+    const left = await js(`(() => { const r = window.__pbn.getAttribute('data-scv-receives'); [window.__pa, window.__pbn].forEach(n => n.remove()); return r; })()`);
+    const ch = wired?.[0]?.split('@')[0];
+    return [wired?.[0] === ch + '@o2' && wired[1] === ch + '@i2 ' + ch + '@i1' && wired[2] === 'o2>i1,o2>i2' && left === ch + '@i1', { wired, left }];
+  });
   await run('wire dropped on empty canvas offers nodes, choice spawns and wires - pending line becomes cable', async () => {
     await drag(216, 216, 600, 500);
     await js(`window.__pending = [...T.pb.shadowRoot.querySelectorAll('.temp')].find(p => p.style.display !== 'none')`);

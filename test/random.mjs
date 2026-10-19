@@ -50,9 +50,10 @@ const FIXTURES = [
   harvest('scv-rzh1'), harvest('scv-rzh2'),
   '<template data-scv-comp="rzc"><style>p{margin:0}</style><p><button>+</button> <b>0</b></p><script>const b = root.querySelector("b"); root.querySelector("button").addEventListener("click", () => { b.textContent = +b.textContent + 1; emit(+b.textContent, b); }, { signal });<\/script></template>',
   '<div style="padding:4px;background:#222;color:#ccc">plain <span>text</span></div>',
+  '<script type="scv/node" data-scv-node>defineNode({ name: "rz-port", inputs: [{ name: "a" }, { name: "b" }], outputs: [{ name: "x" }, { name: "y" }], onReceive(v, ctx, port) { ctx.emit(v, port === "a" ? "x" : "y"); } })<\/script>', // ported custom node
   '<scv-item><scv-patchbay style="width:200px;height:120px"><scv-logic data-type="accumulator" data-scv-emits="ch_in" style="left:20px;top:20px"></scv-logic><scv-logic data-type="gate" data-scv-receives="ch_in" style="left:100px;top:20px"></scv-logic></scv-patchbay></scv-item>', // nested patchbay - one item to its parent
 ];
-const TYPES = ['accumulator', 'variable', 'gate', 'comparator', 'mutator', 'sample', 'action']; // clock, delay, quest act on their own - routing would move state undo can't see
+const TYPES = ['accumulator', 'variable', 'gate', 'comparator', 'mutator', 'sample', 'action', 'rz-port']; // clock, delay, quest act on their own - routing would move state undo can't see
 const VALUES = ['3', '-2', 'x', 'v + 1', 'v * 2', 'v > 2 ? v : undefined', 'pulse', 'toggle', 'increment', ''];
 
 const helpers = () => {
@@ -75,8 +76,12 @@ const helpers = () => {
       const want = new Set(), rc = new Map();
       deep(pb).forEach(e => { const r = new Set(); kit.collectChannels(e, new Set(), r); r.forEach(c => { if (!rc.has(c)) rc.set(c, []); rc.get(c).push(e); }); });
       const ids = new Map(); let n = 0; const id = e => ids.get(e) ?? (ids.set(e, ++n), n);
-      deep(pb).forEach(src => kit.splitWords(src.getAttribute('data-scv-emits')).forEach(c => (rc.get(c) || []).forEach(t => { if (t !== src) want.add(c + ' ' + id(src) + ' ' + id(t)); })));
-      const got = pb.cables().map(c => c.ch + ' ' + id(c.src) + ' ' + id(c.tgt));
+      deep(pb).forEach(src => kit.splitWords(src.getAttribute('data-scv-emits')).forEach(tk => { const c = kit.chOf(tk); (rc.get(c) || []).forEach(t => { // one cable per input port
+        if (t === src) return;
+        const tps = kit.splitWords(t.getAttribute('data-scv-receives')).filter(r => kit.chOf(r) === c).map(kit.portOf);
+        (tps.length ? tps : ['']).forEach(tp => want.add(c + ' ' + id(src) + ' ' + id(t) + ' ' + tp));
+      }); }));
+      const got = pb.cables().map(c => c.ch + ' ' + id(c.src) + ' ' + id(c.tgt) + ' ' + (c.tp || ''));
       const missing = [...want].filter(k => !got.includes(k)), extra = got.filter(k => !want.has(k));
       return missing.length || extra.length || got.length !== new Set(got).size ? { want: want.size, got: got.length, missing: missing.slice(0, 3), extra: extra.slice(0, 3) } : null;
     },
@@ -86,6 +91,11 @@ const helpers = () => {
         case 'spawn': pb.spawn(window.TYPES[a % window.TYPES.length], 40 + b % 900, 40 + c % 600); return 'spawn ' + window.TYPES[a % window.TYPES.length];
         case 'import': pb.import(window.FIXTURES[a % window.FIXTURES.length], { at: { x: 40 + b % 900, y: 40 + c % 600 } }); return 'import ' + a % window.FIXTURES.length;
         case 'wire': { const es = ends(); if (es.length < 2) return 'wire -'; const s = es[a % es.length], t = es[b % es.length]; pb.wire(s, t); return `wire ${s.localName} > ${t.localName}`; }
+        case 'portwire': { // named ports where nodes declare them
+          if (nodes.length < 2) return 'portwire -';
+          const s = nodes[a % nodes.length], t = nodes[b % nodes.length], pick = (list, r) => list?.length ? list[r % list.length].name : '';
+          pb.wire(s, t, pick(s.def.outputs, c), pick(t.def.inputs, c >> 3)); return `portwire ${s.dataset.type} > ${t.dataset.type}`;
+        }
         case 'delete': if (!u) return 'delete -'; pb.select([u]); key('Delete'); return 'delete ' + u.localName;
         case 'duplicate': if (!u) return 'duplicate -'; pb.select([u]); pb.duplicate(); return 'duplicate ' + u.localName;
         case 'copypaste': { if (!u) return 'copypaste -'; pb.select([u]); const t = await (await pb.copy()).text(); pb.import(t, { at: { x: 40 + b % 900, y: 40 + c % 600 } }); return 'copypaste ' + u.localName; }
@@ -102,7 +112,7 @@ const helpers = () => {
   return true;
 };
 
-const OPS_W = [['spawn', 4], ['import', 3], ['wire', 6], ['delete', 2], ['duplicate', 1], ['copypaste', 1], ['nudge', 2], ['zorder', 1], ['commit', 3], ['mode', 2], ['undo', 2], ['redo', 1]];
+const OPS_W = [['spawn', 4], ['import', 3], ['wire', 6], ['portwire', 3], ['delete', 2], ['duplicate', 1], ['copypaste', 1], ['nudge', 2], ['zorder', 1], ['commit', 3], ['mode', 2], ['undo', 2], ['redo', 1]];
 const total = OPS_W.reduce((s, [, w]) => s + w, 0);
 const drawOp = () => { let r = rng() * total; for (const [k, w] of OPS_W) if ((r -= w) < 0) return k; return 'wire'; };
 const STORM = ['1', 2, -3, 'x', '', true, { a: 1 }, 'pulse'];

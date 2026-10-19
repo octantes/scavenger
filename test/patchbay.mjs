@@ -582,6 +582,24 @@ try {
     return [superseded && sigs[1].aborted, [sigs.map(g => g.aborted), n.states.has('error')]];
   });
 
+  await run('ports: each input port heard, emit reaches only its port, bare emit only unported wires', async () => {
+    const pb = T.pb();
+    T.kit.defineNode({ name: 'pt-select', inputs: [{ name: 'digest' }, { name: 'legal' }], outputs: [{ name: 'verdict' }, { name: 'abstain' }],
+      onReceive(v, ctx, port) { if (port === 'digest') ctx.emit(v, 'verdict'); else if (port === 'legal') ctx.emit(T.kit.pulse(), 'abstain'); else ctx.emit(v); } });
+    const n = T.node(pb, 'pt-select', { 'data-scv-receives': 'pd@digest pl@legal pu', 'data-scv-emits': 'pv@verdict pa@abstain pb' });
+    const v = T.sink(pb, 'pv'), a = T.sink(pb, 'pa'), bare = T.sink(pb, 'pb');
+    pb.routeSend('pd', 'case'); pb.routeSend('pl', 'law'); pb.routeSend('pu', 'plain');
+    return [v.log.join() === 'case' && a.log.length === 1 && T.kit.isPulse(a.log[0]) && bare.log.join() === 'plain', [v.log, a.log.length, bare.log]];
+  });
+
+  await run('ports: paste rename keeps port, @ refused in quest name', async () => {
+    const el = document.createElement('i'); el.setAttribute('data-scv-emits', 'old@out plain'); el.setAttribute('data-scv-receives', 'old@in');
+    T.kit.remap(el, new Map([['old', 'new']]));
+    const pb = T.pb(), q = T.node(pb, 'quest', { value: 'na@me' }); await T.sleep(20);
+    return [el.getAttribute('data-scv-emits') === 'new@out plain' && el.getAttribute('data-scv-receives') === 'new@in' && !q.hasAttribute('data-scv-emits') && q.shadowRoot.querySelector('.float').textContent === 'no @ in names',
+      [el.getAttribute('data-scv-emits'), el.getAttribute('data-scv-receives'), q.getAttribute('data-scv-emits'), q.shadowRoot.querySelector('.float').textContent]];
+  });
+
   await run('custom node: onPulse, onReceive and re-point on redefine', async () => {
     const pb = T.pb();
     T.kit.runNodeSource("defineNode({ name: 'dbl', onReceive(v, ctx) { ctx.emit(v * 2); }, onPulse(ctx) { ctx.emit('p'); } })");

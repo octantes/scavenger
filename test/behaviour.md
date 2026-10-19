@@ -254,3 +254,13 @@ Cell: what node emits, then its state.
 | "" | "" · last="" | "" · last="" | 3 · last=3 | "3" · last="3" | -2 · last=-2 | "x" · last="x" | "" · last="" | true · last=true | {"a":1} · no state |
 | true | true · last=true | true · last=true | 3 · last=3 | "3" · last="3" | -2 · last=-2 | "x" · last="x" | "" · last="" | true · last=true | {"a":1} · no state |
 | {a:1} | {"a":1} · no state | {"a":1} · no state | 3 · last=3 | "3" · last="3" | -2 · last=-2 | "x" · last="x" | "" · last="" | true · last=true | {"a":1} · no state |
+
+## ports - custom node, inputs a b, outputs x y, answering on output named after input
+
+Cell: which output wires got what.
+
+| sent | 3 | pulse |
+| --- | --- | --- |
+| into port a | x 3 | x pulse |
+| into port b | y 3 | y pulse |
+| into unported wire | unported 3 | unported pulse |

@@ -403,7 +403,7 @@ try {
     await click(900, 600, 0, 'right');
     const r = await js(`[...T.pb.shadowRoot.querySelectorAll('.menu button')].map(b => b.textContent)`);
     await key('Escape'); const closed = await js(`!T.pb.shadowRoot.querySelector('.menu')`);
-    return [r[0] === '[mode] - use' && r.includes('[node] - clock') && r.includes('[node] - quest') && r.slice(-3).join() === '[save] - quine (keeps editing),[save] - view (pans, no editing),[save] - publish (removes editing)' && closed, { r, closed }];
+    return [r[0] === '[mode] - use' && r.includes('[node] - clock') && r.includes('[node] - quest') && r.slice(-3).join() === '[save] - quine (keeps editing),[save] - canvas (infinite, no editing),[save] - publish (document, no editing)' && closed, { r, closed }];
   });
   await run('space chains last spawned into clicked node', async () => {
     await hover(700, 500); await key('2');

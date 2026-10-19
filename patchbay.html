@@ -2061,7 +2061,7 @@ const studio = pb => {
     const items = [{ label: pb.editing ? '[mode] - use' : '[mode] - edit', cls: 'mode', fn: () => setMode(pb.editing ? 'use' : 'edit') }];
     items.push(...nodeItems(type => { const last = st.chain ? st.last : null, rev = st.lock; const n = spawn(type, p.x - 16, p.y - 16); if (last) rev ? wire(n, last) : wire(last, n); disarm(); }));
     for (const [tag] of kit.comps) items.push({ label: '[comp] - ' + tag.replace(/^scv-/, ''), fn: () => { setMode('edit'); const it = document.createElement('scv-item'); it.style.left = p.x + 'px'; it.style.top = p.y + 'px'; const c = document.createElement(tag); c.dataset.scvId = 'comp_' + uid(9); it.append(c); pb.append(it); record(() => pb.append(it), () => it.remove(), 'spawn'); } });
-    items.push({ label: '[save] - quine (keeps editing)', cls: 'save', fn: () => pb.export('quine') }, { label: '[save] - view (pans, no editing)', cls: 'save', fn: () => pb.export('view') }, { label: '[save] - publish (removes editing)', cls: 'save', fn: () => pb.export('publish') });
+    items.push({ label: '[save] - quine (keeps editing)', cls: 'save', fn: () => pb.export('quine') }, { label: '[save] - canvas (infinite, no editing)', cls: 'save', fn: () => pb.export('canvas') }, { label: '[save] - publish (document, no editing)', cls: 'save', fn: () => pb.export('publish') });
     menu(items, e.clientX, e.clientY, () => { st.lock = null; });
   });
 
@@ -2308,8 +2308,8 @@ const studio = pb => {
 
 const VERSION = document.documentElement.getAttribute('data-scv-runtime') || '';
 const LICENSE = '<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->\n\n';
-const NAMES = { quine: 'scavenger quine', view: 'scavenger view', publish: 'scavenger publish' };
-const SCRIPTS = { quine: ['scv-canvas', 'scv-studio'], view: ['scv-canvas'], publish: [] };
+const NAMES = { quine: 'scavenger quine', canvas: 'scavenger canvas', publish: 'scavenger publish' };
+const SCRIPTS = { quine: ['scv-canvas', 'scv-studio'], canvas: ['scv-canvas'], publish: [] };
 
 const escAttr = v => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 const startTag = el => '<' + el.localName + [...el.attributes].map(a => ` ${a.name}="${escAttr(a.value)}"`).join('') + '>';

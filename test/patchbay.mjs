@@ -819,17 +819,17 @@ try {
     pb.mode = 'edit';
     await T.frame();
     const out = {};
-    for (const k of ['quine', 'view', 'publish']) out[k] = await (await pb.save(k)).text();
+    for (const k of ['quine', 'canvas', 'publish']) out[k] = await (await pb.save(k)).text();
     return out;
   })()`);
   ok(built && !built.threw, `fixture saved (${built?.threw})`);
-  for (const k of ['quine', 'view', 'publish']) saved.set(k, built?.[k] || '');
+  for (const k of ['quine', 'canvas', 'publish']) saved.set(k, built?.[k] || '');
   const q = saved.get('quine');
   const body = q.slice(q.indexOf('<scv-patchbay'), q.indexOf('<script id="scv-boot">')); // state only - runtime source holds every word checked below
   const items = body.slice(0, body.indexOf('</scv-patchbay>'));
 
   ok(/<script id="scv-canvas">/.test(q) && /<script id="scv-studio">/.test(q) && /<script id="scv-runtime">/.test(q), 'quine carries runtime, canvas and studio scripts by id');
-  ok(/<script id="scv-canvas">/.test(saved.get('view')) && !/id="scv-studio"/.test(saved.get('view')), 'view keeps canvas, drops studio');
+  ok(/<script id="scv-canvas">/.test(saved.get('canvas')) && !/id="scv-studio"/.test(saved.get('canvas')), 'canvas export keeps canvas, drops studio');
   ok(!/id="scv-canvas"/.test(saved.get('publish')) && !/id="scv-studio"/.test(saved.get('publish')) && /id="scv-runtime"/.test(saved.get('publish')), 'publish keeps only runtime');
   ok(!body.includes('blob:'), 'no blob url written into file');
   const assets = (body.match(/<script type="scv\/asset"/g) || []).length;
@@ -864,7 +864,7 @@ try {
     return [/<scv-outer1 data-scv-id="o"><\/scv-outer1>/.test(html) && /customElements\.get\('scv-inner1'\)/.test(html), html.match(/<scv-outer1.*?<\/scv-outer1>/)?.[0]];
   });
 
-  for (const k of ['quine', 'view', 'publish']) {
+  for (const k of ['quine', 'canvas', 'publish']) {
     uncaught.length = 0;
     await nav(`${base}/saved/${k}`);
     const r = await js(`(async () => {
@@ -911,12 +911,12 @@ try {
   // script elements removed by hand
 
   const strip = (html, id) => html.replace(new RegExp(`<script id="${id}">[\\s\\S]*?</script>\\n`), '');
-  saved.set('handview', strip(q, 'scv-studio'));
+  saved.set('handcanvas', strip(q, 'scv-studio'));
   saved.set('handpub', strip(strip(q, 'scv-studio'), 'scv-canvas'));
-  for (const [k, canvas] of [['handview', 'function'], ['handpub', 'undefined']]) {
+  for (const [k, canvas] of [['handcanvas', 'function'], ['handpub', 'undefined']]) {
     await nav(`${base}/saved/${k}`);
     const r = await js(`(() => { const pb = document.querySelector('scv-patchbay'); return [typeof pb.setView, typeof pb.save, getComputedStyle(pb.querySelector('scv-logic')).display]; })()`);
-    ok(r && r[0] === canvas && r[1] === 'undefined', `quine with scripts removed by hand behaves as ${k === 'handview' ? 'view' : 'publish'} (${r})`);
+    ok(r && r[0] === canvas && r[1] === 'undefined', `quine with scripts removed by hand behaves as ${k === 'handcanvas' ? 'canvas' : 'publish'} (${r})`);
   }
 
   await run('nodes hidden without studio even in edit state', async () => {
@@ -924,9 +924,9 @@ try {
     return [getComputedStyle(pb.querySelector('scv-logic')).display === 'none', getComputedStyle(pb.querySelector('scv-logic')).display];
   });
 
-  // view
+  // canvas export
 
-  await nav(`${base}/saved/view`);
+  await nav(`${base}/saved/canvas`);
   const view = await js(`(async () => {
     const pb = document.querySelector('scv-patchbay');
     pb.dispatchEvent(new WheelEvent('wheel', { deltaX: 10, deltaY: 20, bubbles: true, cancelable: true }));
@@ -935,8 +935,8 @@ try {
     const at = pb.toCanvas(100, 100);
     return { panned, zoom: pb.zoom, at };
   })()`);
-  ok(view && view.panned.x === -10 && view.panned.y === -20, `view: wheel pans (${JSON.stringify(view?.panned)})`);
-  ok(view && view.zoom > 1 && Math.abs(view.at.x - 110) < 0.01 && Math.abs(view.at.y - 120) < 0.01, `view: ctrl-wheel zooms about pointer (${JSON.stringify(view)})`);
+  ok(view && view.panned.x === -10 && view.panned.y === -20, `canvas: wheel pans (${JSON.stringify(view?.panned)})`);
+  ok(view && view.zoom > 1 && Math.abs(view.at.x - 110) < 0.01 && Math.abs(view.at.y - 120) < 0.01, `canvas: ctrl-wheel zooms about pointer (${JSON.stringify(view)})`);
 
   // quests
 

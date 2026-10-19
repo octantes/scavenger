@@ -2400,7 +2400,7 @@
     const viewEl = wrapper.querySelector('#scv-view');
     let viewOpen = false;
     viewEl.addEventListener('click', e => { if (e.target.closest('.scv-view-close')) hideView(); });
-    kernel.showView = showView; kernel.hideView = hideView; kernel.summon = summon; kernel.minimize = minimize; // showview
+    kernel.showView = showView; kernel.hideView = hideView; // showview
     kernel.run = (cmdString) => { // programmatic launch - same dispatch as a palette enter, no ui required
       const parts = String(cmdString || '').trim().split(/\s+/);
       const id = parts.shift(), arg = parts.join(' ');
@@ -2666,13 +2666,22 @@
 
   // MINIMIZE & SUMMON
 
+  let headless = !!launch.headless;
+  const wake = () => { // host asked for ui - headless ends
+    if (!headless) return;
+    headless = false; utils.quiet--;
+    document.addEventListener('keydown', kernel._shiftHandler, true);
+  };
+
   function summon(seed) { // restores palette and drops minimized indicator + pending notification
+    wake();
     utils.unmount('scv-min-dot');
     utils.unmount(IDS.notify);
     renderPalette(seed ?? launchSeed);
   }
 
   function minimize() { // hides palette and leaves interaction dot
+    wake();
     kernel.bus.offAll('__pal');
     utils.unmount(IDS.masterWrapper);
     if (document.getElementById('scv-min-dot')) return;
@@ -2696,7 +2705,8 @@
 
   // BOOT - headless draws nothing, harvest and run still answer
 
-  if (launch.headless) utils.quiet++;
+  kernel.summon = summon; kernel.minimize = minimize;
+  if (headless) utils.quiet++;
   else { document.addEventListener('keydown', kernel._shiftHandler, true); renderPalette(launchSeed); }
   if (launch.run && launchSeed) kernel.run(launchSeed);
 

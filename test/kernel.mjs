@@ -1116,7 +1116,11 @@ try {
     const toggled = window.$kernel.processes['xray']?.active === true;
     window.$kernel.run('xray');
     const html = await window.$kernel.harvest('#gq', { uid: 'gq1' });
-    return { boot, afterShift, fonts, unknown, toggled, off: !window.$kernel.processes['xray'].active, styled: html.includes('<style>'), afterHarvest: ${ui} };
+    const afterHarvest = ${ui};
+    window.$kernel.summon();
+    const summoned = !!document.querySelector('.scv-palette');
+    await window.$kernel.harvest('#gq', { uid: 'gq1' });
+    return { boot, afterShift, fonts, unknown, toggled, off: !window.$kernel.processes['xray'].active, styled: html.includes('<style>'), afterHarvest, summoned, awake: ${ui}.includes('scv-notify') };
   })()` }))?.result?.result?.value;
   await js(`delete window.scvLaunch; window.$kernel.destroy(); document.getElementById('gq').remove(); true`);
   ok(headless && headless.boot === '', `headless boot mounts no ui (found ${headless && headless.boot})`);
@@ -1125,6 +1129,7 @@ try {
   ok(headless && headless.unknown === 'unknown command: no-such-tool', `headless run names unknown command (${JSON.stringify(headless && headless.unknown)})`);
   ok(headless && headless.toggled && headless.off, 'headless run toggles tool on and off');
   ok(headless && headless.styled && headless.afterHarvest === '', `headless harvest answers and draws nothing (found ${headless && headless.afterHarvest})`);
+  ok(headless && headless.summoned && headless.awake, `summon ends headless - palette up, harvest shows status (${JSON.stringify(headless && { s: headless.summoned, a: headless.awake })})`);
 } catch (e) {
   fails++; console.log('  ✗ kernel tier threw:', e.message);
 }

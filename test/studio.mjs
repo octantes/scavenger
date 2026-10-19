@@ -299,9 +299,9 @@ try {
     const r = await js(`(async () => { for (let i = 0; i < 5; i++) { T.nodes()[0].trigger(); await T.frame(); } return [...T.pb.shadowRoot.querySelectorAll('.cable')].map(p => p.getAnimations().length).concat(T.nodes()[0].getAnimations().length); })()`);
     return [r.every(n => n === 1), r];
   });
-  await run('pulse flashes dashed, data solid', async () => {
-    const r = await js(`(async () => { const [a, b] = T.nodes(); T.pb.routeSend(a.getAttribute('data-scv-emits'), T.kit.pulse()); await T.frame(); const p = [...T.pb.shadowRoot.querySelectorAll('.cable')][0]; return p.getAnimations().at(-1).effect.getKeyframes()[0].strokeDasharray; })()`);
-    return [r?.replace(',', '') === '6 6', r];
+  await run('pulse flashes solid like data, in input color', async () => {
+    const r = await js(`(async () => { const [a] = T.nodes(); T.pb.routeSend(a.getAttribute('data-scv-emits'), T.kit.pulse()); await T.frame(); const k = [...T.pb.shadowRoot.querySelectorAll('.cable')][0].getAnimations().at(-1).effect.getKeyframes()[0]; return [k.strokeDasharray ?? null, k.stroke]; })()`);
+    return [r?.[0] === null && r[1] === 'var(--input)', r];
   });
 
   // inner ends

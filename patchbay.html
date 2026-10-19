@@ -1771,18 +1771,16 @@ const studio = pb => {
   const draw = () => onFrame(render, render);
   pb.cables = () => { render(); return [...cables.values()].map(c => ({ ch: c.ch, src: c.src, tgt: c.tgt, d: c.d })); };
 
-  const flashed = new Map(); // channel > carried pulse
+  const flashed = new Set(); // channels routed this frame
   const running = new WeakMap(); // el > its flash - restarted, never stacked
   const flash = (el, frames) => { running.get(el)?.cancel(); running.set(el, el.animate(frames, { duration: 400, easing: 'steps(1, end)' })); }; // held then dropped - no in-between colors
   pb.onRoute((ch, v) => {
     if (!pb.editing) return;
-    flashed.set(ch, flashed.get(ch) || isPulse(v));
+    flashed.add(ch);
     onFrame(flashed, () => { // one animation pass per frame, whatever the cascade
       const rings = new Set();
       for (const c of cables.values()) if (flashed.has(c.ch) && c.path) {
-        flash(c.path, flashed.get(c.ch)
-          ? [{ stroke: 'var(--input)', strokeDasharray: '6 6' }, { stroke: 'var(--input)', strokeDasharray: '6 6', offset: .7 }, { strokeDasharray: 'none' }]
-          : [{ stroke: 'var(--input)' }, {}]);
+        flash(c.path, [{ stroke: 'var(--input)' }, {}]); // pulses and data flash alike
         if (c.src.localName === 'scv-logic') rings.add(c.src);
       }
       rings.forEach(n => flash(n, [{ boxShadow: '0 0 0 2px var(--background-sunk), 0 0 0 4px var(--input)' }, {}])); // ring speaks for its cable
@@ -1793,12 +1791,11 @@ const studio = pb => {
   // selection box, dimming and cable tint follow state, written once per frame
 
   const paint = () => onFrame(paintKey, () => {
-    const sel = selection();
-    box.hidden = !sel.length || !pb.editing;
+    const sel = selection(), items = sel.filter(u => u.localName === 'scv-item'); // selected node shows its ring, never a frame
+    box.hidden = !items.length || !pb.editing;
     if (!box.hidden) {
-      const bs = sel.map(boxOf), x = Math.min(...bs.map(b => b.x)), y = Math.min(...bs.map(b => b.y));
+      const bs = items.map(boxOf), x = Math.min(...bs.map(b => b.x)), y = Math.min(...bs.map(b => b.y));
       Object.assign(box.style, { left: x + 'px', top: y + 'px', width: Math.max(...bs.map(b => b.x + b.w)) - x + 'px', height: Math.max(...bs.map(b => b.y + b.h)) - y + 'px' });
-      box.querySelectorAll('.corner').forEach(c => { c.hidden = !sel.some(u => u.localName === 'scv-item'); });
     }
     const lit = sel.length ? new Set(sel) : st.hover ? connected(st.hover) : null;
     units().forEach(u => { const dim = !!lit && !lit.has(u) && !(u.localName === 'scv-logic' && lit.has(u.parentElement)); if (u.states.has('dimmed') !== dim) dim ? u.states.add('dimmed') : u.states.delete('dimmed'); });

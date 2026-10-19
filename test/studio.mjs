@@ -299,9 +299,22 @@ try {
     const r = await js(`(async () => { for (let i = 0; i < 5; i++) { T.nodes()[0].trigger(); await T.frame(); } return [...T.pb.shadowRoot.querySelectorAll('.cable')].map(p => p.getAnimations().length).concat(T.nodes()[0].getAnimations().length); })()`);
     return [r.every(n => n === 1), r];
   });
-  await run('pulse flashes solid like data, in input color', async () => {
-    const r = await js(`(async () => { const [a] = T.nodes(); T.pb.routeSend(a.getAttribute('data-scv-emits'), T.kit.pulse()); await T.frame(); const k = [...T.pb.shadowRoot.querySelectorAll('.cable')][0].getAnimations().at(-1).effect.getKeyframes()[0]; return [k.strokeDasharray ?? null, k.stroke]; })()`);
-    return [r?.[0] === null && r[1] === 'var(--input)', r];
+  await run('dimmed cable flashing stays in palette range - never yellow', async () => {
+    const r = await js(`(async () => {
+      const a = T.pb.spawn('accumulator', 300, 520), b = T.pb.spawn('gate', 500, 520), other = T.pb.spawn('gate', 700, 520); T.pb.wire(a, b); T.pb.select([other]);
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      T.pb.routeSend(a.getAttribute('data-scv-emits'), 1); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const p = [...T.pb.shadowRoot.querySelectorAll('.cable')].find(c => c.classList.contains('dim') && c.getAnimations().length), an = p?.getAnimations().at(-1);
+      an?.pause(); if (an) an.currentTime = 150; const stroke = p && getComputedStyle(p).stroke;
+      [a, b, other].forEach(n => n.remove()); T.pb.select([]);
+      return stroke;
+    })()`);
+    const ok = typeof r === 'string' && (/^rgb/.test(r) || (m => m && +m[1] <= 1 && Math.abs(+m[2]) < .5 && Math.abs(+m[3]) < .5)(r.match(/^oklab\(([-\d.]+) ([-\d.]+) ([-\d.]+)/)));
+    return [ok, r];
+  });
+  await run('pulse flashes solid like data, input easing into cable color', async () => {
+    const r = await js(`(async () => { const [a] = T.nodes(); T.pb.routeSend(a.getAttribute('data-scv-emits'), T.kit.pulse()); await T.frame(); const k = [...T.pb.shadowRoot.querySelectorAll('.cable')][0].getAnimations().at(-1).effect.getKeyframes(); return [k[0].strokeDasharray ?? null, k[0].stroke, k[1].stroke]; })()`);
+    return [r?.[0] === null && r[1] === 'var(--input)' && r[2] === 'var(--cs, var(--cable))', r];
   });
 
   // inner ends

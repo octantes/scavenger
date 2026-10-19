@@ -664,7 +664,7 @@ const NODE_CSS = `
 :host { position: absolute; display: flex; align-items: center; height: 32px; min-width: 32px; border-radius: 16px; z-index: 100; contain: layout style; outline: none;
   --node: var(--input); --glyph: var(--background-sunk); --cs: var(--cable);
   box-shadow: 0 0 0 2px var(--background-sunk), 0 0 0 4px var(--cs); animation: reveal .3s ease-out backwards; }
-@keyframes reveal { from { opacity: 0; box-shadow: 0 0 0 2px var(--background-sunk), 0 0 0 4px var(--input); } }
+@keyframes reveal { from { opacity: 0; box-shadow: 0 0 0 2px var(--background-sunk), 0 0 0 4px var(--input); } to { opacity: 1; box-shadow: 0 0 0 2px var(--background-sunk), 0 0 0 4px var(--cs); } }
 :host::before { content: ''; position: absolute; inset: -4px; border-radius: 20px; pointer-events: none; opacity: 0; transition: opacity var(--duration-base) var(--ease-swift);
   box-shadow: 0 0 12px color-mix(in srgb, var(--input) 40%, transparent); } /* glow fades, ring color never mixes */
 :host(:state(dimmed)) { --cs: var(--dim); }
@@ -1489,7 +1489,7 @@ const HOVER_CSS = sheet(`
 `); // component shadows, edit mode only - innermost wire end lights up
 const CHROME_CSS = sheet(`
 .cables { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; z-index: 101; }
-.cable { fill: none; stroke: var(--cs, var(--cable)); stroke-width: 3px; stroke-linecap: round; pointer-events: visibleStroke; cursor: pointer; } /* colors switch, never mix */
+.cable { fill: none; stroke: var(--cs, var(--cable)); stroke-width: 3px; stroke-linecap: round; pointer-events: visibleStroke; cursor: pointer; transition: stroke var(--duration-base); }
 .cable:hover { stroke: var(--danger); stroke-width: 4px; }
 .cable.dim { --cs: var(--dim); }
 .temp { fill: none; stroke: var(--input); stroke-width: 3px; stroke-linecap: round; stroke-dasharray: 6 6; opacity: .8; pointer-events: none; animation: dash .5s linear infinite; }
@@ -1773,17 +1773,17 @@ const studio = pb => {
 
   const flashed = new Set(); // channels routed this frame
   const running = new WeakMap(); // el > its flash - restarted, never stacked
-  const flash = (el, frames) => { running.get(el)?.cancel(); running.set(el, el.animate(frames, { duration: 400, easing: 'steps(1, end)' })); }; // held then dropped - no in-between colors
+  const flash = (el, frames) => { running.get(el)?.cancel(); running.set(el, el.animate(frames, { duration: 400, easing: 'ease-out' })); }; // end named - implicit end mixes color-mix wrong
   pb.onRoute((ch, v) => {
     if (!pb.editing) return;
     flashed.add(ch);
     onFrame(flashed, () => { // one animation pass per frame, whatever the cascade
       const rings = new Set();
       for (const c of cables.values()) if (flashed.has(c.ch) && c.path) {
-        flash(c.path, [{ stroke: 'var(--input)' }, {}]); // pulses and data flash alike
+        flash(c.path, [{ stroke: 'var(--input)' }, { stroke: 'var(--cs, var(--cable))' }]); // pulses and data flash alike
         if (c.src.localName === 'scv-logic') rings.add(c.src);
       }
-      rings.forEach(n => flash(n, [{ boxShadow: '0 0 0 2px var(--background-sunk), 0 0 0 4px var(--input)' }, {}])); // ring speaks for its cable
+      rings.forEach(n => flash(n, ['--input', '--cs'].map(c => ({ boxShadow: `0 0 0 2px var(--background-sunk), 0 0 0 4px var(${c})` })))); // ring speaks for its cable
       flashed.clear();
     });
   });

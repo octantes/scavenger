@@ -9,7 +9,7 @@ const tiers = [
   'unit.mjs', 'tokens.mjs', 'security.mjs', 'build.mjs', 'server-loop.mjs', // fast: logic, tokens, gate, lexer, artifact, scheduling
   'tui.mjs', 'engine.mjs', 'kernel.mjs', 'tools.mjs', 'live-emit.mjs',
   'patchbay.mjs', 'studio.mjs', 'fractal.mjs', 'adversarial.mjs',
-  'connectivity.mjs', 'examples.mjs', 'behaviour.mjs', 'random.mjs', 'cli.mjs', // integration + real cli
+  'connectivity.mjs', 'examples.mjs', 'behaviour.mjs', 'random.mjs', 'surface.mjs', 'cli.mjs', // integration + real cli
 ];
 
 // strip *_proxy - _cdp proxy-less on purpose, inherited proxy would reroute test traffic off localhost

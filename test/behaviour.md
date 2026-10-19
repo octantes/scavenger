@@ -54,7 +54,7 @@ Cell: what node emits, then its state.
 | -2 | pulse (repeating) · value=-2 | pulse (repeating) · value=-2 |
 | "x" | — · value=100000000 | — · value=100000000 |
 | "" | — · value=100000000 | — · value=100000000 |
-| true | pulse (repeating) · value=1 | pulse (repeating) · value=1 |
+| true | — · value=100000000 | — · value=100000000 |
 | {a:1} | — · value=100000000 | — · value=100000000 |
 
 ### accumulator

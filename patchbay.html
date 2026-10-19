@@ -766,7 +766,7 @@ builtIn('clock', '1', {
   onValue(ctx) { const v = numOr(ctx.value, 0); clock.retime(ctx.el, Math.abs(v) >= 1 ? Math.round(Math.abs(v)) : 1000, ctx.mode === 'offbeat'); }, // under 1ms would be emit storm
   onMode(m, ctx) { this.onValue(ctx); },
   onPulse(ctx) { ctx.emit(pulse()); }, // grid keeps its schedule
-  onReceive(v, ctx) { const n = Number(v); if (Number.isFinite(n) && Math.abs(n) >= 1) ctx.value = String(n); },
+  onReceive(v, ctx) { const n = typeof v === 'number' || typeof v === 'string' ? Number(v) : NaN; if (Number.isFinite(n) && Math.abs(n) >= 1) ctx.value = String(n); }, // only numbers and numeric text retime
 });
 
 builtIn('accumulator', '2', {

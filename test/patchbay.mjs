@@ -893,7 +893,8 @@ try {
   const assets = (body.match(/<script type="scv\/asset"/g) || []).length;
   ok(assets === 2, `each referenced asset once, unreferenced pruned (${assets})`);
   ok(!/<img[^>]*\ssrc=/.test(items) && (items.match(/data-scv-src=/g) || []).length === 4, 'refs never sit in src, remote images interned');
-  ok(!q.includes('scv-unused') && !q.includes('not placed') && !q.includes("name: 'idle'"), 'unused harvest def, component template and node def pruned');
+  ok(!q.includes('scv-unused'), 'unused harvest def pruned');
+  ok(q.includes('not placed') && q.includes("name: 'idle'"), 'registered component and node types ship unplaced');
   ok(!body.includes('data-scv-appended'), 'items recreated by node init are skipped');
   ok(/<scv-patchbay[^>]*extent="\d+ \d+"/.test(q), 'extent written at save');
   ok(!/<scv-patchbay[^>]*style=/.test(q), 'canvas view state never written to host');
@@ -912,6 +913,13 @@ try {
     const withIt = await (await pb.save('publish')).text(); it.remove();
     const without = await (await pb.save('publish')).text();
     return [/customElements\.get\('scv-pr1'\)/.test(withIt) && !/scv-pr1/.test(without) && !!document.querySelector('script[data-scv-def]') && [...document.querySelectorAll('script[data-scv-def]')].some(s => s.textContent.includes('scv-pr1')), without.length];
+  });
+
+  await run('node file defining several types is written once', async () => {
+    const pb = T.pb(); T.kit.runNodeSource("defineNode({ name: 'pair-a' }); defineNode({ name: 'pair-b' });");
+    T.node(pb, 'pair-a'); T.node(pb, 'pair-b');
+    const html = await (await pb.save('publish')).text(), n = (html.match(/name: 'pair-a'/g) || []).length;
+    return [n === 1, n];
   });
 
   await run('def used only inside a bare component shadow still ships', async () => {
@@ -938,6 +946,7 @@ try {
         meter: m.shadowRoot.querySelector('b').textContent, routed: hv[1].shadowRoot.querySelector('p').textContent,
         imgs: imgs.map(i => i.naturalWidth), table, twice: !!customElements.get('scv-logic') && pb.querySelector('[data-type="twice"]').shadowRoot.querySelector('.dot').textContent,
         canvas: typeof pb.setView, studio: typeof pb.save, api: customElements.get('scv-patchbay').kit.quests.api(pb),
+        unplaced: [pb.nodeType('idle')?.icon, !!customElements.get('scv-spare')],
       };
     })()`);
     ok(r && !r.threw, `${k} reopens (${r?.threw})`);
@@ -948,6 +957,7 @@ try {
     ok(r.meter === '3' && r.routed === '3', `${k}: authored component keeps slot data and still routes (${r.meter}, ${r.routed})`);
     ok(r.imgs.join() === '1,1,1,1' && r.table, `${k}: table images load, live dom drops base64 (${r.imgs}, ${r.table})`);
     ok(r.twice === '2', `${k}: custom node def travels with file (${r.twice})`);
+    ok(r.unplaced.join() === 'z,true', `${k}: unplaced node and component types registered after reopen (${r.unplaced})`);
     ok(r.canvas === (k === 'publish' ? 'undefined' : 'function') && r.studio === (k === 'quine' ? 'function' : 'undefined'), `${k}: behaviour matches script set (${r.canvas}, ${r.studio})`);
     ok(r.api === (k === 'quine' ? 'http://127.0.0.1:9876' : base), `${k}: quest api default (${r.api})`);
     ok(uncaught.length === 0, `${k}: no uncaught errors (${uncaught})`);

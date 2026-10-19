@@ -2488,7 +2488,7 @@ const _defsOf = async (used, defs) => { // what items use, each once
   const assets = [], authored = [], harvests = [];
   for (const h of used.refs) assets.push(new Blob([await kit.asset.element(h)])); // referenced assets only
   for (const t of used.tags) { const c = kit.comps.get(t); if (c) authored.push(c.tpl.outerHTML, '\n'); }
-  for (const n of used.nodes) { const src = kit.nodeSources.get(n); if (src) authored.push(`<script type="scv/node" data-scv-node>${src.replace(/<\/script/gi, '<\\/script')}<\/script>\n`); }
+  new Set([...used.nodes].map(n => kit.nodeSources.get(n)).filter(Boolean)).forEach(src => authored.push(`<script type="scv/node" data-scv-node>${src.replace(/<\/script/gi, '<\\/script')}<\/script>\n`)); // one file may define several
   new Set([...used.tags].map(t => defs.get(t)).filter(Boolean)).forEach(s => harvests.push(new Blob(['<script data-scv-def>', s.textContent, '<\/script>\n']))); // runs as written - rebuilt ones sit inert while live
   return { assets, authored, harvests };
 };
@@ -2514,7 +2514,7 @@ const extentOf = pb => {
 const save = async (pb, kind = 'quine') => {
   if (!SCRIPTS[kind]) throw new Error('unknown export ' + kind);
   pb.setAttribute('extent', extentOf(pb));
-  const defs = _defs(), used = { tags: new Set(), nodes: new Set(), refs: new Set() };
+  const defs = _defs(), used = { tags: new Set(kit.comps.keys()), nodes: new Set(kit.nodeSources.keys()), refs: new Set() }; // registered types ship, placed or not
   const parts = [LICENSE, `<html lang="en" data-scv-runtime="${escAttr(VERSION)}">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>${NAMES[kind]}</title>\n`,
     document.querySelector('link[rel="icon"]')?.outerHTML || '', '\n', outer('scv-runtime-css'), '\n', outer('scv-runtime'), '\n</head>\n<body>\n', startTag(pb), '\n'];
   for (const el of pb.children) if (!el.hasAttribute('data-scv-appended')) parts.push(new Blob([await _item(el, defs, used)]), '\n'); // string freed now, not at end of save

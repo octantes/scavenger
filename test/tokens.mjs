@@ -26,6 +26,7 @@ const SYSTEM = [
   '--font-mono', '--fs-a', '--fs-b', '--fs-c', '--fs-d',
 ];
 for (const t of SYSTEM) ok(dashDefs[t] !== undefined, `patchbay :root defines ${t}`);
+ok(/:root\[data-scv-runtime\], scv-patchbay \{/.test(dash), 'tokens sit on patchbay file root and on element - mounted patchbay never themes host page');
 
 // kernel uses js theme object - must carry same names + brand values
 for (const [key, hex] of [['backgroundSunk', '#1a1c1c'], ['output', '#986c98'], ['input', '#8ab6bb'], ['textBase', '#aaabac'], ['danger', '#985954']])

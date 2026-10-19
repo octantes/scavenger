@@ -19,6 +19,11 @@ let imgFetches = 0; // fetch() only - img loads ask for image/*
 const srv = createServer((req, res) => {
   const path = req.url.split('?')[0];
   if (path === '/pb') { res.setHeader('content-type', 'text/html'); return res.end(readFileSync(pbFile)); }
+  if (path === '/host') { // host page mounting two patchbays from runtime and canvas pieces - not a patchbay file
+    const f = readFileSync(pbFile, 'utf8'), part = id => f.match(new RegExp(`<(style|script) id="${id}">[\\s\\S]*?</(style|script)>`))[0];
+    res.setHeader('content-type', 'text/html');
+    return res.end(`<!doctype html><html><head><style>body{background:rgb(1,2,3)} #b{--background-sunk:rgb(9,9,9)}</style>${part('scv-runtime-css')}${part('scv-runtime')}</head><body><scv-patchbay id="a" style="width:200px;height:100px"></scv-patchbay><scv-patchbay id="b" style="width:200px;height:100px"></scv-patchbay>${part('scv-canvas')}${part('scv-boot')}</body></html>`);
+  }
   if (path.startsWith('/saved/')) { res.setHeader('content-type', 'text/html'); return res.end(saved.get(path.slice(7)) || ''); }
   if (path === '/img.png') { if (!/^image\//.test(req.headers.accept || '')) imgFetches++; res.setHeader('content-type', 'image/png'); res.setHeader('access-control-allow-origin', '*'); return res.end(Buffer.concat([PNG, Buffer.from([0])])); } // trailing byte - own hash, still decodes
   if (req.method === 'GET' && path === '/quests') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify([{ channel: 'q_in', result: { value: 7 } }, { channel: 'q_comp', result: { value: 'live.html#v1' } }])); }
@@ -997,6 +1002,27 @@ try {
     return [alt.textContent, own.textContent];
   })()`);
   ok(perPb && perPb[0] === '9' && perPb[1] === '7', `each patchbay reads its own quest api (${perPb})`);
+
+  // in-page mount
+
+  await nav(base + '/host');
+  const host = await js(`(async () => {
+    const a = document.getElementById('a'), b = document.getElementById('b'), r = a.getBoundingClientRect(), kit = customElements.get('scv-patchbay').kit;
+    return { body: getComputedStyle(document.body).backgroundColor, routeSend: typeof window.routeSend, a: getComputedStyle(a).getPropertyValue('--background-sunk').trim(),
+      b: getComputedStyle(b).getPropertyValue('--background-sunk').trim(), size: r.width + 'x' + r.height, position: getComputedStyle(a).position };
+  })()`);
+  ok(host?.body === 'rgb(1, 2, 3)' && host.routeSend === 'undefined', `mounted patchbay leaves host page background and window alone (${JSON.stringify(host)})`);
+  ok(host?.a === '#1A1C1C' && host.b === 'rgb(9,9,9)', `host themes one patchbay, other keeps tokens (${host?.a}, ${host?.b})`);
+  ok(host?.size === '200x100' && host.position !== 'fixed', `mounted canvas fills its own box, not window (${host?.size}, ${host?.position})`);
+  await nav(base + '/pb');
+  const unbridged = await js(`(async () => {
+    const f = document.createElement('iframe'); f.src = location.origin + '/host'; document.body.append(f); await new Promise(r => { f.onload = r; });
+    const got = []; addEventListener('message', e => { if (e.data?.scv === 'receive') got.push(e.data); });
+    f.contentWindow.postMessage({ scv: 'listen', channel: 'hx' }, '*'); f.contentWindow.postMessage({ scv: 'route', channel: 'hx', value: 1 }, '*');
+    await new Promise(r => setTimeout(r, 200)); f.remove();
+    return [got.length, getComputedStyle(document.body).backgroundColor, typeof window.routeSend];
+  })()`);
+  ok(unbridged?.join() === '0,rgb(26, 28, 28),function', `host page never answers bridge, patchbay file keeps page look and routeSend (${unbridged})`);
 
   // embedding - parent talks to framed file by message
 

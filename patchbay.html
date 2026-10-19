@@ -7,7 +7,7 @@
 <title>patchbay</title>
 <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="%23986c98"/></svg>'>
 <style id="scv-runtime-css">
-:root { /* theme enforced by token tests */
+:root[data-scv-runtime], scv-patchbay { /* theme enforced by token tests - on element, so mounted patchbay never themes host page */
 
   --font-mono: 'SF Mono', 'Consolas', 'Menlo', 'DejaVu Sans Mono', monospace;
 
@@ -52,8 +52,8 @@
 
 }
 
-* { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; background: var(--background-sunk); color: var(--text-base); font-family: var(--font-mono); font-size: var(--fs-b); }
+:root[data-scv-runtime] *, scv-patchbay * { box-sizing: border-box; }
+:root[data-scv-runtime], :root[data-scv-runtime] > body { margin: 0; padding: 0; background: var(--background-sunk); color: var(--text-base); font-family: var(--font-mono); font-size: var(--fs-b); }
 </style>
 <script id="scv-runtime">
 (() => {
@@ -1316,10 +1316,11 @@ class ScvPatchbay extends HTMLElement {
   }
   static boot() { // asset table to blobs, authored defs registered - before harvest defs run
     asset.boot();
-    window.routeSend ??= (channel, value) => document.querySelector('scv-patchbay')?.routeSend(channel, value); // same-origin parent reaches standalone file through it
-    _bridge();
     document.querySelectorAll('template[data-scv-comp]').forEach(defineComponent);
     document.querySelectorAll('script[type="scv/node"]').forEach(s => runNodeSource(s.textContent));
+    if (!document.documentElement.hasAttribute('data-scv-runtime')) return; // mounted in host page - host owns window
+    window.routeSend ??= (channel, value) => document.querySelector('scv-patchbay')?.routeSend(channel, value); // same-origin parent reaches standalone file through it
+    _bridge();
   }
 
   constructor() {
@@ -1394,7 +1395,8 @@ if (!PB) return;
 // infinite pan and zoom - view never saved
 
 const PAGE_CSS = new CSSStyleSheet(); // page level - beats runtime's own scv-patchbay rule, a :host rule wouldn't
-PAGE_CSS.replaceSync('scv-patchbay:state(canvas) { position: fixed; inset: 0; overflow: hidden; user-select: none; touch-action: none; }');
+PAGE_CSS.replaceSync(`scv-patchbay:state(canvas) { overflow: hidden; user-select: none; touch-action: none; }
+:root[data-scv-runtime] > body > scv-patchbay:state(canvas) { position: fixed; inset: 0; }`); // patchbay file fills window, mounted one fills its box
 document.adoptedStyleSheets = [...document.adoptedStyleSheets, PAGE_CSS];
 const CANVAS_CSS = `
 .layer:focus { outline: none; }

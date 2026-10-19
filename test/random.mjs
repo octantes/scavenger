@@ -118,6 +118,7 @@ try {
   for (let round = 0; round < ROUNDS && fails < 3; round++) {
     await nav(`${base}/pb`);
     await js(`window.TYPES = ${JSON.stringify(TYPES)}; window.FIXTURES = ${JSON.stringify(FIXTURES)}; window.VALUES = ${JSON.stringify(VALUES)}; pb.setMode('edit'), F.frame()`);
+    await js(`pb._router.routeSend = pb._router.applyAction = () => {}`); // edit phase holds values still - undo restores edits, never values that flowed
     errors.length = 0;
     const start = await js(`F.snap()`), log = [];
     for (let i = 0; i < OPS && fails < 3; i++) {

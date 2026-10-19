@@ -1589,7 +1589,15 @@ const studio = pb => {
   const recordAttrs = (els, before, label, merge, extend) => { // one step for all changed elements
     const after = els.map(attrsOf), changed = els.filter((el, i) => JSON.stringify(before[i]) !== JSON.stringify(after[i]));
     if (!changed.length) return;
-    record(() => els.forEach((el, i) => setAttrs(el, after[i])), () => els.forEach((el, i) => setAttrs(el, before[i])), label, merge, extend);
+    const at = els.map(refOf);
+    record(() => at.forEach((r, i) => { const el = r(); if (el) setAttrs(el, after[i]); }), () => at.forEach((r, i) => { const el = r(); if (el) setAttrs(el, before[i]); }), label, merge, extend);
+  };
+  const refOf = el => { // shadow element by host and path - a rebuilt shadow swaps its elements
+    const root = el.getRootNode();
+    if (!(root instanceof ShadowRoot)) return () => el;
+    const host = refOf(root.host), path = [];
+    for (let n = el; n !== root; n = n.parentNode) path.unshift([...n.parentNode.children].indexOf(n));
+    return () => path.reduce((n, i) => n?.children[i], host()?.shadowRoot);
   };
   const withUndo = (els, label, fn, merge, extend) => { const before = els.map(attrsOf); fn(); recordAttrs(els, before, label, merge, extend); };
 

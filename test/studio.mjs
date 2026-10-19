@@ -566,6 +566,21 @@ try {
     })()`);
     return [r[0] === true && r[1] === 'value not written - would wipe its controls' && r[2] === true, r];
   });
+  await run('redo rewires inside component rebuilt by undo', async () => {
+    const r = await js(`(async () => {
+      const frame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      T.pb.import('<template data-scv-comp="rdw"><p>x</p><script>root.querySelector("p").addEventListener("click", () => {});<\\/script></template>', { at: { x: 600, y: 600 } });
+      const item = T.pb.querySelector('scv-rdw').closest('scv-item'), p = () => item.firstElementChild.shadowRoot.querySelector('p');
+      const src = T.pb.spawn('gate', 560, 560); T.pb.wire(src, p());
+      T.pb.select([item]); T.pb.removeSelection(); await frame(); // gone a frame - teardown, return rebuilds shadow
+      T.pb.undo(); await frame(); const back = p().getAttribute('data-scv-receives');
+      T.pb.undo(); const unwired = p().getAttribute('data-scv-receives');
+      T.pb.redo(); const rewired = p().getAttribute('data-scv-receives');
+      [T.pb.querySelector('scv-rdw').closest('scv-item'), src].forEach(u => u.remove());
+      return [!!back, unwired, !!rewired];
+    })()`);
+    return [r[0] && r[1] === null && r[2], r];
+  });
   await run('1.0 file refused with note, 1.5 taken', async () => {
     const r = await js(`(() => { const n = T.pb.children.length, a = T.pb.import('<html data-scv-runtime="1.0.0"><body><scv-item><p data-scv-id="o">old</p></scv-item></body></html>'), b = T.pb.import('<div class="comp-wrapper"></div>'), c = T.pb.import('<html data-scv-runtime="1.5.0"><body><scv-item><p data-scv-id="n">new</p></scv-item></body></html>'); return [a.length + b.length, c.length, T.pb.children.length === n + 1, T.shadow('.tip').textContent]; })()`);
     return [r[0] === 0 && r[1] === 1 && r[2] && r[3] === '1.0 file, open it directly', r];

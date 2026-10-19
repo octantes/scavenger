@@ -1105,6 +1105,18 @@ try {
   })()`);
   ok(foreign?.join() === 'parent', `frame ignores messages not from its parent (${foreign})`);
 
+  const described = await js(`(async () => {
+    const f = document.createElement('iframe'); f.src = location.origin + '/pb'; document.body.append(f); await new Promise(r => { f.onload = r; });
+    const w = f.contentWindow, ipb = w.document.querySelector('scv-patchbay'), kit = w.customElements.get('scv-patchbay').kit;
+    kit.defineNode({ name: 'ds-port', inputs: [{ name: 'in', type: 'text' }], outputs: [{ name: 'out' }] });
+    ipb.insertAdjacentHTML('beforeend', '<scv-logic data-type="ds-port" data-scv-receives="price@in" data-scv-emits="verdict@out"></scv-logic><scv-logic data-type="accumulator" data-scv-receives="verdict"></scv-logic>');
+    const got = new Promise(r => addEventListener('message', e => { if (e.source === w && e.data?.scv === 'description') r(e.data); }));
+    w.postMessage({ scv: 'describe' }, '*');
+    const d = await Promise.race([got, new Promise(r => setTimeout(() => r(null), 500))]); f.remove();
+    return d && { version: d.version, channels: d.channels.map(c => c.name + (c.emits ? '>' : '') + (c.receives ? '<' : '') + (c.ports.length ? '@' + c.ports.join('|') : '')).sort().join(), nodes: d.nodes.map(n => n.type + ':' + n.inputs.map(p => p.name + '/' + (p.type || '')).join() + '>' + n.outputs.map(p => p.name).join()).sort().join() };
+  })()`);
+  ok(described?.version === '1.5.0' && described.channels === 'price<@in,verdict><@out' && described.nodes === 'accumulator:>,ds-port:in/text>out', `describe lists channels with ports and node types with declared ports (${JSON.stringify(described)})`);
+
   const lent = await js(`(async () => {
     const kit = customElements.get('scv-patchbay').kit, own = { id: 'host' };
     kit.shared('lend', () => own);

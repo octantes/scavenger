@@ -1071,6 +1071,24 @@ const _unwire = v => {
   v.channels.forEach((c, i) => b.copyToChannel(c, i));
   return b;
 };
+const _eachWired = (pb, fn) => { // wiring elements this patchbay owns, light dom then shadows
+  const walk = r => {
+    r.querySelectorAll(WIRING_SEL).forEach(n => { if (patchbayOf(n) === pb) fn(n); });
+    r.querySelectorAll('*').forEach(n => { if (n.shadowRoot && n.localName !== 'scv-logic' && patchbayOf(n) === pb) walk(n.shadowRoot); });
+  };
+  walk(pb);
+};
+const _describe = pb => { // what patch offers - read from dom, nothing runs
+  const chs = new Map(), types = new Map(), data = list => JSON.parse(JSON.stringify(list || []));
+  const note = (t, key) => { const name = chOf(t), c = chs.get(name) || chs.set(name, { name, emits: false, receives: false, ports: [] }).get(name); c[key] = true; if (portOf(t) && !c.ports.includes(portOf(t))) c.ports.push(portOf(t)); };
+  _eachWired(pb, n => {
+    splitWords(n.getAttribute(ATTR_EMITS)).forEach(t => note(t, 'emits'));
+    splitWords(n.getAttribute(ATTR_RECEIVES)).forEach(t => note(t, 'receives'));
+    splitWords(n.getAttribute(ATTR_ACTION)).forEach(t => { const c = channelOf(t); if (c) note(c, 'receives'); });
+  });
+  pb.querySelectorAll('scv-logic').forEach(n => { if (patchbayOf(n) === pb && !types.has(n.dataset.type)) types.set(n.dataset.type, { type: n.dataset.type, inputs: data(n.def.inputs), outputs: data(n.def.outputs) }); });
+  return { scv: 'description', version: document.documentElement.getAttribute('data-scv-runtime') || '', channels: [...chs.values()], nodes: [...types.values()] };
+};
 let _bridged = false;
 const _bridge = () => {
   if (_bridged || window.parent === window) return;
@@ -1081,6 +1099,7 @@ const _bridge = () => {
     if (e.source !== window.parent || typeof m?.scv !== 'string' || !pb) return;
     const ch = String(m.channel);
     if (m.scv === 'route') return pb.routeSend(ch, _unwire(m.value));
+    if (m.scv === 'describe') return window.parent.postMessage(_describe(pb), e.origin === 'null' ? '*' : e.origin);
     if (m.scv === 'unlisten') return to.delete(ch);
     if (m.scv !== 'listen') return;
     to.set(ch, e.origin === 'null' ? '*' : e.origin);

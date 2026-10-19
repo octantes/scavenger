@@ -1595,9 +1595,11 @@ const studio = pb => {
   const root = pb.shadowRoot, layer = pb.layer;
   root.adoptedStyleSheets = [...root.adoptedStyleSheets, CHROME_CSS];
   layer.tabIndex = -1;
-  const svg = svgEl('svg', 'cables'), temp = svgEl('path', 'temp');
-  temp.style.display = 'none';
-  svg.append(temp);
+  const svg = svgEl('svg', 'cables');
+  const pend = { from: null, handoff: null }; // pending wire is one path - the cable it makes takes that same path
+  let temp;
+  const freshTemp = () => { temp = svgEl('path', 'temp'); temp.style.display = 'none'; svg.prepend(temp); };
+  freshTemp();
   const box = document.createElement('div'); box.className = 'box'; box.hidden = true;
   box.innerHTML = '<i class="corner" data-c="nw"></i><i class="corner" data-c="ne"></i><i class="corner" data-c="sw"></i><i class="corner" data-c="se"></i>';
   layer.append(svg, box);
@@ -1730,7 +1732,17 @@ const studio = pb => {
     walk(pb, `[${ATTR_EMITS}]`, src => splitWords(src.getAttribute(ATTR_EMITS)).forEach(ch => (byCh.get(ch) || []).forEach(tgt => {
       if (tgt === src) return;
       const key = ch + ' ' + idOf(src) + ' ' + idOf(tgt);
-      next.set(key, cables.get(key) || { key, ch, src, tgt, fresh: true });
+      let c = cables.get(key);
+      if (!c) {
+        c = { key, ch, src, tgt, fresh: true };
+        const h = pend.handoff;
+        if (h && h.src === src && h.tgt === tgt) { // drawn already - pending path just changes state
+          pend.handoff = null;
+          Object.assign(c, { path: h.path, fresh: false });
+          h.path.setAttribute('class', 'cable'); h.path.style.display = ''; h.path._cable = c; h.path.dataset.ch = ch;
+        }
+      }
+      next.set(key, c);
     })));
     for (const [k, c] of cables) if (!next.has(k)) { c.path?.remove(); c.src.states?.delete('danger'); }
     cables.clear(); next.forEach((c, k) => cables.set(k, c));
@@ -1812,6 +1824,12 @@ const studio = pb => {
     if (!src || !tgt || src === tgt) return null;
     const ch = splitWords(src.getAttribute(ATTR_EMITS))[0] || mint();
     withUndo([src, tgt], 'wire', () => { addWord(src, ATTR_EMITS, ch); addWord(tgt, ATTR_RECEIVES, ch); });
+    if (pend.from === src || pend.from === tgt) { // pending path turns into this cable, held hidden until index takes it
+      pend.handoff?.path.remove();
+      temp.style.display = 'none';
+      pend.handoff = { src, tgt, path: temp };
+      freshTemp(); pend.from = null;
+    }
     return ch;
   };
   pb.wire = wire;
@@ -1882,12 +1900,13 @@ const studio = pb => {
 
   // space arms wire from last spawned node, ctrl reverses
 
-  const disarm = () => { st.chain = false; st.lock = null; temp.style.display = 'none'; pb.querySelectorAll('scv-logic').forEach(n => n.states.delete('chained')); };
+  const endTemp = () => { pend.from = null; temp.style.display = 'none'; };
+  const disarm = () => { st.chain = false; st.lock = null; endTemp(); pb.querySelectorAll('scv-logic').forEach(n => n.states.delete('chained')); };
   const reversed = e => st.lock ?? mod(e);
   const showTemp = (from, e) => {
     const a = endOf(from); if (!a) return;
     const p = toCanvas(e.clientX, e.clientY);
-    temp.style.display = ''; temp.classList.toggle('rev', reversed(e));
+    pend.from = from; temp.style.display = ''; temp.classList.toggle('rev', reversed(e));
     temp.setAttribute('d', curve(a, p.x, p.y));
   };
   const chainTo = (tgt, e) => { if (!tgt || tgt === st.last) return false; reversed(e) ? wire(tgt, st.last) : wire(st.last, tgt); disarm(); return true; };
@@ -1942,13 +1961,12 @@ const studio = pb => {
       end(ev) {
         if (!on) return click();
         const tgt = targetAt(ev.composedPath());
-        temp.style.display = 'none';
-        if (tgt) { if (tgt !== from) mod(ev) ? wire(tgt, from) : wire(from, tgt); return; }
+        if (tgt) { if (tgt !== from) mod(ev) ? wire(tgt, from) : wire(from, tgt); return endTemp(); }
         const p = toCanvas(ev.clientX, ev.clientY), rev = mod(ev);
         showTemp(from, ev);
-        menu(nodeItems((type) => { const n = spawn(type, p.x - 16, p.y - 16); rev ? wire(n, from) : wire(from, n); }), ev.clientX, ev.clientY, () => { temp.style.display = 'none'; });
+        menu(nodeItems((type) => { const n = spawn(type, p.x - 16, p.y - 16); rev ? wire(n, from) : wire(from, n); }), ev.clientX, ev.clientY, endTemp);
       },
-      cancel() { temp.style.display = 'none'; },
+      cancel: () => endTemp(),
     };
   };
   const lassoGesture = (e, add) => {
@@ -2049,7 +2067,7 @@ const studio = pb => {
       const b = document.createElement('button');
       b.textContent = it.label;
       if (it.cls) b.className = it.cls;
-      b.addEventListener('click', () => { st.menu = null; m.remove(); it.fn(); });
+      b.addEventListener('click', () => { it.fn(); closeMenu(); }); // closing always runs its onClose
       m.append(b);
     });
     root.append(m); st.menu = m;

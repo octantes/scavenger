@@ -126,13 +126,16 @@ try {
     const u = await js(`[T.nodes()[0].getAttribute('data-scv-emits'), T.nodes()[1].getAttribute('data-scv-receives')]`);
     return [w[0] && w[0] === w[1] && u[0] === null && u[1] === null, { w, u }];
   });
-  await run('wire dropped on empty canvas offers nodes, choice spawns and wires', async () => {
+  await run('wire dropped on empty canvas offers nodes, choice spawns and wires - pending line becomes cable', async () => {
     await drag(216, 216, 600, 500);
+    await js(`window.__pending = [...T.pb.shadowRoot.querySelectorAll('.temp')].find(p => p.style.display !== 'none')`);
     const items = await js(`T.pb.menu()`);
     const at = await js(`(() => { const b = [...T.pb.shadowRoot.querySelectorAll('.menu button')].find(b => b.firstChild.textContent === '[node] - gate'), r = b.getBoundingClientRect(); return [r.x + 10, r.y + 5]; })()`);
     await click(at[0], at[1]);
     const r = await js(`(() => { const g = T.nodes().find(n => n.dataset.type === 'gate'); return g && [g.style.left, g.getAttribute('data-scv-receives') === T.nodes()[0].getAttribute('data-scv-emits')]; })()`);
-    return [items?.includes('[node] - gate') && r && r[0] === '584px' && r[1] === true, { items: items?.length, r }];
+    await frames();
+    const one = await js(`[[...T.pb.shadowRoot.querySelectorAll('.temp')].filter(p => p.style.display !== 'none').length, window.__pending?.classList.contains('cable'), window.__pending?.isConnected]`);
+    return [items?.includes('[node] - gate') && r && r[0] === '584px' && r[1] === true && one.join() === '0,true,true', { items: items?.length, r, one }];
   });
   await run('ctrl-drag moves node, alt lands glyph on dot', async () => {
     await drag(216, 216, 263, 251, CTRL | ALT);

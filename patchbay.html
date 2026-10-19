@@ -1431,7 +1431,6 @@ const { ATTR_EMITS, ATTR_RECEIVES, ATTR_ACTION, splitWords, uid, px, itemOf, onF
 
 const LOCAL_QUESTS = 'http://127.0.0.1:9876'; // publish falls back to page origin
 const GRID = 24, HALF = GRID / 2, DRAG = 5, UNDO_MAX = 50, RING = 10; // 2px gap + 3px ring, each side
-const OPENS = new Set(['clock', 'mutator', 'delay', 'quest']); // spawn opens what needs filling
 const isMac = /mac/i.test(navigator.userAgentData?.platform || navigator.platform || '');
 const mod = e => isMac ? e.metaKey : e.ctrlKey; // ctrl is cmd on macos
 const snap = v => Math.round((v - HALF) / GRID) * GRID + HALF; // dot centres sit half a cell in
@@ -1786,7 +1785,6 @@ const studio = pb => {
     pb.append(n);
     record(() => pb.append(n), () => n.remove(), 'spawn');
     st.last = n;
-    if (OPENS.has(type)) n.expand(true);
     return n;
   };
   pb.spawn = spawn;

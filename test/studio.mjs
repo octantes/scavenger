@@ -92,10 +92,11 @@ try {
     const r = await js(`T.nodes().map(n => n.dataset.type + '@' + n.style.left + ',' + n.style.top)`);
     return [r.join() === 'quest@284px,284px,clock@384px,284px', r];
   });
-  await run('spawn opens input of nodes that need filling', async () => {
-    await hover(500, 300); await key('8'); const r = await js(`T.nodes().at(-1).states.has('expanded')`);
+  await run('spawned node stays closed, space arms chain from it', async () => {
+    await hover(500, 300); await key('8'); await key(' ');
+    const r = await js(`[T.nodes().at(-1).states.has('expanded'), getComputedStyle(T.shadow('.temp')).display !== 'none']`);
     await key('Escape'); await key('z', CTRL);
-    return [r === true, r];
+    return [r.join() === 'false,true', r];
   });
   await run('spawn is one undo step', async () => {
     await key('z', CTRL);
@@ -366,7 +367,7 @@ try {
 
   await fresh();
   await run('committed node edit is one undo step', async () => {
-    await hover(300, 300); await key('1');
+    await hover(300, 300); await key('1'); await js(`T.nodes()[0].expand(true)`);
     await key('Backspace'); await key('Backspace'); await key('Backspace'); await key('Backspace');
     await key('5'); await key('Enter');
     const v = await js(`T.nodes()[0].getAttribute('value')`);

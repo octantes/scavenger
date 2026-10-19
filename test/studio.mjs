@@ -427,6 +427,11 @@ try {
     await key('Escape'); const off = await js(`T.shadow('.intro').classList.contains('open')`);
     return [on === true && off === false, [on, off]];
   });
+  await run('open key list blurs canvas, click outside closes it', async () => {
+    await key('?', SHIFT); const on = await js(`T.shadow('.blur').classList.contains('on')`);
+    await click(20, 700); const r = await js(`[T.shadow('.blur').classList.contains('on'), T.shadow('.intro').classList.contains('open')]`);
+    return [on === true && r.join() === 'false,false', { on, r }];
+  });
 
   // focus
 

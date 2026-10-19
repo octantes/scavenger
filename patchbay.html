@@ -1495,8 +1495,9 @@ const CHROME_CSS = sheet(`
 .temp { fill: none; stroke: var(--input); stroke-width: 3px; stroke-linecap: round; stroke-dasharray: 6 6; opacity: .8; pointer-events: none; animation: dash .5s linear infinite; }
 .temp.rev { animation-direction: reverse; }
 @keyframes dash { to { stroke-dashoffset: -12; } }
-.box { position: absolute; z-index: 102; pointer-events: none; outline: calc(1px / var(--zoom, 1)) solid var(--output); }
-.corner { position: absolute; width: calc(8px / var(--zoom, 1)); height: calc(8px / var(--zoom, 1)); background: var(--text-dim); pointer-events: auto;
+.box { position: absolute; z-index: 102; pointer-events: none;
+  box-shadow: 0 0 0 calc(2px / var(--zoom, 1)) var(--background-sunk), 0 0 0 calc(4px / var(--zoom, 1)) var(--input); } /* node ring, around selection */
+.corner { position: absolute; width: calc(8px / var(--zoom, 1)); height: calc(8px / var(--zoom, 1)); background: var(--input); pointer-events: auto;
   transform: translate(-50%, -50%) rotate(45deg); }
 .corner[data-c="nw"] { left: 0; top: 0; cursor: nwse-resize; } .corner[data-c="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
 .corner[data-c="ne"] { left: 100%; top: 0; cursor: nesw-resize; } .corner[data-c="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
@@ -1512,6 +1513,8 @@ const CHROME_CSS = sheet(`
 .intro { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 401; background: var(--background-sunk); border-radius: var(--corner-high);
   padding: 18px 24px; color: var(--text-dim); pointer-events: none; opacity: 0; transition: opacity var(--duration-slow) var(--ease-out); }
 .intro.on { opacity: 1; } .intro.open { pointer-events: auto; }
+.blur { position: absolute; inset: 0; z-index: 400; opacity: 0; pointer-events: none; backdrop-filter: blur(6px); transition: opacity var(--duration-base) var(--ease-out); }
+.blur.on { opacity: 1; pointer-events: auto; }
 .intro h1 { margin: 0 0 10px; font-weight: normal; font-size: var(--fs-d); letter-spacing: 1px; text-align: center; color: var(--input); }
 .intro h1 .wm { color: var(--output); }
 .intro h4 { margin: 0 0 32px; font-weight: normal; font-size: var(--fs-c); letter-spacing: .08em; text-align: center; }
@@ -1604,7 +1607,9 @@ const studio = pb => {
   intro.innerHTML = INTRO([...kit.NODE_TYPES.values()].filter(d => d.key).sort((a, b) => ((+a.key || 10) - (+b.key || 10))).map(d => `<dt>${d.key}</dt><dd>${d.name}</dd>`).join(''));
   const bg = document.createElement('div'); bg.className = 'bg';
   bg.innerHTML = '<input spellcheck="false" autocomplete="off"><button type="button" aria-label="background"></button>';
-  root.append(lasso, tip, intro, bg);
+  const blur = document.createElement('div'); blur.className = 'blur'; // behind open key list, click closes it
+  blur.addEventListener('pointerdown', e => { e.stopPropagation(); st.introOpen = false; chrome(); });
+  root.append(lasso, tip, blur, intro, bg);
 
   const st = { last: null, chain: false, lock: null, hover: null, introOpen: false, pointer: { x: 0, y: 0 }, menu: null };
   const rectOf = () => pb.rect?.() || pb.getBoundingClientRect();
@@ -1860,6 +1865,7 @@ const studio = pb => {
     const empty = !pb.querySelector('scv-item, scv-logic');
     intro.classList.toggle('on', pb.editing && (st.introOpen || empty));
     intro.classList.toggle('open', st.introOpen);
+    blur.classList.toggle('on', pb.editing && st.introOpen);
   };
 
   const mo = new MutationObserver(rs => {

@@ -1087,6 +1087,44 @@ try {
   ok(clean && clean.scvNodes === 0, `destroy leaves no scv-* dom nodes (found ${clean && clean.scvNodes})`);
   ok(clean && !clean.sysStyle, 'destroy removes injected sys stylesheet');
   ok(clean && !clean.bodyCursor, `destroy resets body cursor left by sniper (got ${JSON.stringify(clean && clean.bodyCursor)})`);
+
+  // harvest as call: quiet draws nothing and returns same html; headless boots no ui, run and harvest still answer
+  await js(`document.querySelectorAll('[id^="scv-"]').forEach(n => n.remove());
+    document.body.insertAdjacentHTML('beforeend', '<div id="gq" style="width:40px;height:20px;background:#123">quiet</div>'); true`);
+  await send('Runtime.evaluate', { expression: kernelSrc });
+  const ui = `[...document.querySelectorAll('[id^="scv-"]:not(style)')].map(n => n.id).sort().join()`;
+  const quiet = (await send('Runtime.evaluate', { awaitPromise: true, returnByValue: true, expression: `(async () => {
+    const before = ${ui};
+    const q = await window.$kernel.harvest('#gq', { quiet: true, uid: 'gq1' });
+    const afterQuiet = ${ui};
+    const n = await window.$kernel.harvest('#gq', { uid: 'gq1' });
+    return { same: q === n, styled: q.includes('<style>'), before, afterQuiet, afterNormal: ${ui} };
+  })()` }))?.result?.result?.value;
+  ok(quiet && quiet.styled && quiet.same, `quiet harvest returns same html as normal path (${JSON.stringify(quiet && { same: quiet.same, styled: quiet.styled })})`);
+  ok(quiet && quiet.afterQuiet === quiet.before, `quiet harvest draws nothing (before ${quiet && quiet.before}, after ${quiet && quiet.afterQuiet})`);
+  ok(quiet && quiet.afterNormal !== quiet.before, `normal harvest still shows its notify (after ${quiet && quiet.afterNormal})`);
+
+  await js(`window.$kernel.destroy(); document.querySelectorAll('[id^="scv-"]').forEach(n => n.remove()); window.scvLaunch = { headless: true }; true`);
+  await send('Runtime.evaluate', { expression: kernelSrc });
+  const headless = (await send('Runtime.evaluate', { awaitPromise: true, returnByValue: true, expression: `(async () => {
+    const boot = ${ui};
+    for (const k of [0, 1]) document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
+    const afterShift = ${ui};
+    const fonts = window.$kernel.run('log-fonts');
+    const unknown = window.$kernel.run('no-such-tool');
+    window.$kernel.run('xray');
+    const toggled = window.$kernel.processes['xray']?.active === true;
+    window.$kernel.run('xray');
+    const html = await window.$kernel.harvest('#gq', { uid: 'gq1' });
+    return { boot, afterShift, fonts, unknown, toggled, off: !window.$kernel.processes['xray'].active, styled: html.includes('<style>'), afterHarvest: ${ui} };
+  })()` }))?.result?.result?.value;
+  await js(`delete window.scvLaunch; window.$kernel.destroy(); document.getElementById('gq').remove(); true`);
+  ok(headless && headless.boot === '', `headless boot mounts no ui (found ${headless && headless.boot})`);
+  ok(headless && headless.afterShift === '', `headless ignores shift double-tap (found ${headless && headless.afterShift})`);
+  ok(headless && typeof headless.fonts === 'string' && headless.fonts.length > 0, `headless run returns oneshot result (${JSON.stringify(headless && headless.fonts)})`);
+  ok(headless && headless.unknown === 'unknown command: no-such-tool', `headless run names unknown command (${JSON.stringify(headless && headless.unknown)})`);
+  ok(headless && headless.toggled && headless.off, 'headless run toggles tool on and off');
+  ok(headless && headless.styled && headless.afterHarvest === '', `headless harvest answers and draws nothing (found ${headless && headless.afterHarvest})`);
 } catch (e) {
   fails++; console.log('  ✗ kernel tier threw:', e.message);
 }

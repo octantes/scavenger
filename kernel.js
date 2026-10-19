@@ -361,6 +361,7 @@
       if (parent === document.body) utils.uiNodes.add(el);
       return el;
     },
+    quiet: 0, // quiet calls running - notify draws nothing meanwhile
     notify: { // status grows out of minimized dot - stays until dot is dismissed
       _ensureDot: () => {
         if (document.getElementById('scv-min-dot')) return;
@@ -380,6 +381,7 @@
         pill.style.width = pill.scrollWidth + 'px';
       },
       start: (label, initialStatus) => { // opens live row for multi-phase op - resolves once painted, so a hang can't hide it
+        if (utils.quiet) return Promise.resolve();
         const pill = utils.notify._ensurePill();
         pill.style.transitionDuration = '0.1s'; // reveal faster than mid-harvest updates
         utils.setHTML(pill, `<span class="scv-notify-status">${utils.esc(initialStatus || '')}</span><span class="scv-notify-label"> - ${utils.esc(label)}</span>`);
@@ -388,12 +390,13 @@
       },
       setStatus: (text) => { // updates changing half of already-started row
         const pill = document.getElementById(IDS.notify);
-        if (!pill) return;
+        if (!pill || utils.quiet) return;
         const s = pill.querySelector('.scv-notify-status');
         if (s) s.textContent = text;
         utils.notify._resize(pill);
       },
       finish: (message, ok) => { // collapses row to outcome message - only summon() clears
+        if (utils.quiet) return;
         const pill = utils.notify._ensurePill();
         utils.setHTML(pill, `<span class="scv-notify-label">${utils.esc(message)}</span>`);
         pill.classList.add(ok ? 'scv-ok' : 'scv-bad');
@@ -1045,7 +1048,7 @@
       const b64 = new Map(urls.map((u, i) => [u, b64Urls[i]]));
       // inlined url ships as data; would not inline = stays remote - beacon that phones home breaks offline, drop it
       const uses = new Map(); for (const m of cssText.matchAll(urlRe)) uses.set(m[2], (uses.get(m[2]) || 0) + 1);
-      const vars = new Map(); // repeated asset > one custom property on :host - font descriptors take no var()
+      const vars = new Map(); // repeated asset > one :host custom property - font descriptors take no var()
       const inline = (t, share) => t.replace(urlRe, (m, q, u) => {
         const v = u.startsWith('data:') ? u : b64.get(u);
         if (!v?.startsWith('data:')) return u.startsWith('#') ? m : 'none'; // local reference stays
@@ -1141,12 +1144,14 @@
     }
   };
 
-  kernel.harvest = async (selOrEl, opts) => { // programmatic entry - headless quest scrape drives harvest, no palette
+  kernel.harvest = async (selOrEl, opts = {}) => { // programmatic entry - quiet draws nothing, same html
+    if (opts.quiet) utils.quiet++;
     try {
       const html = await utils.harvest(typeof selOrEl === 'string' ? document.querySelector(selOrEl) : selOrEl, opts);
       utils.notify.finish('component harvested!', true);
       return html;
     } catch (e) { utils.notify.finish('harvest failed.', false); throw e; }
+    finally { if (opts.quiet) utils.quiet--; }
   };
 
   // HOVER ENGINE - caches native timing fns before freeze tool overrides them, keeping hover alive on frozen pages
@@ -2335,6 +2340,34 @@
     });
   })();
 
+  // TOOL DISPATCH - shared by palette and headless calls
+
+  const dispatch = (p, arg) => { // starts, stops or cycles tool by lifecycle type - oneshot result returned
+    if (p.type === 'oneshot') {
+      let res;
+      try { res = kernel.start(p.id); } catch (err) { res = err.toString(); }
+      kernel.stop(p.id);
+      return res;
+    }
+    if (p.type === 'toggle') return void kernel.toggle(p.id);
+    const opts = p.type === 'cycle' ? (p.options || [p.defaultVal]) : null;
+    let val = (arg !== undefined && arg !== '') ? arg : null;
+    if (opts && val !== null && !opts.includes(val)) val = null;
+    if (val !== null) {
+      if (p.active) kernel.stop(p.id);
+      p._cur = val; kernel.start(p.id, val);
+    } else if (p.active) {
+      kernel.stop(p.id);
+    } else {
+      val = p._cur != null ? p._cur : p.defaultVal;
+      p._cur = val; kernel.start(p.id, val);
+    }
+  };
+  kernel.run = (cmdString) => { // palette-free dispatch - palette swaps in its own
+    const parts = String(cmdString || '').trim().split(/\s+/), id = parts.shift(), p = registry[id];
+    return p ? dispatch(p, parts.join(' ')) : 'unknown command: ' + id;
+  };
+
   // LAUNCH FLAGS - read once at boot from host page (set window.scvLaunch before script)
 
   const launch = (typeof window.scvLaunch === 'object' && window.scvLaunch) || {};
@@ -2516,34 +2549,12 @@
       viewEl.querySelector('#m-h').onclick = () => utils.setHTML(document.getElementById('m-o'), `<span class="scv-v-sub">help:</span><pre class="scv-pre">\n:ps                 - list processes\n:start [id]         - start process\n:stop [id]          - stop process\n:purge [selector]   - strip scripts/events\n:harvest [sel]      - extract web component\n:push [sel]         - dl web component\n\nany other input evaluates as js</pre>`);
     }
 
-    function run(cmd, arg) { // dispatches tool execution based on lifecycle type
+    function run(cmd, arg) { // dispatches tool, then palette shows what it did
       if (cmd.id === '__close') return kernel.destroy();
       if (cmd.id === '__console') return openConsole();
       if (cmd.id === '__hide') return minimize();
-      const p = cmd.tool;
-      if (p.type === 'oneshot') {
-        let res;
-        try { res = kernel.start(p.id); } catch (err) { res = err.toString(); }
-        kernel.stop(p.id);
-        if (res) showView(p.label, res);
-        return;
-      }
-      if (p.type === 'toggle') {
-        kernel.toggle(p.id);
-      } else {
-        const opts = p.type === 'cycle' ? (p.options || [p.defaultVal]) : null;
-        let val = (arg !== undefined && arg !== '') ? arg : null;
-        if (opts && val !== null && !opts.includes(val)) val = null;
-        if (val !== null) {
-          if (p.active) kernel.stop(p.id);
-          p._cur = val; kernel.start(p.id, val);
-        } else if (p.active) {
-          kernel.stop(p.id);
-        } else {
-          val = p._cur != null ? p._cur : p.defaultVal;
-          p._cur = val; kernel.start(p.id, val);
-        }
-      }
+      const p = cmd.tool, res = dispatch(p, arg);
+      if (p.type === 'oneshot') { if (res) showView(p.label, res); return; }
       if (PAGE_TOOLS.includes(p.id) && p.active) { minimize(); return; }
       render();
     }
@@ -2683,11 +2694,10 @@
     } else _shiftLast = n;
   };
 
-  document.addEventListener('keydown', kernel._shiftHandler, true);
+  // BOOT - headless draws nothing, harvest and run still answer
 
-  // BOOT
-
-  renderPalette(launchSeed);
+  if (launch.headless) utils.quiet++;
+  else { document.addEventListener('keydown', kernel._shiftHandler, true); renderPalette(launchSeed); }
   if (launch.run && launchSeed) kernel.run(launchSeed);
 
 })();

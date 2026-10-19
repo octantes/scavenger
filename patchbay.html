@@ -7,7 +7,7 @@
 <title>patchbay</title>
 <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="%23986c98"/></svg>'>
 <style id="scv-runtime-css">
-:root[data-scv-runtime], scv-patchbay { /* theme enforced by token tests - on element, so mounted patchbay never themes host page */
+:root[data-scv-runtime], scv-patchbay { /* theme enforced by token tests - on element, never themes host page */
 
   --font-mono: 'SF Mono', 'Consolas', 'Menlo', 'DejaVu Sans Mono', monospace;
 
@@ -106,7 +106,7 @@ const onFrame = (key, fn) => { // last write per key, once per frame
 
 const _shared = new Map(); // key > { value, users, release }
 const _lent = new Map(); // key > { kit | value, users } - same-origin host lends what it holds
-const _hostOffer = key => { // own page's window.scvShared, else same-origin parent - its runtime, then its scvShared
+const _hostOffer = key => { // own page's scvShared, then parent's runtime, then parent's scvShared
   if (window.scvShared && Object.hasOwn(window.scvShared, key)) return { value: window.scvShared[key], users: 0 };
   try {
     const p = window.parent; if (p === window) return null;
@@ -1182,7 +1182,7 @@ class ScvLogic extends HTMLElement {
     this._scope.release();
   }
 
-  _call(where, fn, latest) { // error sticks until next success - promise awaited, newer call supersedes pending one
+  _call(where, fn, latest) { // error sticks until next success - promise awaited, newer call wins
     this._errored = false;
     let call = null, r;
     if (latest) { if (this._pend) { this._pend.gone = true; this._pend.ac?.abort(); this._pend = null; } call = {}; }
@@ -1190,7 +1190,7 @@ class ScvLogic extends HTMLElement {
     if (typeof r?.then === 'function') { if (call) this._pend = call; return void this._wait(where, r, call); }
     if (!this._errored) this._internals.states.delete('error');
   }
-  _view(call) { // ctx as one call sees it - emits of superseded call dropped, its callSignal aborts
+  _view(call) { // ctx per call - superseded call's emits dropped, its callSignal aborts
     const ctx = this._ctx, own = { emit: (v, p) => { if (!call.gone) ctx.emit(v, p); }, output: (v, p) => { if (!call.gone) ctx.output(v, p); } };
     return new Proxy(ctx, {
       get: (t, k) => k in own ? own[k] : k === 'callSignal' ? (call.sig ??= AbortSignal.any([t.signal, (call.ac ??= new AbortController()).signal])) : Reflect.get(t, k),
@@ -1712,7 +1712,7 @@ const studio = pb => {
   // items and nodes - selection and looks are custom states
 
   const own = n => { const p = kit.patchbayOf(n); return !p || p === pb; }; // nested patchbay keeps its units and wires
-  const ownPath = e => { // nested patchbay owns its events while editing, else it is plain item content
+  const ownPath = e => { // nested patchbay owns its events while editing, else plain item content
     const p = e.composedPath(), i = p.findIndex(n => n.localName === 'scv-patchbay');
     return i < 0 || p[i] === pb ? p : p[i].editing ? null : p.slice(i);
   };

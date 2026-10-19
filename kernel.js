@@ -2342,7 +2342,7 @@
 
   // TOOL DISPATCH - shared by palette and headless calls
 
-  const dispatch = (p, arg) => { // starts, stops or cycles tool by lifecycle type - oneshot result returned
+  const dispatch = (p, arg) => { // starts, stops or cycles tool by type - returns oneshot result
     if (p.type === 'oneshot') {
       let res;
       try { res = kernel.start(p.id); } catch (err) { res = err.toString(); }

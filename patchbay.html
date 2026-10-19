@@ -661,18 +661,27 @@ class ScvItem extends HTMLElement {
 // state only in host attributes - internals in shadow, rebuilt on connect
 
 const NODE_CSS = `
-:host { position: absolute; display: flex; align-items: center; height: 32px; min-width: 32px; border-radius: 16px; z-index: 100; contain: layout style;
-  --node: var(--input); --glyph: var(--background-sunk); --cs: var(--text-faint);
-  box-shadow: 0 0 0 2px var(--background-sunk), 0 0 0 5px var(--cs); }
-:host(:state(wired)) { --cs: var(--cable); }
+:host { position: absolute; display: flex; align-items: center; height: 32px; min-width: 32px; border-radius: 16px; z-index: 100; contain: layout style; outline: none;
+  --node: var(--input); --glyph: var(--background-sunk); --cs: var(--cable);
+  box-shadow: 0 0 0 2px var(--background-sunk), 0 0 0 4px var(--cs); animation: reveal .3s ease-out backwards; }
+@keyframes reveal { from { opacity: 0; box-shadow: 0 0 0 2px var(--background-sunk), 0 0 0 4px var(--input); } }
+:host::before { content: ''; position: absolute; inset: -4px; border-radius: 20px; pointer-events: none; opacity: 0; transition: opacity var(--duration-base) var(--ease-swift);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--input) 40%, transparent); } /* glow fades, ring color never mixes */
 :host(:state(dimmed)) { --cs: var(--dim); }
-:host(:hover), :host(:state(selected)) { --cs: var(--input); }
+:host(:hover), :host(:focus-within), :host(:state(selected)), :host(:state(chained)) { --cs: var(--input); }
+:host(:hover)::before, :host(:focus-within)::before { opacity: 1; }
+:host(:state(dragging)) { box-shadow: 0 0 0 2px var(--background-sunk), 0 0 0 4px var(--cs), 0 0 24px rgba(0,0,0,.55); }
 :host(:state(error)), :host(:state(danger)) { --cs: var(--danger); }
-.dot { width: 32px; height: 32px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+.dot { position: relative; width: 32px; height: 32px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   background: var(--node); color: var(--glyph); font-weight: bold; user-select: none; }
-:host(:state(dimmed)) .dot, :host(:state(dimmed)) .input { opacity: .5; }
+.dot svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+:host(:not(:state(expanded))) .dot::after { content: ''; position: absolute; inset: -7px; border-radius: 50%; } /* bigger hit target */
+.caret { position: absolute; right: -14px; width: 8px; height: 8px; fill: none; stroke: var(--text-base); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; opacity: .5; pointer-events: none; }
+:host(:state(expanded)) .caret, .caret[hidden] { display: none; }
+:host(:state(dimmed)) .dot, :host(:state(dimmed)) .input, :host(:state(dimmed)) .caret { opacity: .5; }
 .input { display: none; width: var(--w, 70px); height: 100%; border: none; outline: none; background: transparent; color: var(--node);
   font: bold var(--fs-a) var(--font-mono); padding: 0 8px; text-align: center; }
+.input::selection { background: color-mix(in srgb, var(--node) 35%, transparent); }
 .input::-webkit-inner-spin-button, .input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .input[type="number"] { appearance: textfield; }
 :host(:state(expanded)) { background: var(--background-sunk); }
@@ -713,9 +722,33 @@ const VERBS = ['toggle', 'hide', 'show', 'delete', 'clone', 'increment', 'decrem
 const NODE_TYPES = new Map();
 const builtIn = (name, key, def) => NODE_TYPES.set(name, { name, key, builtIn: true, ...def });
 
+const _svg = d => `<svg viewBox="0 0 16 16" aria-hidden="true">${d}</svg>`; // centered on 8 8, stroked by node css
+const ICON = {
+  clock: _svg('<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3h2.5"/>'),
+  offbeat: _svg('<circle cx="8" cy="8" r="5.5"/><path d="M8 11V8H5.5"/>'),
+  count: _svg('<path d="M6.5 3v10M9.5 3v10M3 6.5h10M3 9.5h10"/>'),
+  let: _svg('<path d="M5.5 3.5v9h5"/>'),
+  const: _svg('<path d="M11 4.5a4.5 4.5 0 1 0 0 7"/>'),
+  closed: _svg('<path d="m4.5 4.5 7 7m0-7-7 7"/>'),
+  open: _svg('<path d="m3.5 8.5 3 3 6-7"/>'),
+  eq: _svg('<path d="M4 6h8M4 10h8"/>'),
+  ne: _svg('<path d="M4 6h8M4 10h8M10.5 3l-5 10"/>'),
+  map: _svg('<path d="M10.5 3.5c-2-.7-3.3.2-3.6 2.4L6 13M4.5 7.5h5"/>'),
+  filter: _svg('<path d="M3 4h10L9 8.5V13l-2-1V8.5z"/>'),
+  sample: _svg('<circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="1"/>'),
+  follow: _svg('<circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="2.5"/>'),
+  delay: _svg('<path d="M4.5 3h7M4.5 13h7M5.5 3.5 8 8l-2.5 4.5M10.5 3.5 8 8l2.5 4.5"/>'),
+  debounce: _svg('<path d="M3 4.5v7M13 4.5v7M3.5 5.5 8 8l-4.5 2.5M12.5 5.5 8 8l4.5 2.5"/>'), // delay turned on its side
+  action: _svg('<path d="M9 2.5 4.5 9H8l-1 4.5L11.5 7H8z"/>'),
+  find: _svg('<circle cx="7" cy="7" r="4"/><path d="m10 10 3.5 3.5"/>'),
+  out: _svg('<path d="M5 11 11 5M6.5 5H11v4.5"/>'),
+  comp: _svg('<rect x="3" y="3" width="10" height="10" rx="1.5"/><path d="M3 8h10M8 3v10"/>'),
+  unknown: _svg('<path d="M8 3l5 5-5 5-5-5z"/>'),
+};
+
 builtIn('clock', '1', {
-  icon: '◷︎', defaultVal: '1000', inputType: 'number',
-  modes: [{ id: 'onbeat', icon: '◷︎' }, { id: 'offbeat', icon: '◶︎' }],
+  icon: ICON.clock, defaultVal: '1000', inputType: 'number',
+  modes: [{ id: 'onbeat', icon: ICON.clock }, { id: 'offbeat', icon: ICON.offbeat }],
   init(ctx) { this.onValue(ctx); clock.register(ctx.el); },
   teardown(ctx) { clock.unregister(ctx.el); },
   onValue(ctx) { const v = numOr(ctx.value, 0); clock.retime(ctx.el, Math.abs(v) >= 1 ? Math.round(Math.abs(v)) : 1000, ctx.mode === 'offbeat'); }, // under 1ms would be emit storm
@@ -725,7 +758,7 @@ builtIn('clock', '1', {
 });
 
 builtIn('accumulator', '2', {
-  icon: '#', defaultVal: '0', inputType: 'number',
+  icon: ICON.count, defaultVal: '0', inputType: 'number',
   add(ctx, d) { const n = numOr(ctx.value, 0) + d; ctx.value = String(n); ctx.output(n); },
   onPulse(ctx) { this.add(ctx, 1); },
   onReceive(v, ctx) { this.add(ctx, numOr(v, 0)); },
@@ -734,8 +767,8 @@ builtIn('accumulator', '2', {
 });
 
 builtIn('variable', '3', {
-  icon: 'L', placeholder: 'name',
-  modes: [{ id: 'let', icon: 'L' }, { id: 'const', icon: 'C' }],
+  icon: ICON.let, placeholder: 'name',
+  modes: [{ id: 'let', icon: ICON.let }, { id: 'const', icon: ICON.const }],
   stored: ctx => ctx.mem.in !== undefined ? ctx.mem.in : ctx.last,
   release(ctx) {
     const s = varsOf(ctx.el), w = ctx.mem.var;
@@ -766,9 +799,9 @@ builtIn('variable', '3', {
 });
 
 builtIn('gate', '4', {
-  icon: '✗︎', inputType: false,
+  icon: ICON.closed, inputType: false,
   modes: [{ id: 'latch' }, { id: 'once' }],
-  glyph: ctx => ctx.el.hasAttribute('open') ? '✓︎' : '✗︎',
+  glyph: ctx => ctx.el.hasAttribute('open') ? ICON.open : ICON.closed,
   pass(ctx, v) { // pulses too - once closes after one
     if (!ctx.el.hasAttribute('open')) return;
     if (ctx.mode === 'once') ctx.el.removeAttribute('open');
@@ -781,8 +814,8 @@ builtIn('gate', '4', {
 });
 
 builtIn('comparator', '5', {
-  icon: '=', inputType: false,
-  modes: [{ id: 'eq', icon: '=' }, { id: 'ne', icon: '≠︎' }],
+  icon: ICON.eq, inputType: false,
+  modes: [{ id: 'eq', icon: ICON.eq }, { id: 'ne', icon: ICON.ne }],
   check(ctx) { // latest of each wire - one wire: latest against previous
     const seen = ctx.mem.cmp ??= new Map(), wires = splitWords(ctx.el.getAttribute(ATTR_RECEIVES));
     let vals;
@@ -800,8 +833,8 @@ builtIn('comparator', '5', {
 });
 
 builtIn('mutator', '6', {
-  icon: 'ƒ︎', defaultVal: 'v',
-  modes: [{ id: 'map', icon: 'ƒ︎' }, { id: 'filter', icon: '▽︎' }],
+  icon: ICON.map, defaultVal: 'v',
+  modes: [{ id: 'map', icon: ICON.map }, { id: 'filter', icon: ICON.filter }],
   run(ctx, v) { // v and variables as params, compiled per text and names
     const s = varsOf(ctx.el), names = [...s.values.keys()], key = names.join(',') + '\0' + ctx.value;
     const m = ctx.mem.mut ??= {};
@@ -815,8 +848,8 @@ builtIn('mutator', '6', {
 });
 
 builtIn('sample', '7', {
-  icon: '⊙︎',
-  modes: [{ id: 'sample', icon: '⊙︎' }, { id: 'follow', icon: '⊚︎' }],
+  icon: ICON.sample,
+  modes: [{ id: 'sample', icon: ICON.sample }, { id: 'follow', icon: ICON.follow }],
   held: ctx => ctx.mem.in !== undefined ? ctx.mem.in : ctx.last,
   onPulse(ctx) { const v = this.held(ctx); if (v !== undefined) ctx.output(v); },
   onReceive(v, ctx) { ctx.mem.in = v; ctx.last = v; ctx.input.value = floatText(v); if (ctx.mode === 'follow') ctx.output(v); },
@@ -824,8 +857,8 @@ builtIn('sample', '7', {
 });
 
 builtIn('delay', '8', {
-  icon: '⧖︎', defaultVal: '500', inputType: 'number',
-  modes: [{ id: 'delay', icon: '⧖︎' }, { id: 'debounce', icon: '⧗︎' }],
+  icon: ICON.delay, defaultVal: '500', inputType: 'number',
+  modes: [{ id: 'delay', icon: ICON.delay }, { id: 'debounce', icon: ICON.debounce }],
   later(ctx, make) { // delay: timer per arrival - debounce: one, restarted
     const timers = ctx.mem.timers ??= new Set();
     if (ctx.mode === 'debounce') { timers.forEach(clearTimeout); timers.clear(); }
@@ -838,7 +871,7 @@ builtIn('delay', '8', {
 });
 
 builtIn('action', '9', {
-  icon: '⚡︎', defaultVal: 'toggle',
+  icon: ICON.action, defaultVal: 'toggle',
   fire(ctx, payload) { const verb = ctx.value.trim() || 'toggle'; const r = routerOf(ctx.el); if (r) splitWords(ctx.el.getAttribute(ATTR_EMITS)).forEach(c => r.applyAction(verb, c, payload === undefined ? verb : payload)); },
   onPulse(ctx) { this.fire(ctx); },
   onReceive(v, ctx) { this.fire(ctx, v); },
@@ -930,11 +963,11 @@ const _questNeeded = (ch, except) => [...document.querySelectorAll('scv-logic[da
 const _compLine = raw => { const i = raw.indexOf(','); return i < 0 ? raw : raw.slice(0, i).trim() + ', harvest:' + raw.slice(i + 1).trim().replace(/^harvest:\s*/i, ''); }; // url, selector - mode implies harvest
 
 builtIn('quest', '0', {
-  icon: '⌕︎',
+  icon: ICON.find,
   modes: [
-    { id: 'input',     icon: '⌕︎', label: 'quest input',     placeholder: 'url, [wait:/click: steps |] sel:/key:/ls:   (optional name, first)' },
-    { id: 'output',    icon: '↗︎', label: 'quest output',    placeholder: 'output channel name' },
-    { id: 'component', icon: '▦︎', label: 'quest component', placeholder: 'url, selector' },
+    { id: 'input',     icon: ICON.find, label: 'quest input',     placeholder: 'url, [wait:/click: steps |] sel:/key:/ls:   (optional name, first)' },
+    { id: 'output',    icon: ICON.out, label: 'quest output',    placeholder: 'output channel name' },
+    { id: 'component', icon: ICON.comp, label: 'quest component', placeholder: 'url, selector' },
   ],
   init(ctx) { if (ctx.last !== undefined) ctx.showFloat(ctx.last); whenReady(() => this.configure(ctx)); },
   teardown(ctx) { this.unbind(ctx, true); this.unmount(ctx); },
@@ -1048,7 +1081,7 @@ const _bridge = () => {
   });
 };
 
-const UNKNOWN = { name: '', icon: '◆' }; // def may arrive later
+const UNKNOWN = { name: '', icon: ICON.unknown }; // def may arrive later
 const SAFE_INPUTS = new Set(['text', 'number', 'email', 'url', 'tel', 'password']); // def-supplied type must not inject attributes
 
 class ScvLogic extends HTMLElement {
@@ -1079,14 +1112,16 @@ class ScvLogic extends HTMLElement {
     const dot = document.createElement('span'); dot.className = 'dot';
     const input = document.createElement('input'); input.className = 'input'; input.spellcheck = false; input.setAttribute('aria-label', 'node value');
     const float = document.createElement('span'); float.className = 'float';
-    root.append(dot, input, float);
+    const caret = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    caret.setAttribute('class', 'caret'); caret.setAttribute('viewBox', '0 0 8 8'); caret.innerHTML = '<path d="M2.5 1.5 5.5 4l-3 2.5"/>';
+    root.append(dot, input, float, caret);
     input.addEventListener('input', () => this._fit());
     input.addEventListener('change', () => this._commit());
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter') { e.preventDefault(); this._commit(); }
       else if (e.key === 'Escape') this._syncInput(true);
     });
-    this._parts = { root, dot, input, float, text: '', shown: '' };
+    this._parts = { root, dot, input, float, caret, text: '', shown: '' };
   }
 
   _start() {
@@ -1098,6 +1133,7 @@ class ScvLogic extends HTMLElement {
     const { input } = this._parts;
     input.type = SAFE_INPUTS.has(def.inputType) ? def.inputType : 'text';
     input.hidden = def.inputType === false;
+    this._parts.caret.toggleAttribute('hidden', input.hidden);
     this._syncInput(true); this._paint();
     this._call('init', () => def.init?.(this._ctx));
   }
@@ -1134,8 +1170,8 @@ class ScvLogic extends HTMLElement {
   _fit() { const i = this._parts.input, w = (this._def.openWidth || inputWidth(i.value || ' ')) + 'px'; if (this._parts.w !== w) i.style.setProperty('--w', this._parts.w = w); } // unchanged writes still restyle
   _paint() {
     const def = this._def, m = this._modeDef(), p = this._parts;
-    const g = def.glyph?.(this._ctx) ?? m?.icon ?? def.icon ?? '◆';
-    if (p.dot.textContent !== g) p.dot.textContent = g;
+    const g = def.glyph?.(this._ctx) ?? m?.icon ?? def.icon ?? ICON.unknown;
+    if (p.glyph !== g) { p.glyph = g; /^<svg[\s>]/.test(g) ? p.dot.innerHTML = g : p.dot.textContent = g; } // def icon is glyph or inline svg
     const color = m?.color || def.color;
     if (color) { p.dot.style.setProperty('--node', color); p.input.style.setProperty('--node', color); }
     else if (def.custom) { p.dot.style.removeProperty('--node'); p.input.style.removeProperty('--node'); }
@@ -1253,7 +1289,8 @@ scv-item > [data-scv-id] { display: block; min-height: 10px; }
 .scv-lc-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .scv-lc-title { font-weight: bold; font-size: var(--fs-b); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .scv-lc-desc { font-size: var(--fs-a); color: var(--text-dim); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.scv-lc-open { font-size: var(--fs-a); color: var(--input); text-decoration: none; margin-top: auto; align-self: flex-start; }
+.scv-lc-open { display: flex; align-items: center; gap: 3px; font-size: var(--fs-a); color: var(--input); text-decoration: none; margin-top: auto; align-self: flex-start; }
+.scv-lc-open svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 scv-logic { display: none; }
 scv-item:state(far) { content-visibility: hidden; contain-intrinsic-size: auto 1px auto 1px; } /* keeps last rendered size */
 `;
@@ -1451,10 +1488,10 @@ const HOVER_CSS = sheet(`
 `); // component shadows, edit mode only - innermost wire end lights up
 const CHROME_CSS = sheet(`
 .cables { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; z-index: 101; }
-.cable { fill: none; stroke: var(--cs, var(--cable)); stroke-width: 3px; stroke-linecap: round; pointer-events: visibleStroke; cursor: pointer; transition: stroke var(--duration-base); }
+.cable { fill: none; stroke: var(--cs, var(--cable)); stroke-width: 3px; stroke-linecap: round; pointer-events: visibleStroke; cursor: pointer; } /* colors switch, never mix */
 .cable:hover { stroke: var(--danger); stroke-width: 4px; }
 .cable.dim { --cs: var(--dim); }
-.temp { fill: none; stroke: var(--input); stroke-width: 3px; stroke-dasharray: 6 6; opacity: .8; pointer-events: none; animation: dash .5s linear infinite; }
+.temp { fill: none; stroke: var(--input); stroke-width: 3px; stroke-linecap: round; stroke-dasharray: 6 6; opacity: .8; pointer-events: none; animation: dash .5s linear infinite; }
 .temp.rev { animation-direction: reverse; }
 @keyframes dash { to { stroke-dashoffset: -12; } }
 .box { position: absolute; z-index: 102; pointer-events: none; outline: calc(1px / var(--zoom, 1)) solid var(--output); }
@@ -1465,12 +1502,12 @@ const CHROME_CSS = sheet(`
 .lasso { position: absolute; border: 1px dashed var(--input); background: var(--selection); pointer-events: none; z-index: 9998; }
 .tip { position: absolute; z-index: 600; pointer-events: none; background: var(--output); color: var(--background-sunk); padding: 2px 6px;
   font-size: 10px; font-weight: bold; border-radius: var(--corner-low); text-transform: uppercase; white-space: nowrap; }
-.menu { position: absolute; z-index: 700; display: flex; flex-direction: column; padding: 4px; min-width: 150px; background: var(--background-raised);
-  border-radius: var(--corner-low); box-shadow: 0 4px 16px rgba(0,0,0,.5); }
-.menu button { display: flex; justify-content: space-between; gap: 16px; padding: 4px 8px; border: none; border-radius: var(--corner-low); background: none;
-  color: var(--text-base); font: var(--fs-a) var(--font-mono); text-align: left; cursor: pointer; }
-.menu button:hover { background: var(--background-sunk); color: var(--input); }
-.menu .key { color: var(--text-faint); }
+.menu { position: absolute; z-index: 700; display: flex; flex-direction: column; min-width: 140px; }
+.menu button { padding: 6px 8px; border: none; background: var(--background-raised); color: var(--text-base); font: var(--fs-a) var(--font-mono); text-align: left; white-space: nowrap; cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-swift); }
+.menu button:hover { color: var(--output); }
+.menu .mode { color: var(--output); } .menu .mode:hover { color: var(--input); }
+.menu .save { color: var(--input); } .menu .save:hover { color: var(--output); }
 .intro { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 401; background: var(--background-sunk); border-radius: var(--corner-high);
   padding: 18px 24px; color: var(--text-dim); pointer-events: none; opacity: 0; transition: opacity var(--duration-slow) var(--ease-out); }
 .intro.on { opacity: 1; } .intro.open { pointer-events: auto; }
@@ -1718,7 +1755,7 @@ const studio = pb => {
 
   const flashed = new Map(); // channel > carried pulse
   const running = new WeakMap(); // el > its flash - restarted, never stacked
-  const flash = (el, frames) => { running.get(el)?.cancel(); running.set(el, el.animate(frames, { duration: 400, easing: 'ease-out' })); };
+  const flash = (el, frames) => { running.get(el)?.cancel(); running.set(el, el.animate(frames, { duration: 400, easing: 'steps(1, end)' })); }; // held then dropped - no in-between colors
   pb.onRoute((ch, v) => {
     if (!pb.editing) return;
     flashed.set(ch, flashed.get(ch) || isPulse(v));
@@ -1730,7 +1767,7 @@ const studio = pb => {
           : [{ stroke: 'var(--input)' }, {}]);
         if (c.src.localName === 'scv-logic') rings.add(c.src);
       }
-      rings.forEach(n => flash(n, [{ boxShadow: '0 0 0 2px var(--background-sunk), 0 0 0 5px var(--input)' }, {}])); // ring speaks for its cable
+      rings.forEach(n => flash(n, [{ boxShadow: '0 0 0 2px var(--background-sunk), 0 0 0 4px var(--input)' }, {}])); // ring speaks for its cable
       flashed.clear();
     });
   });
@@ -1838,7 +1875,7 @@ const studio = pb => {
 
   // space arms wire from last spawned node, ctrl reverses
 
-  const disarm = () => { st.chain = false; st.lock = null; temp.style.display = 'none'; };
+  const disarm = () => { st.chain = false; st.lock = null; temp.style.display = 'none'; pb.querySelectorAll('scv-logic').forEach(n => n.states.delete('chained')); };
   const reversed = e => st.lock ?? mod(e);
   const showTemp = (from, e) => {
     const a = endOf(from); if (!a) return;
@@ -2004,25 +2041,26 @@ const studio = pb => {
     items.forEach(it => {
       const b = document.createElement('button');
       b.textContent = it.label;
-      if (it.key) { const k = document.createElement('span'); k.className = 'key'; k.textContent = it.key; b.append(k); }
+      if (it.cls) b.className = it.cls;
       b.addEventListener('click', () => { st.menu = null; m.remove(); it.fn(); });
       m.append(b);
     });
-    m.style.left = Math.min(x, r.right - 170) - r.left + 'px'; m.style.top = Math.min(y, r.bottom - 26 * items.length - 12) - r.top + 'px';
     root.append(m); st.menu = m;
+    const b = m.getBoundingClientRect(); // measured once on open, kept inside patchbay
+    m.style.left = Math.max(r.left, Math.min(x, r.right - b.width)) - r.left + 'px'; m.style.top = Math.max(r.top, Math.min(y, r.bottom - b.height)) - r.top + 'px';
   };
   pb.menu = () => st.menu && [...st.menu.querySelectorAll('button')].map(b => b.firstChild.textContent);
-  const nodeItems = fn => [...kit.NODE_TYPES.values()].sort((a, b) => (+a.key || 99) - (+b.key || 99)).map(d => ({ label: '[node] - ' + d.name, key: d.key, fn: () => { setMode('edit'); fn(d.name); } }));
+  const nodeItems = fn => [...kit.NODE_TYPES.values()].sort((a, b) => (+a.key || 99) - (+b.key || 99)).map(d => ({ label: '[node] - ' + d.name, fn: () => { setMode('edit'); fn(d.name); } }));
   pb.addEventListener('contextmenu', e => {
     e.preventDefault();
     const node = e.composedPath().find(n => n.localName === 'scv-logic');
     if (node && pb.editing) { const b = [attrsOf(node)]; node.cycleMode(); recordAttrs([node], b, 'mode'); return closeMenu(); }
     const p = toCanvas(e.clientX, e.clientY);
     if (st.chain && st.last) st.lock = mod(e);
-    const items = [{ label: pb.editing ? '[mode] - use' : '[mode] - edit', fn: () => setMode(pb.editing ? 'use' : 'edit') }];
+    const items = [{ label: pb.editing ? '[mode] - use' : '[mode] - edit', cls: 'mode', fn: () => setMode(pb.editing ? 'use' : 'edit') }];
     items.push(...nodeItems(type => { const last = st.chain ? st.last : null, rev = st.lock; const n = spawn(type, p.x - 16, p.y - 16); if (last) rev ? wire(n, last) : wire(last, n); disarm(); }));
     for (const [tag] of kit.comps) items.push({ label: '[comp] - ' + tag.replace(/^scv-/, ''), fn: () => { setMode('edit'); const it = document.createElement('scv-item'); it.style.left = p.x + 'px'; it.style.top = p.y + 'px'; const c = document.createElement(tag); c.dataset.scvId = 'comp_' + uid(9); it.append(c); pb.append(it); record(() => pb.append(it), () => it.remove(), 'spawn'); } });
-    items.push({ label: '[save] - quine', fn: () => pb.export('quine') }, { label: '[save] - view', fn: () => pb.export('view') }, { label: '[save] - publish', fn: () => pb.export('publish') });
+    items.push({ label: '[save] - quine (keeps editing)', cls: 'save', fn: () => pb.export('quine') }, { label: '[save] - view (pans, no editing)', cls: 'save', fn: () => pb.export('view') }, { label: '[save] - publish (removes editing)', cls: 'save', fn: () => pb.export('publish') });
     menu(items, e.clientX, e.clientY, () => { st.lock = null; });
   });
 
@@ -2079,7 +2117,7 @@ const studio = pb => {
     if (k === ' ' && !e.repeat) {
       e.preventDefault();
       if (st.chain && st.last && chainTo(st.hover && (st.hover.localName === 'scv-logic' ? st.hover : st.hover.firstElementChild), e)) return;
-      if (st.last?.isConnected) { st.chain = true; showTemp(st.last, { clientX: st.pointer.x, clientY: st.pointer.y, ctrlKey: e.ctrlKey, metaKey: e.metaKey }); }
+      if (st.last?.isConnected) { st.chain = true; st.last.states?.add('chained'); showTemp(st.last, { clientX: st.pointer.x, clientY: st.pointer.y, ctrlKey: e.ctrlKey, metaKey: e.metaKey }); } // ring takes chain line color
       return;
     }
     const type = /^[0-9]$/.test(k) && !e.shiftKey && !e.altKey && [...kit.NODE_TYPES.values()].find(d => d.key === k);
@@ -2182,7 +2220,7 @@ const studio = pb => {
     path = path.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean).join(' / ');
     const card = document.createElement('div');
     card.className = 'scv-link-card'; card.dataset.scvId = 'x';
-    card.innerHTML = `<img class="scv-lc-thumb" src="${esc(u.origin + '/favicon.ico')}" alt="" referrerpolicy="no-referrer"><div class="scv-lc-body"><div class="scv-lc-title">${esc(u.hostname.replace(/^www\./, ''))}</div><div class="scv-lc-desc">${esc(path || '(root)')}</div><a class="scv-lc-open" href="${esc(url)}" target="_blank" rel="noopener">open ↗</a></div>`;
+    card.innerHTML = `<img class="scv-lc-thumb" src="${esc(u.origin + '/favicon.ico')}" alt="" referrerpolicy="no-referrer"><div class="scv-lc-body"><div class="scv-lc-title">${esc(u.hostname.replace(/^www\./, ''))}</div><div class="scv-lc-desc">${esc(path || '(root)')}</div><a class="scv-lc-open" href="${esc(url)}" target="_blank" rel="noopener">open <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 11 11 5M6.5 5H11v4.5"/></svg></a></div>`;
     const out = adopt([itemFor(card, 0, 0)], at);
     enrich();
     return out;

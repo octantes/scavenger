@@ -92,11 +92,11 @@ try {
     const r = await js(`T.nodes().map(n => n.dataset.type + '@' + n.style.left + ',' + n.style.top)`);
     return [r.join() === 'quest@284px,284px,clock@384px,284px', r];
   });
-  await run('spawned node stays closed, space arms chain from it', async () => {
+  await run('spawned node stays closed, space arms chain from it in chain color', async () => {
     await hover(500, 300); await key('8'); await key(' ');
-    const r = await js(`[T.nodes().at(-1).states.has('expanded'), getComputedStyle(T.shadow('.temp')).display !== 'none']`);
-    await key('Escape'); await key('z', CTRL);
-    return [r.join() === 'false,true', r];
+    const r = await js(`[T.nodes().at(-1).states.has('expanded'), T.nodes().at(-1).states.has('chained'), getComputedStyle(T.shadow('.temp')).display !== 'none']`);
+    await key('Escape'); const off = await js(`T.nodes().at(-1).states.has('chained')`); await key('z', CTRL);
+    return [r.join() === 'false,true,true' && off === false, { r, off }];
   });
   await run('spawn is one undo step', async () => {
     await key('z', CTRL);
@@ -399,11 +399,11 @@ try {
     const r = await js(`T.nodes()[0].style.left + ',' + T.nodes()[0].style.top`);
     return [r === '200px,200px', r];
   });
-  await run('right click on canvas lists modes, nodes with keys and three saves', async () => {
+  await run('right click on canvas lists mode, nodes and three saves', async () => {
     await click(900, 600, 0, 'right');
     const r = await js(`[...T.pb.shadowRoot.querySelectorAll('.menu button')].map(b => b.textContent)`);
     await key('Escape'); const closed = await js(`!T.pb.shadowRoot.querySelector('.menu')`);
-    return [r[0] === '[mode] - use' && r.includes('[node] - clock1') && r.includes('[node] - quest0') && r.slice(-3).join() === '[save] - quine,[save] - view,[save] - publish' && closed, { r, closed }];
+    return [r[0] === '[mode] - use' && r.includes('[node] - clock') && r.includes('[node] - quest') && r.slice(-3).join() === '[save] - quine (keeps editing),[save] - view (pans, no editing),[save] - publish (removes editing)' && closed, { r, closed }];
   });
   await run('space chains last spawned into clicked node', async () => {
     await hover(700, 500); await key('2');

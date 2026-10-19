@@ -1008,12 +1008,15 @@ try {
   await nav(base + '/host');
   const host = await js(`(async () => {
     const a = document.getElementById('a'), b = document.getElementById('b'), r = a.getBoundingClientRect(), kit = customElements.get('scv-patchbay').kit;
+    window.scvShared = { lent: { id: 'page' } };
+    const got = kit.shared('lent', () => ({ id: 'own' })); kit.unshare('lent');
     return { body: getComputedStyle(document.body).backgroundColor, routeSend: typeof window.routeSend, a: getComputedStyle(a).getPropertyValue('--background-sunk').trim(),
-      b: getComputedStyle(b).getPropertyValue('--background-sunk').trim(), size: r.width + 'x' + r.height, position: getComputedStyle(a).position };
+      b: getComputedStyle(b).getPropertyValue('--background-sunk').trim(), size: r.width + 'x' + r.height, position: getComputedStyle(a).position, lent: got.id, kept: window.scvShared.lent === got };
   })()`);
   ok(host?.body === 'rgb(1, 2, 3)' && host.routeSend === 'undefined', `mounted patchbay leaves host page background and window alone (${JSON.stringify(host)})`);
   ok(host?.a === '#1A1C1C' && host.b === 'rgb(9,9,9)', `host themes one patchbay, other keeps tokens (${host?.a}, ${host?.b})`);
   ok(host?.size === '200x100' && host.position !== 'fixed', `mounted canvas fills its own box, not window (${host?.size}, ${host?.position})`);
+  ok(host?.lent === 'page' && host.kept, `page lends to its own patchbay through window.scvShared (${host?.lent})`);
   await nav(base + '/pb');
   const unbridged = await js(`(async () => {
     const f = document.createElement('iframe'); f.src = location.origin + '/host'; document.body.append(f); await new Promise(r => { f.onload = r; });

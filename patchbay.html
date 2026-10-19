@@ -102,7 +102,8 @@ const onFrame = (key, fn) => { // last write per key, once per frame
 
 const _shared = new Map(); // key > { value, users, release }
 const _lent = new Map(); // key > { kit | value, users } - same-origin host lends what it holds
-const _hostOffer = key => { // host's own runtime, else plain window.scvShared it set before framing
+const _hostOffer = key => { // own page's window.scvShared, else same-origin parent - its runtime, then its scvShared
+  if (window.scvShared && Object.hasOwn(window.scvShared, key)) return { value: window.scvShared[key], users: 0 };
   try {
     const p = window.parent; if (p === window) return null;
     const k = p.customElements?.get('scv-patchbay')?.kit;

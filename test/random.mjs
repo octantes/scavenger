@@ -63,9 +63,11 @@ const helpers = () => {
   const frame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
   window.F = {
     frame, units, key,
-    snap() { // light dom plus wiring inside shadows - everything state lives in
-      const inner = deep(pb).filter(e => e.getRootNode() !== document && e.matches(kit.WIRING_SEL)).map(e => e.localName + [...e.attributes].map(a => ` ${a.name}=${a.value}`).join(''));
-      return pb.getHTML() + '\n' + inner.join('\n');
+    snap() { // light dom plus wiring inside shadows - everything state lives in, attribute order aside
+      const attrs = e => [...e.attributes].map(a => ` ${a.name}=${JSON.stringify(a.value)}`).sort().join('');
+      const ser = n => n.nodeType === 3 ? n.data : n.nodeType !== 1 ? '' : `<${n.localName}${attrs(n)}>${[...n.childNodes].map(ser).join('')}</${n.localName}>`;
+      const inner = deep(pb).filter(e => e.getRootNode() !== document && e.matches(kit.WIRING_SEL)).map(e => e.localName + attrs(e));
+      return [...pb.childNodes].map(ser).join('') + '\n' + inner.join('\n');
     },
     cables() { // drawn cables against wiring attributes - every pair once, no extra
       const want = new Set(), rc = new Map();

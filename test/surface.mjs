@@ -13,6 +13,20 @@ const pbFile = readFileSync(join(here, '..', 'patchbay.html'), 'utf8');
 const kernelSrc = readFileSync(join(here, '..', 'kernel.js'), 'utf8');
 const part = id => pbFile.match(new RegExp(`<(style|script) id="${id}">[\\s\\S]*?</(style|script)>`))?.[0] || '';
 
+// in-page mount in every order - no boot call anywhere, element starts itself
+const HASH = 'ab'.repeat(16), PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+const el = id => `<scv-patchbay id="${id}" style="width:200px;height:100px"><template data-scv-comp="ord"><b>ok</b></template><scv-item><img data-scv-id="i" data-scv-src="scv-asset:${HASH}"></scv-item><scv-item><scv-ord data-scv-id="c"></scv-ord></scv-item></scv-patchbay>`; // image waits on table read, instance on its def
+const table = `<script type="scv/asset" data-hash="${HASH}" data-type="image/png">${PNG}</script>`;
+const later = id => `<script>setTimeout(() => document.body.insertAdjacentHTML('beforeend', '${el(id)}'), 30)</script>`;
+const ORDERS = {
+  '/order/pieces-then-element': table + part('scv-runtime-css') + part('scv-runtime') + el('a') + part('scv-canvas') + part('scv-studio'),
+  '/order/element-first': table + el('a') + part('scv-runtime-css') + part('scv-runtime') + part('scv-canvas') + part('scv-studio'),
+  '/order/studio-before-canvas-element-later': table + part('scv-runtime-css') + part('scv-runtime') + part('scv-studio') + part('scv-canvas') + later('a'),
+  '/order/second-added-later': table + part('scv-runtime-css') + part('scv-runtime') + el('a') + part('scv-canvas') + part('scv-studio') + later('b'),
+  '/order/shadow-mount': table + part('scv-runtime') + `<div id="host"></div><script>host.attachShadow({ mode: 'open' }).innerHTML = ${JSON.stringify(part('scv-runtime-css') + el('a'))};</script>` + part('scv-canvas') + part('scv-studio'), // style inside host's shadow
+  '/bare': part('scv-runtime') + el('a') + el('b'), // no style block - unthemed
+};
+
 // foreign document: no patchbay file around it, only the named pieces - runtime, then canvas, then studio
 const foreign = ids => `<!doctype html><html><head>${part('scv-runtime-css')}${part('scv-runtime')}</head><body><scv-patchbay style="width:200px;height:100px"></scv-patchbay>${ids.map(part).join('')}</body></html>`;
 const srv = createServer((req, res) => {
@@ -23,6 +37,7 @@ const srv = createServer((req, res) => {
   if (path === '/canvas') return res.end(foreign(['scv-canvas']));
   if (path === '/studio') return res.end(foreign(['scv-canvas', 'scv-studio']));
   if (path === '/page') return res.end('<!doctype html><title>k</title><p id="k">kernel</p>');
+  if (ORDERS[path]) return res.end(`<!doctype html><html><head></head><body>${ORDERS[path]}</body></html>`);
   res.statusCode = 404; res.end();
 });
 await new Promise(r => srv.listen(0, '127.0.0.1', r));
@@ -31,8 +46,12 @@ const base = `http://127.0.0.1:${srv.address().port}`;
 const { pageWsUrl, cleanup } = await launchChrome();
 const { ws, send, waitEvent } = await connect(pageWsUrl);
 await send('Page.enable'); await send('Runtime.enable');
-const uncaught = [];
-ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.method === 'Runtime.exceptionThrown') uncaught.push(m.params.exceptionDetails?.exception?.description || m.params.exceptionDetails?.text); });
+const uncaught = [], warned = [];
+ws.addEventListener('message', e => {
+  const m = JSON.parse(e.data);
+  if (m.method === 'Runtime.exceptionThrown') uncaught.push(m.params.exceptionDetails?.exception?.description || m.params.exceptionDetails?.text);
+  if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'warning') warned.push(m.params.args.map(a => a.value ?? a.description).join(' '));
+});
 const js = async expr => (await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true }))?.result?.result?.value;
 const nav = async url => { await send('Page.navigate', { url }); await waitEvent('Page.loadEventFired'); await js('new Promise(r => requestAnimationFrame(() => r()))'); };
 const done = () => { try { ws.close(); } catch {} cleanup(); srv.close(); };
@@ -92,6 +111,51 @@ try {
     ok(await js(`typeof window.routeSend === 'undefined'`), `${path}: foreign document gets no window.routeSend`);
     ok(uncaught.length === 0, `${path}: no page errors (${uncaught.join(' | ')})`);
   }
+
+  // in-page mount boots itself in any order, theme guard warns only when style block is missing
+  const THEME = 'scv-runtime-css missing - patchbay has no theme';
+  for (const path of Object.keys(ORDERS).filter(p => p.startsWith('/order/'))) {
+    uncaught.length = 0; warned.length = 0;
+    await nav(base + path);
+    const ids = path.endsWith('later') ? ['a', 'b'].slice(0, path.includes('second') ? 2 : 1) : ['a'];
+    const r = await js(`(async () => {
+      for (let i = 0; i < 50 && document.querySelectorAll('scv-patchbay').length < ${ids.length}; i++) await new Promise(r => setTimeout(r, 20));
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      return ${JSON.stringify(ids)}.map(id => {
+        const pb = document.getElementById(id) || document.getElementById('host')?.shadowRoot.getElementById(id); if (!pb) return 'missing';
+        const gone = ${JSON.stringify([...RUNTIME, ...CANVAS, ...STUDIO])}.filter(n => typeof pb[n] !== 'function');
+        pb.setMode?.('use');
+        const it = document.createElement('scv-item'), out = document.createElement('output');
+        out.setAttribute('data-scv-receives', 'o'); it.append(out); pb.append(it); pb.routeSend('o', id);
+        return gone.join() + '|' + out.value + '|' + !!getComputedStyle(pb).getPropertyValue('--background-sunk') + '|' + /^blob:/.test(pb.querySelector('img')?.src || '') + '|' + pb.querySelector('scv-ord')?.shadowRoot?.textContent;
+      });
+    })()`);
+    ok(r?.join() === ids.map(id => `|${id}|true|true|ok`).join(), `${path}: each patchbay booted - pieces' methods, routes, themed, asset read, component defined (${JSON.stringify(r)})`);
+    ok(uncaught.length === 0, `${path}: no page errors (${uncaught.join(' | ')})`);
+    ok(!warned.some(w => w.includes(THEME)), `${path}: no theme warning with style block (${warned.join(' | ')})`);
+  }
+  uncaught.length = 0; warned.length = 0;
+  await nav(base + '/bare');
+  const bare = await js(`(() => { const pb = document.getElementById('b'), out = document.createElement('output'), it = document.createElement('scv-item');
+    out.setAttribute('data-scv-receives', 'o'); it.append(out); pb.append(it); pb.routeSend('o', 'still'); return out.value; })()`);
+  ok(warned.filter(w => w.includes(THEME)).length === 1, `no style block: one theme warning for two patchbays (${warned.join(' | ')})`);
+  ok(bare === 'still', `no style block: patchbay still routes (${bare})`);
+
+  // moved patchbay boots once, keeps items, node and component state
+  await nav(base + '/studio');
+  const moved = await js(`(async () => {
+    const pb = document.querySelector('scv-patchbay'), kit = customElements.get('scv-patchbay').kit;
+    window.__inits = 0; window.__runs = 0; let boots = 0;
+    pb.import('<script type="scv/node" data-scv-node>defineNode({ name: "mv-node", init() { window.__inits++; } })<\/script><template data-scv-comp="mv-comp"><b>c</b><script>window.__runs++;<\/script></template>', { at: { x: 10, y: 10 } });
+    await new Promise(r => requestAnimationFrame(r));
+    const items = pb.children.length, before = [window.__inits, window.__runs], boot = pb._boot; pb._boot = function () { boots++; return boot.call(this); };
+    const box = document.createElement('div'); document.body.append(box); box.append(pb);
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const out = document.createElement('output'), it = document.createElement('scv-item'); out.setAttribute('data-scv-receives', 'mv'); it.append(out); pb.append(it); pb.setMode('use'); pb.routeSend('mv', 'here');
+    return { boots, same: pb.children.length === items + 1, before, after: [window.__inits, window.__runs], routed: out.value, studio: typeof pb.save };
+  })()`);
+  ok(moved && moved.boots === 0 && moved.same && moved.routed === 'here' && moved.studio === 'function', `moved patchbay never boots again, keeps items and routing (${JSON.stringify(moved)})`);
+  ok(moved && moved.before.join() === '1,1' && moved.after.join() === '1,1', `moved patchbay keeps node and component state - nothing reruns (${JSON.stringify(moved)})`);
 
   // runtime-only host takes in harvest by hand: def read as data, element defined, its code never runs
   await nav(base + '/runtime');

@@ -22,7 +22,7 @@ const srv = createServer((req, res) => {
   if (path === '/host') { // host page mounting two patchbays from runtime and canvas pieces - not a patchbay file
     const f = readFileSync(pbFile, 'utf8'), part = id => f.match(new RegExp(`<(style|script) id="${id}">[\\s\\S]*?</(style|script)>`))[0];
     res.setHeader('content-type', 'text/html');
-    return res.end(`<!doctype html><html><head><style>body{background:rgb(1,2,3)} #b{--background-sunk:rgb(9,9,9)}</style>${part('scv-runtime-css')}${part('scv-runtime')}</head><body><scv-patchbay id="a" style="width:200px;height:100px"></scv-patchbay><scv-patchbay id="b" style="width:200px;height:100px"></scv-patchbay>${part('scv-canvas')}${part('scv-boot')}</body></html>`);
+    return res.end(`<!doctype html><html><head><style>body{background:rgb(1,2,3)} #b{--background-sunk:rgb(9,9,9)}</style>${part('scv-runtime-css')}${part('scv-runtime')}</head><body><scv-patchbay id="a" style="width:200px;height:100px"></scv-patchbay><scv-patchbay id="b" style="width:200px;height:100px"></scv-patchbay>${part('scv-canvas')}</body></html>`);
   }
   if (path.startsWith('/saved/')) { res.setHeader('content-type', 'text/html'); return res.end(saved.get(path.slice(7)) || ''); }
   if (path === '/img.png') { if (!/^image\//.test(req.headers.accept || '')) imgFetches++; res.setHeader('content-type', 'image/png'); res.setHeader('access-control-allow-origin', '*'); return res.end(Buffer.concat([PNG, Buffer.from([0])])); } // trailing byte - own hash, still decodes
@@ -884,7 +884,7 @@ try {
   ok(built && !built.threw, `fixture saved (${built?.threw})`);
   for (const k of ['quine', 'canvas', 'publish']) saved.set(k, built?.[k] || '');
   const q = saved.get('quine');
-  const body = q.slice(q.indexOf('<scv-patchbay'), q.indexOf('<script id="scv-boot">')); // state only - runtime source holds every word checked below
+  const body = q.slice(q.indexOf('<scv-patchbay'), q.search(/<script data-scv-def>|<script id="scv-canvas">/)); // state only - runtime source holds every word checked below
   const items = body.slice(0, body.indexOf('</scv-patchbay>'));
 
   ok(/<script id="scv-canvas">/.test(q) && /<script id="scv-studio">/.test(q) && /<script id="scv-runtime">/.test(q), 'quine carries runtime, canvas and studio scripts by id');

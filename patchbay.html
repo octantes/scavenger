@@ -1396,21 +1396,20 @@ const SHADOW_CSS = `
 const sheet = css => { const s = new CSSStyleSheet(); s.replaceSync(css); return s; };
 let _shadowSheet = null;
 const _addons = [];
+const _pbs = []; // weak - use() reaches patchbays already up
+let _themed = false;
+const _themeCheck = pb => whenReady(() => { // one read - host may place style block after element
+  if (_themed || !pb.isConnected || getComputedStyle(pb).getPropertyValue('--background-sunk')) return;
+  _themed = true; console.warn('[scav] scv-runtime-css missing - patchbay has no theme');
+});
 const kit = {}; // internals for canvas and studio
 
 class ScvPatchbay extends HTMLElement {
   static observedAttributes = ['extent'];
   static get kit() { return kit; }
-  static use(addon) { // on patchbays present and future
+  static use(addon) { // on patchbays present and future, shadow-mounted ones too
     _addons.push(addon);
-    document.querySelectorAll('scv-patchbay').forEach(pb => pb._install(addon));
-  }
-  static boot() { // asset table to blobs, authored defs registered - before harvest defs run
-    asset.boot();
-    document.querySelectorAll('scv-patchbay').forEach(pb => pb._sync(true));
-    if (!document.documentElement.hasAttribute('data-scv-runtime')) return; // mounted in host page - host owns window
-    window.routeSend ??= (channel, value) => document.querySelector('scv-patchbay')?.routeSend(channel, value); // same-origin parent reaches standalone file through it
-    _bridge();
+    _pbs.forEach(r => { const pb = r.deref(); if (pb?.isConnected) pb._install(addon); });
   }
 
   constructor() {
@@ -1428,12 +1427,12 @@ class ScvPatchbay extends HTMLElement {
       onRefuse: el => this._onRefuse?.(el),
     });
     this._installed = new Set();
+    _pbs.push(new WeakRef(this));
     this._code = new Map(); this._dirty = this._compsDirty = true; // types index derived from def children, like routing from wiring
     const moved = rs => rs.some(r => [...r.addedNodes, ...r.removedNodes].some(isDef));
     this._defMo = new MutationObserver(rs => { if (moved(rs)) { this._dirty = this._compsDirty = true; if (document.readyState !== 'loading') this._sync(); } }); // parsing - script text may be half in
     this._defMo.observe(this, { childList: true });
     this._moved = moved;
-    whenReady(() => this._sync());
     new MutationObserver(records => { // refs arriving later - paste, drop, undo
       for (const r of records) {
         if (r.type === 'attributes') resolveRefs(r.target);
@@ -1441,7 +1440,22 @@ class ScvPatchbay extends HTMLElement {
       }
     }).observe(this, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-scv-src', 'data-scv-href'] });
   }
-  connectedCallback() { _addons.forEach(a => this._install(a)); }
+  connectedCallback() {
+    _addons.forEach(a => this._install(a));
+    if (this._booted) return; // moved or re-inserted - boots once, state stays
+    this._booted = true;
+    if (document.documentElement.hasAttribute('data-scv-runtime') && document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => this._boot(), { once: true }); // file still parsing - assets, defs, shadows not all in
+    else this._boot();
+  }
+  _boot() { // asset table to blobs, own defs registered - page globals only in patchbay file
+    const settle = () => { asset.boot(); resolveRefs(this); this._sync(true); }; // own refs too - shadow-mounted ones asset.boot can't see
+    settle();
+    if (document.readyState === 'loading') whenReady(settle); // host page still parsing - table and defs may come after element
+    _themeCheck(this);
+    if (!document.documentElement.hasAttribute('data-scv-runtime')) return; // mounted in host page - host owns window
+    window.routeSend ??= (channel, value) => document.querySelector('scv-patchbay')?.routeSend(channel, value); // same-origin parent reaches standalone file through it
+    _bridge();
+  }
   attributeChangedCallback(name, old, val) { // extent - page size publish scrolls to
     const [w, h] = splitWords(val).map(Number);
     this.layer.style.minWidth = Number.isFinite(w) ? w + 'px' : '';
@@ -1501,7 +1515,6 @@ customElements.define('scv-patchbay', ScvPatchbay);
 </head>
 <body>
 <scv-patchbay></scv-patchbay>
-<script id="scv-boot">customElements.get('scv-patchbay')?.boot();</script>
 <script id="scv-canvas">
 (() => {
 'use strict';
@@ -2602,7 +2615,7 @@ const save = async (pb, kind = 'quine') => {
   for (const el of pb.children) if (!el.hasAttribute('data-scv-appended')) parts.push(new Blob([kit.isDef(el) ? defHtml(el) : await _item(el, defs, used)]), '\n'); // string freed now, not at end of save - own types ride as children
   const d = await _defsOf(used, defs), held = new Set(kit.compsOf(pb));
   for (const t of used.tags) if (kit.comps.has(t) && !held.has(t)) parts.push(kit.comps.get(t).tpl.outerHTML, '\n'); // placed without its def - def ships along
-  parts.push('</scv-patchbay>\n', ...d.assets, outer('scv-boot'), '\n', ...d.harvests);
+  parts.push('</scv-patchbay>\n', ...d.assets, ...d.harvests);
   SCRIPTS[kind].forEach(id => parts.push(outer(id), '\n'));
   parts.push('</body>\n</html>\n');
   return new Blob(parts, { type: 'text/html' });

@@ -46,6 +46,7 @@ const MOUNTS = {
   '/mount/shadow': `${src()}<div id="host"></div><script>host.attachShadow({ mode: 'open' }).innerHTML = ${JSON.stringify(part('scv-runtime-css') + mountEl)};</script>`,
   '/mount/probe': `<link rel="stylesheet" href="/pieces/theme-probe.css">${src('runtime-probe')}${mountEl}`,
   '/mount/lossy': `<link rel="stylesheet" href="/pieces/theme-lossy.css">${src()}${mountEl}`,
+ '/mount/fonts': `<style>body { font-family: serif; font-size: 23px; line-height: 3; letter-spacing: 4px; text-transform: uppercase; word-spacing: 9px; }</style><link rel="stylesheet" href="/pieces/theme.css">${src()}${mountEl}`, // host text styles that would leak in
   '/mount/overrides': `<style>scv-patchbay { --background-sunk: rgb(9, 9, 9); }</style><link rel="stylesheet" href="/pieces/theme.css">${src()}<scv-patchbay id="m" style="--text-base: rgb(7, 7, 7); width:300px;height:200px"></scv-patchbay>`,
 };
 const savedFiles = new Map();
@@ -212,9 +213,18 @@ try {
     }
   }
 
-  // round trip: in-page save, opened standalone, saved again - same bytes
-  await nav(base + '/mount/module');
-  const first = (await saveFrom(['quine']))?.quine;
+  // mounted patchbay ignores host's text styles - text item measures same in host and in saved file
+  await nav(base + '/mount/fonts');
+  const measure = `(() => { const t = ${PB}.querySelector('[data-scv-id="txt"]'), r = t.getBoundingClientRect(), s = getComputedStyle(t); return [Math.round(r.width * 10) / 10, Math.round(r.height * 10) / 10, s.fontFamily, s.lineHeight, s.letterSpacing, s.textTransform, getComputedStyle(${PB}).backgroundColor]; })()`;
+  const text = `const t = document.createElement('scv-item'); t.innerHTML = '<div data-scv-id="txt">measured text, twice</div>'; pb.append(t);`;
+  const hosted = await saveFrom(['quine'], text), inHost = await js(measure);
+  await opened('fonts', hosted?.quine || '', false);
+  const inFile = await js(measure);
+  ok(inHost && JSON.stringify(inHost) === JSON.stringify(inFile) && inHost[6] !== 'rgba(0, 0, 0, 0)', `text item measures same mounted in styled host and in its saved file, patchbay keeps its background (${JSON.stringify(inHost)} vs ${JSON.stringify(inFile)})`);
+
+  // round trip: in-page save holding text, opened standalone, saved again - same bytes
+  await nav(base + '/mount/fonts');
+  const first = (await saveFrom(['quine'], text))?.quine;
   await opened('trip', first || '', false); // untouched - a routed value would change what it holds
   const second = (await saveFrom(['quine']))?.quine;
   const at = first && second ? [...first].findIndex((c, i) => c !== second[i]) : -1;

@@ -613,6 +613,17 @@ try {
     })()`);
     return [r.join() === ',D,deep', r];
   });
+  await run('pasted nested patchbay keeps only real node scripts - forged ones never kept or run', async () => {
+    const r = await js(`(async () => {
+      window.__forged = 0;
+      const nested = '<script data-scv-node>window.__forged = 1; defineNode({ name: "forged-a" })<\\/script><script type="module" data-scv-node>window.__forged = 2; defineNode({ name: "forged-b" })<\\/script><script type="scv/node" data-scv-node>defineNode({ name: "kept", icon: "K" })<\\/script><scv-logic data-type="kept"></scv-logic>';
+      const out = T.pb.import('<scv-patchbay><scv-item style="left:0px;top:0px"><scv-patchbay>' + nested + '</scv-patchbay></scv-item></scv-patchbay>', { at: { x: 100, y: 1100 } });
+      await T.frame();
+      const inner = out[0]?.querySelector('scv-patchbay');
+      return [window.__forged, inner && [...inner.children].filter(c => c.localName === 'script').length, inner?.nodeType('forged-a'), inner?.nodeType('forged-b'), inner?.nodeType('kept')?.icon, inner?.querySelector('scv-logic')?.def.name, T.pb.nodeType('kept')];
+    })()`);
+    return [JSON.stringify(r) === JSON.stringify([0, 1, null, null, 'K', 'kept', null]), r];
+  });
   await run('duplicate leaves other instances of its type running', async () => {
     const r = await js(`(async () => {
       window.__runs = 0; window.__inits = 0;

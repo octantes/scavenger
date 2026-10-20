@@ -1320,9 +1320,9 @@ class ScvLogic extends HTMLElement {
 
 // patchbay holds its types as children - node scripts, component templates
 
-const DEF_SEL = 'script[data-scv-node], template[data-scv-comp]';
+const DEF_SEL = 'script[type="scv/node"][data-scv-node], template[data-scv-comp]'; // saver's format only - any other script stays defang's
 const isDef = n => n?.nodeType === 1 && n.matches(DEF_SEL);
-const isNodeScript = n => n.localName === 'script' && n.hasAttribute('data-scv-node');
+const isNodeScript = n => n.localName === 'script' && n.matches(DEF_SEL);
 const RESERVED_TYPES = ['inlet', 'outlet']; // built-ins to come - nested patchbay's ports to its parent
 const _valid = def => {
   if (!def?.name || typeof def.name !== 'string') return false;

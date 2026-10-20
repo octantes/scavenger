@@ -133,7 +133,7 @@ const build = async () => {
     }
   }
   // ports - custom node answering on output named after input port
-  kit.defineNode({ name: 'b-port', inputs: [{ name: 'a' }, { name: 'b' }], outputs: [{ name: 'x' }, { name: 'y' }],
+  kit.defineNode(pb, { name: 'b-port', inputs: [{ name: 'a' }, { name: 'b' }], outputs: [{ name: 'x' }, { name: 'y' }],
     onReceive(v, ctx, port) { ctx.emit(v, port === 'a' ? 'x' : port === 'b' ? 'y' : ''); }, onPulse(ctx, p, port) { ctx.emit(p, port === 'a' ? 'x' : port === 'b' ? 'y' : ''); } });
   out.ports = { cols: ['3', 'pulse'], rows: [] };
   for (const [label, ch] of [['into port a', 'pa'], ['into port b', 'pb'], ['into unported wire', 'pu']]) {

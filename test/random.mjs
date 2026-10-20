@@ -70,7 +70,7 @@ const helpers = () => {
       const attrs = e => [...e.attributes].map(a => ` ${a.name}=${JSON.stringify(a.value)}`).sort().join('');
       const ser = n => n.nodeType === 3 ? n.data : n.nodeType !== 1 ? '' : `<${n.localName}${attrs(n)}>${[...n.childNodes].map(ser).join('')}</${n.localName}>`;
       const inner = deep(pb).filter(e => e.getRootNode() !== document && e.matches(kit.WIRING_SEL)).map(e => e.localName + attrs(e));
-      return [...pb.childNodes].map(ser).join('') + '\n' + inner.join('\n');
+      return [...pb.childNodes].filter(n => !kit.isDef(n)).map(ser).join('') + '\n' + inner.join('\n'); // types accumulate - undo leaves them
     },
     cables() { // drawn cables against wiring attributes - every pair once, no extra
       const want = new Set(), rc = new Map();

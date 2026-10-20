@@ -60,7 +60,7 @@ const helpers = () => {
     item(pb, child, x = 0, y = 0) { const it = document.createElement('scv-item'); it.style.left = x + 'px'; it.style.top = y + 'px'; it.append(child); pb.append(it); return child; },
     el(html) { const t = document.createElement('template'); t.innerHTML = html; return t.content.firstElementChild; },
     sink(pb, ch, tag = 'div') { const d = document.createElement(tag); d.setAttribute('data-scv-receives', ch); d.log = []; d.addEventListener('scv-receive', e => d.log.push(e.detail)); pb.append(d); return d; },
-    comp(name, body) { const t = document.createElement('template'); t.setAttribute('data-scv-comp', name); t.innerHTML = body; document.body.append(t); return kit.defineComponent(t); },
+    comp(name, body, pb) { const t = document.createElement('template'); t.setAttribute('data-scv-comp', name); t.innerHTML = body; if (pb) return kit.addComponent(pb, t); document.body.append(t); return kit.defineComponent(t); }, // pb holds it, else page-only
     harvestDef(tag, markup) { // canonical kernel shape
       const s = document.createElement('script'); s.setAttribute('data-scv-def', '');
       s.textContent = `if(!customElements.get('${tag}')){\ncustomElements.define('${tag}', class extends HTMLElement {\nconstructor() {\nsuper();\nif (this.shadowRoot) return;\nthis.attachShadow({mode: 'open'}).innerHTML = \`${markup}\`;\n}\n});\n}`;
@@ -531,7 +531,7 @@ try {
 
   await run('enter and change commit draft once', async () => {
     const pb = T.pb(); window.__inputs = 0;
-    T.kit.runNodeSource("defineNode({ name: 'cnt', onInput() { window.__inputs++; } })");
+    T.kit.addNodeSource(pb, "defineNode({ name: 'cnt', onInput() { window.__inputs++; } })");
     const n = T.node(pb, 'cnt'), i = n.shadowRoot.querySelector('.input');
     n.expand(true); i.value = 'x';
     i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })); i.dispatchEvent(new Event('change'));
@@ -558,14 +558,14 @@ try {
   });
 
   await run('async hook: newer call wins, older emit dropped', async () => {
-    const pb = T.pb(); T.kit.defineNode({ name: 'as-wins', async onReceive(v, ctx) { await T.sleep(v); ctx.emit(v); } });
+    const pb = T.pb(); T.kit.defineNode(pb, { name: 'as-wins', async onReceive(v, ctx) { await T.sleep(v); ctx.emit(v); } });
     const n = T.node(pb, 'as-wins', { 'data-scv-emits': 'aw' }), d = T.sink(pb, 'aw');
     n.receive(80, 'x'); n.receive(10, 'x'); await T.sleep(150);
     return [d.log.join() === '10', d.log];
   });
 
   await run('async hook: busy while pending, rejection is error, next success clears it', async () => {
-    const pb = T.pb(); T.kit.defineNode({ name: 'as-err', async onReceive(v) { await T.sleep(20); if (v === 'bad') throw new Error('no'); } });
+    const pb = T.pb(); T.kit.defineNode(pb, { name: 'as-err', async onReceive(v) { await T.sleep(20); if (v === 'bad') throw new Error('no'); } });
     const n = T.node(pb, 'as-err'), s = () => ['busy', 'error'].filter(k => n.states.has(k)).join('+') || 'idle';
     n.receive('bad', 'x'); const pending = s(); await T.sleep(50); const failed = s();
     n.receive('ok', 'x'); await T.sleep(50);
@@ -574,7 +574,7 @@ try {
 
   await run('async hook: abort is no error, teardown aborts callSignal', async () => {
     const pb = T.pb(), sigs = [];
-    T.kit.defineNode({ name: 'as-abort', onReceive(v, ctx) { sigs.push(ctx.callSignal); return new Promise((_, rej) => ctx.callSignal.addEventListener('abort', () => rej(new DOMException('gone', 'AbortError')))); } });
+    T.kit.defineNode(pb, { name: 'as-abort', onReceive(v, ctx) { sigs.push(ctx.callSignal); return new Promise((_, rej) => ctx.callSignal.addEventListener('abort', () => rej(new DOMException('gone', 'AbortError')))); } });
     const n = T.node(pb, 'as-abort');
     n.receive(1, 'x'); n.receive(2, 'x'); await T.sleep(10);
     const superseded = sigs[0].aborted && !n.states.has('error');
@@ -584,7 +584,7 @@ try {
 
   await run('ports: each input port heard, emit reaches only its port, bare emit only unported wires', async () => {
     const pb = T.pb();
-    T.kit.defineNode({ name: 'pt-select', inputs: [{ name: 'digest' }, { name: 'legal' }], outputs: [{ name: 'verdict' }, { name: 'abstain' }],
+    T.kit.defineNode(pb, { name: 'pt-select', inputs: [{ name: 'digest' }, { name: 'legal' }], outputs: [{ name: 'verdict' }, { name: 'abstain' }],
       onReceive(v, ctx, port) { if (port === 'digest') ctx.emit(v, 'verdict'); else if (port === 'legal') ctx.emit(T.kit.pulse(), 'abstain'); else ctx.emit(v); } });
     const n = T.node(pb, 'pt-select', { 'data-scv-receives': 'pd@digest pl@legal pu', 'data-scv-emits': 'pv@verdict pa@abstain pb' });
     const v = T.sink(pb, 'pv'), a = T.sink(pb, 'pa'), bare = T.sink(pb, 'pb');
@@ -602,10 +602,10 @@ try {
 
   await run('custom node: onPulse, onReceive and re-point on redefine', async () => {
     const pb = T.pb();
-    T.kit.runNodeSource("defineNode({ name: 'dbl', onReceive(v, ctx) { ctx.emit(v * 2); }, onPulse(ctx) { ctx.emit('p'); } })");
+    T.kit.addNodeSource(pb, "defineNode({ name: 'dbl', onReceive(v, ctx) { ctx.emit(v * 2); }, onPulse(ctx) { ctx.emit('p'); } })");
     const n = T.node(pb, 'dbl', { 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
     n.receive(3, 'x'); n.trigger();
-    T.kit.runNodeSource("defineNode({ name: 'dbl', onReceive(v, ctx) { ctx.emit(v * 3); } })");
+    T.kit.addNodeSource(pb, "defineNode({ name: 'dbl', onReceive(v, ctx) { ctx.emit(v * 3); } })");
     n.receive(3, 'x');
     return [d.log.join() === '6,p,9', d.log];
   });
@@ -613,14 +613,14 @@ try {
   await run('custom node arriving before its def picks it up', async () => {
     const pb = T.pb(), n = T.node(pb, 'late', { 'data-scv-emits': 'c' }), d = T.sink(pb, 'c');
     n.receive(1, 'x');
-    T.kit.runNodeSource("defineNode({ name: 'late', icon: 'L8', onReceive(v, ctx) { ctx.emit(v + 1); } })");
+    T.kit.addNodeSource(pb, "defineNode({ name: 'late', icon: 'L8', onReceive(v, ctx) { ctx.emit(v + 1); } })");
     n.receive(1, 'x');
     return [d.log.join() === '2' && n.shadowRoot.querySelector('.dot').textContent === 'L8', d.log];
   });
 
   await run('built-in names refused for custom defs', async () => {
     const warn = console.warn; console.warn = () => {};
-    let r; try { r = T.kit.defineNode({ name: 'clock' }); } finally { console.warn = warn; }
+    let r; try { r = T.kit.defineNode(T.pb(), { name: 'clock' }); } finally { console.warn = warn; }
     return [r === null, r];
   });
 
@@ -646,8 +646,9 @@ try {
   });
 
   await run('custom def icon renders as text, input type stays safe', async () => {
-    T.kit.runNodeSource(`defineNode({ name: 'esc1', icon: '<b>x</b>', inputType: 'text" onfocus="window.__x=1' })`);
-    const pb = T.pb(), n = T.node(pb, 'esc1'), sr = n.shadowRoot;
+    const pb = T.pb();
+    T.kit.addNodeSource(pb, `defineNode({ name: 'esc1', icon: '<b>x</b>', inputType: 'text" onfocus="window.__x=1' })`);
+    const n = T.node(pb, 'esc1'), sr = n.shadowRoot;
     return [sr.querySelector('.dot').textContent === '<b>x</b>' && !sr.querySelector('b') && sr.querySelector('.input').type === 'text' && !sr.querySelector('.input').hasAttribute('onfocus'), sr.innerHTML.length];
   });
 
@@ -722,7 +723,7 @@ try {
 
   await run('node signal aborts at teardown', async () => {
     const pb = T.pb(); window.__aborts = 0;
-    T.kit.runNodeSource("defineNode({ name: 'sg2', init(ctx) { ctx.signal.addEventListener('abort', () => window.__aborts++); } })");
+    T.kit.addNodeSource(pb, "defineNode({ name: 'sg2', init(ctx) { ctx.signal.addEventListener('abort', () => window.__aborts++); } })");
     const n = T.node(pb, 'sg2'); n.remove(); await T.frame(); await T.frame();
     return [window.__aborts === 1, window.__aborts];
   });
@@ -731,7 +732,7 @@ try {
     const pb = T.pb();
     const tag = T.comp('su1', '<script>host.st = new Error().stack;</script>');
     const host = T.item(pb, document.createElement(tag));
-    T.kit.runNodeSource("defineNode({ name: 'su2', init() { window.__st = new Error().stack; } })");
+    T.kit.addNodeSource(pb, "defineNode({ name: 'su2', init() { window.__st = new Error().stack; } })");
     T.node(pb, 'su2');
     return [host.st.includes('scv/scv-su1') && window.__st.includes('scv/su2'), [host.st.split('\n')[1], window.__st.split('\n')[1]]];
   });
@@ -852,8 +853,8 @@ try {
     const h1 = T.item(pb, document.createElement('scv-hv'), 10, 10), h2 = T.item(pb, document.createElement('scv-hv'), 300, 10);
     h2.shadowRoot.querySelector('input').value = 'typed';
     h2.shadowRoot.querySelector('p').setAttribute('data-scv-receives', 'ch1');
-    T.comp('meter', '<b data-scv-slot="n">0</b><button>+</button><script>const b = root.querySelector("b"); root.querySelector("button").onclick = () => { b.textContent = Number(b.textContent) + 1; emit(Number(b.textContent)); };</script>');
-    T.comp('spare', '<i>not placed</i>');
+    T.comp('meter', '<b data-scv-slot="n">0</b><button>+</button><script>const b = root.querySelector("b"); root.querySelector("button").onclick = () => { b.textContent = Number(b.textContent) + 1; emit(Number(b.textContent)); };</script>', pb);
+    T.comp('spare', '<i>not placed</i>', pb);
     const m = T.item(pb, document.createElement('scv-meter'), 10, 200); m.setAttribute('data-scv-emits', 'ch1');
     m.shadowRoot.querySelector('button').click(); m.shadowRoot.querySelector('button').click();
     const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), c => c.charCodeAt(0));
@@ -864,8 +865,8 @@ try {
     T.item(pb, T.el('<img data-scv-id="i3" src="/img.png">'), 540, 200);
     T.item(pb, T.el('<img data-scv-id="i4" src="/img.png">'), 560, 200);
     await Promise.all([...pb.querySelectorAll('img[src]')].map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; })));
-    kit.runNodeSource("defineNode({ name: 'twice', icon: '2', onReceive(v, ctx) { ctx.emit(v * 2); } })");
-    kit.runNodeSource("defineNode({ name: 'idle', icon: 'z' })");
+    kit.addNodeSource(pb, "defineNode({ name: 'twice', icon: '2', onReceive(v, ctx) { ctx.emit(v * 2); } })");
+    kit.addNodeSource(pb, "defineNode({ name: 'idle', icon: 'z' })");
     T.node(pb, 'clock', { value: '750', mode: 'offbeat', style: 'left:50px;top:400px' });
     T.node(pb, 'twice', { style: 'left:150px;top:400px' });
     const g = T.node(pb, 'gate', { style: 'left:250px;top:400px' }); g.trigger();
@@ -915,8 +916,25 @@ try {
     return [/customElements\.get\('scv-pr1'\)/.test(withIt) && !/scv-pr1/.test(without) && !!document.querySelector('script[data-scv-def]') && [...document.querySelectorAll('script[data-scv-def]')].some(s => s.textContent.includes('scv-pr1')), without.length];
   });
 
+  await run('two patchbays run their own version of one node type', async () => {
+    const a = T.pb(), b = T.pb();
+    T.kit.addNodeSource(a, "defineNode({ name: 'adder', onReceive(v, ctx) { ctx.emit(v + 1); } })");
+    T.kit.addNodeSource(b, "defineNode({ name: 'adder', onReceive(v, ctx) { ctx.emit(v + 10); } })");
+    const na = T.node(a, 'adder', { 'data-scv-emits': 'ad' }), nb = T.node(b, 'adder', { 'data-scv-emits': 'ad' }), da = T.sink(a, 'ad'), db = T.sink(b, 'ad');
+    na.receive(1, 'x'); nb.receive(1, 'x');
+    return [da.log.join() === '2' && db.log.join() === '11' && T.pb().nodeType('adder') === null, [da.log, db.log]];
+  });
+
+  await run('patchbay save carries its own types only', async () => {
+    const a = T.pb(), b = T.pb();
+    T.comp('own-a', '<i>a</i>', a); T.comp('own-b', '<i>b</i>', b);
+    T.kit.addNodeSource(a, "defineNode({ name: 'only-a' })"); T.kit.addNodeSource(b, "defineNode({ name: 'only-b' })");
+    const sa = await (await a.save('publish')).text(), body = sa.slice(sa.indexOf('<scv-patchbay'), sa.indexOf('</scv-patchbay>'));
+    return [/data-scv-comp="own-a"/.test(body) && /only-a/.test(body) && !/own-b|only-b/.test(sa), body.slice(0, 300)];
+  });
+
   await run('node file defining several types is written once', async () => {
-    const pb = T.pb(); T.kit.runNodeSource("defineNode({ name: 'pair-a' }); defineNode({ name: 'pair-b' });");
+    const pb = T.pb(); T.kit.addNodeSource(pb, "defineNode({ name: 'pair-a' }); defineNode({ name: 'pair-b' });");
     T.node(pb, 'pair-a'); T.node(pb, 'pair-b');
     const html = await (await pb.save('publish')).text(), n = (html.match(/name: 'pair-a'/g) || []).length;
     return [n === 1, n];
@@ -975,6 +993,21 @@ try {
     }
     ok(sizes[0] === sizes[1], `quine size stable across generations (${sizes})`);
   }
+
+  // nested patchbay carries its own types - outer never learns them
+
+  await nav(`${base}/pb`);
+  saved.set('nested', await js(`(async () => {
+    const outer = document.querySelector('scv-patchbay'), kit = customElements.get('scv-patchbay').kit, it = document.createElement('scv-item'), inner = document.createElement('scv-patchbay');
+    it.append(inner); outer.append(it);
+    kit.addNodeSource(inner, "defineNode({ name: 'inner-only', icon: 'in' })");
+    const n = document.createElement('scv-logic'); n.dataset.type = 'inner-only'; inner.append(n);
+    return (await outer.save('quine')).text();
+  })()`));
+  await nav(`${base}/saved/nested`);
+  const nested = await js(`(() => { const outer = document.querySelector('scv-patchbay'), inner = outer.querySelector('scv-patchbay'), n = inner.querySelector('scv-logic');
+    return [n.def.name, outer.nodeType('inner-only'), !!outer.querySelector(':scope > script[data-scv-node]'), !!inner.querySelector(':scope > script[data-scv-node]')]; })()`);
+  ok(nested?.join() === 'inner-only,,false,true', `nested patchbay reopens with its own types, outer never learns them (${nested})`);
 
   // script elements removed by hand
 
@@ -1118,7 +1151,7 @@ try {
   const described = await js(`(async () => {
     const f = document.createElement('iframe'); f.src = location.origin + '/pb'; document.body.append(f); await new Promise(r => { f.onload = r; });
     const w = f.contentWindow, ipb = w.document.querySelector('scv-patchbay'), kit = w.customElements.get('scv-patchbay').kit;
-    kit.defineNode({ name: 'ds-port', inputs: [{ name: 'in', type: 'text' }], outputs: [{ name: 'out' }] });
+    kit.defineNode(ipb, { name: 'ds-port', inputs: [{ name: 'in', type: 'text' }], outputs: [{ name: 'out' }] });
     ipb.insertAdjacentHTML('beforeend', '<scv-logic data-type="ds-port" data-scv-receives="price@in" data-scv-emits="verdict@out"></scv-logic><scv-logic data-type="accumulator" data-scv-receives="verdict"></scv-logic>');
     const got = new Promise(r => addEventListener('message', e => { if (e.source === w && e.data?.scv === 'description') r(e.data); }));
     w.postMessage({ scv: 'describe' }, '*');

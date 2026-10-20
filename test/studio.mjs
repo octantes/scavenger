@@ -52,7 +52,7 @@ const helpers = () => {
     nodes: () => [...pb.querySelectorAll('scv-logic')],
     node(type, x, y, attrs = {}) { const n = document.createElement('scv-logic'); n.dataset.type = type; n.style.left = x + 'px'; n.style.top = y + 'px'; for (const k in attrs) n.setAttribute(k, attrs[k]); pb.append(n); return n; },
     item(html, x, y) { const it = document.createElement('scv-item'); it.style.left = x + 'px'; it.style.top = y + 'px'; it.innerHTML = html; pb.append(it); return it; },
-    comp(name, body) { const t = document.createElement('template'); t.setAttribute('data-scv-comp', name); t.innerHTML = body; document.body.append(t); return kit.defineComponent(t); },
+    comp(name, body, into = pb) { const t = document.createElement('template'); t.setAttribute('data-scv-comp', name); t.innerHTML = body; return kit.addComponent(into, t); },
     shadow: sel => pb.shadowRoot.querySelector(sel),
     frame: () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
   };
@@ -128,7 +128,7 @@ try {
   });
   await run('drag from output anchor to input anchor wires those ports, cut removes only that token', async () => {
     const at = await js(`(async () => {
-      T.kit.defineNode({ name: 'st-port', inputs: [{ name: 'i1' }, { name: 'i2' }], outputs: [{ name: 'o1' }, { name: 'o2' }] });
+      T.kit.defineNode(T.pb, { name: 'st-port', inputs: [{ name: 'i1' }, { name: 'i2' }], outputs: [{ name: 'o1' }, { name: 'o2' }] });
       const a = window.__pa = T.node('st-port', 300, 650), b = window.__pbn = T.node('st-port', 520, 650); await T.frame();
       const c = el => { const r = el.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; };
       return [...c(a.shadowRoot.querySelector('.port[data-port="o2"]')), ...c(b.shadowRoot.querySelector('.port[data-port="i2"]'))];
@@ -527,8 +527,8 @@ try {
 
   await fresh();
   const copied = await js(`(async () => {
-    const t = document.createElement('template'); t.setAttribute('data-scv-comp', 'meter'); t.innerHTML = '<b data-scv-slot="n">0</b><script>host.ok = 1;<\\/script>'; T.kit.defineComponent(t);
-    T.kit.runNodeSource("defineNode({ name: 'twice', icon: '2', onReceive(v, ctx) { ctx.emit(v * 2); } })");
+    const t = document.createElement('template'); t.setAttribute('data-scv-comp', 'meter'); t.innerHTML = '<b data-scv-slot="n">0</b><script>host.ok = 1;<\\/script>'; T.kit.addComponent(T.pb, t);
+    T.kit.addNodeSource(T.pb, "defineNode({ name: 'twice', icon: '2', onReceive(v, ctx) { ctx.emit(v * 2); } })");
     const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), c => c.charCodeAt(0));
     const ref = await T.kit.asset.put(new Blob([png], { type: 'image/png' }));
     const m = T.item('<scv-meter data-scv-id="m"></scv-meter>', 100, 100), i1 = T.item('<img data-scv-id="a" data-scv-src="' + ref + '">', 200, 100), i2 = T.item('<img data-scv-id="b" data-scv-src="' + ref + '">', 250, 100);
@@ -575,11 +575,49 @@ try {
     })()`);
     return [r[0] === null && r[1] === 'harvested' && r[2] === true, r];
   });
+  await run('other version of a component already on page is refused with a note', async () => {
+    const r = await js(`(async () => {
+      const b = document.createElement('scv-patchbay'); b.style.cssText = 'position:fixed;left:0;top:0;width:300px;height:200px'; document.body.append(b); await T.frame();
+      const tag = T.comp('dup', '<i>one</i>'), it = T.item('<scv-dup data-scv-id="d1"></scv-dup>', 100, 900); await T.frame();
+      const out = b.import('<template data-scv-comp="dup"><i>two</i></template>');
+      const r = [out.length, b.shadowRoot.querySelector('.tip')?.textContent, it.firstElementChild.shadowRoot.textContent, T.kit.compsOf(b).join()];
+      const same = b.import('<template data-scv-comp="dup"><i>one</i></template>'); // same version shared
+      r.push(same.length, T.kit.compsOf(b).join(), T.kit.compsOf(T.pb).join());
+      b.remove(); return r;
+    })()`);
+    return [r.slice(0, 6).join('|') === '0|dup already on page as another version|one||1|scv-dup' && r[6].split(',').includes('scv-dup'), r];
+  });
+  await run('paste registers types into receiving patchbay, source keeps its own', async () => {
+    const r = await js(`(async () => {
+      const b = document.createElement('scv-patchbay'); b.style.cssText = 'position:fixed;left:0;top:0;width:300px;height:200px'; document.body.append(b); await T.frame();
+      T.kit.addNodeSource(T.pb, "defineNode({ name: 'pasty', icon: 'P', onReceive(v, ctx) { ctx.emit(v + '!'); } })");
+      const n = T.node('pasty', 100, 950); T.pb.select([n]);
+      const before = b.nodeType('pasty');
+      b.import(await (await T.pb.copy()).text(), { at: { x: 20, y: 20 } });
+      const placed = b.querySelector('scv-logic[data-type="pasty"]');
+      const r = [before, b.nodeType('pasty')?.icon, !!b.querySelector(':scope > script[data-scv-node]'), placed?.def.name, T.pb.nodeType('pasty')?.icon];
+      b.remove(); return r;
+    })()`);
+    return [r.join() === ',P,true,pasty,P', r];
+  });
+  await run('pasted nested patchbay keeps its types, receiver never learns them', async () => {
+    const r = await js(`(async () => {
+      const b = document.createElement('scv-patchbay'); b.style.cssText = 'position:fixed;left:0;top:0;width:300px;height:200px'; document.body.append(b); await T.frame();
+      const it = T.item('', 100, 1000), inner = document.createElement('scv-patchbay'); it.firstElementChild?.remove(); it.append(inner);
+      T.kit.addNodeSource(inner, "defineNode({ name: 'deep', icon: 'D' })");
+      const n = document.createElement('scv-logic'); n.dataset.type = 'deep'; inner.append(n); await T.frame();
+      T.pb.select([it]);
+      const out = b.import(await (await T.pb.copy()).text(), { at: { x: 20, y: 20 } }), copy = out[0]?.querySelector('scv-patchbay');
+      const r = [b.nodeType('deep'), copy?.nodeType('deep')?.icon, copy?.querySelector('scv-logic')?.def.name];
+      b.remove(); return r;
+    })()`);
+    return [r.join() === ',D,deep', r];
+  });
   await run('duplicate leaves other instances of its type running', async () => {
     const r = await js(`(async () => {
       window.__runs = 0; window.__inits = 0;
-      const t = document.createElement('template'); t.setAttribute('data-scv-comp', 'live1'); t.innerHTML = '<b>x</b><script>window.__runs++;<\\/script>'; T.kit.defineComponent(t);
-      T.kit.runNodeSource("defineNode({ name: 'live2', init() { window.__inits++; } })");
+      const t = document.createElement('template'); t.setAttribute('data-scv-comp', 'live1'); t.innerHTML = '<b>x</b><script>window.__runs++;<\\/script>'; T.kit.addComponent(T.pb, t);
+      T.kit.addNodeSource(T.pb, "defineNode({ name: 'live2', init() { window.__inits++; } })");
       const a = T.item('<scv-live1 data-scv-id="la"></scv-live1>', 100, 700), b = T.item('<scv-live1 data-scv-id="lb"></scv-live1>', 200, 700), n1 = T.node('live2', 300, 700), n2 = T.node('live2', 400, 700);
       await T.frame(); const bInner = b.firstElementChild.shadowRoot.firstElementChild, runs = window.__runs, inits = window.__inits;
       T.pb.select([a, n1]); await T.pb.duplicate(); await T.frame();

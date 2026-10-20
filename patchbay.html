@@ -645,10 +645,11 @@ const defineComponent = tpl => { // placed instances rebuild on new def
   const tag = compTag(tpl.getAttribute('data-scv-comp') || '');
   if (!/^scv-[a-z0-9-]+$/.test(tag) || ['scv-item', 'scv-logic', 'scv-patchbay'].includes(tag)) { console.warn('[scav] component name ' + tag + ' refused'); return null; }
   if (customElements.get(tag) && !_comps.has(tag)) { console.warn('[scav] ' + tag + ' already defined by harvest'); return null; }
-  const { frag, code } = _compParts(tpl);
-  const c = { tpl, frag, run: _compileComp(tag, code), icon: tpl.getAttribute('data-scv-icon') || '', color: tpl.getAttribute('data-scv-color') || '' };
   const known = _comps.has(tag);
-  if (known && _comps.get(tag).tpl.outerHTML === tpl.outerHTML) return tag; // same def from a paste - placed instances keep running
+  if (known && _comps.get(tag).tpl.outerHTML === tpl.outerHTML) return _comps.get(tag).held.add(tpl), tag; // same def from a paste - placed instances keep running
+  if (compConflict(patchbayOf(tpl), tpl)) { console.warn('[scav] ' + tag + ' already on page as another version'); return null; }
+  const { frag, code } = _compParts(tpl);
+  const c = { tpl, frag, run: _compileComp(tag, code), icon: tpl.getAttribute('data-scv-icon') || '', color: tpl.getAttribute('data-scv-color') || '', held: new Set([tpl]) };
   _comps.set(tag, c);
   if (!known) customElements.define(tag, class extends ScvComponent {});
   else document.querySelectorAll(tag).forEach(el => {
@@ -731,7 +732,7 @@ const varsOf = el => { const k = patchbayOf(el) || document; let s = _varStores.
 // left click and receives call onPulse, data calls onReceive, right click cycles modes
 
 const VERBS = ['toggle', 'hide', 'show', 'delete', 'clone', 'increment', 'decrement'];
-const NODE_TYPES = new Map();
+const NODE_TYPES = new Map(); // built in, every patchbay shares them
 const builtIn = (name, key, def) => NODE_TYPES.set(name, { name, key, builtIn: true, ...def });
 
 const _svg = d => `<svg viewBox="0 0 14 14" aria-hidden="true">${d}</svg>`; // old glyph sizes, 1px lines on half pixels
@@ -1121,7 +1122,7 @@ class ScvLogic extends HTMLElement {
   static observedAttributes = ['data-type', 'value', 'mode', 'open', 'last'];
   constructor() { super(); this._internals = this.attachInternals(); }
   get states() { return this._internals.states; }
-  get def() { return NODE_TYPES.get(this.dataset.type) || UNKNOWN; }
+  get def() { return typeOf(this); }
   get label() { const m = this._modeDef(); return m?.label || m?.id || this.def.label || this.dataset.type || 'node'; }
 
   connectedCallback() {
@@ -1317,19 +1318,59 @@ class ScvLogic extends HTMLElement {
   }
 }
 
-const _nodeSources = new Map(); // name > source, for save
-const defineNode = def => { // page-wide - redropped def re-points placed nodes
-  if (!def?.name || typeof def.name !== 'string') return null;
-  if (NODE_TYPES.get(def.name)?.builtIn) { console.warn('[scav] node type ' + def.name + ' is built in, def ignored'); return null; }
-  NODE_TYPES.set(def.name, { ...def, custom: true });
-  document.querySelectorAll('scv-logic').forEach(n => { if (n.dataset.type === def.name && n._live) { n._stop(); n._start(); } });
+// patchbay holds its types as children - node scripts, component templates
+
+const DEF_SEL = 'script[data-scv-node], template[data-scv-comp]';
+const isDef = n => n?.nodeType === 1 && n.matches(DEF_SEL);
+const isNodeScript = n => n.localName === 'script' && n.hasAttribute('data-scv-node');
+const _valid = def => {
+  if (!def?.name || typeof def.name !== 'string') return false;
+  if (NODE_TYPES.get(def.name)?.builtIn) { console.warn('[scav] node type ' + def.name + ' is built in, def ignored'); return false; }
+  return true;
+};
+const _read = new WeakMap(); // script > { text, defs } - source runs once per text
+const nodeDefs = s => {
+  const text = s.textContent;
+  let r = _read.get(s);
+  if (r?.text === text) return r.defs;
+  const defs = [], tag = text.match(/name:\s*['"]([^'"]+)/)?.[1] || 'node';
+  try { new Function('defineNode', text + '\n//# sourceURL=scv/' + tag)(def => _valid(def) ? (defs.push({ ...def, custom: true }), def.name) : null); }
+  catch (e) { console.warn('[scav] node def failed', e); }
+  _read.set(s, r = { text, defs });
+  return defs;
+};
+const typeOf = (el, name = el.dataset.type) => patchbayOf(el)?._typeOf?.(name) || NODE_TYPES.get(name) || UNKNOWN;
+const _defAt = pb => [...pb.children].find(c => !isDef(c)) || null; // defs lead, in arrival order
+const addNodeSource = (pb, text) => { // > names defined - script kept as child, older one fully redefined goes
+  const held = [...pb.children].find(c => isNodeScript(c) && c.textContent === text);
+  if (held) return nodeDefs(held).map(d => d.name); // same source - placed nodes keep running
+  const s = document.createElement('script');
+  s.type = 'scv/node'; s.setAttribute('data-scv-node', ''); s.textContent = text;
+  const names = nodeDefs(s).map(d => d.name);
+  if (!names.length) return names;
+  pb.insertBefore(s, _defAt(pb));
+  for (const c of [...pb.children]) if (c !== s && isNodeScript(c)) { const old = nodeDefs(c); if (old.length && old.every(d => names.includes(d.name))) c.remove(); }
+  pb._sync();
+  return names;
+};
+const defineNode = (pb, def) => { // in code only - not saved
+  if (!_valid(def)) return null;
+  pb._code.set(def.name, { ...def, custom: true }); pb._dirty = true; pb._sync();
   return def.name;
 };
-const runNodeSource = text => { // > names defined
-  const names = [], tag = text.match(/name:\s*['"]([^'"]+)/)?.[1] || 'node';
-  try { new Function('defineNode', text + '\n//# sourceURL=scv/' + tag)(def => { if (_nodeSources.get(def?.name) === text) return names.push(def.name), def.name; const n = defineNode(def); if (n) { names.push(n); _nodeSources.set(n, text); } return n; }); } // same source - placed nodes keep running
-  catch (e) { console.warn('[scav] node def failed', e); }
-  return names;
+const _tagOf = t => compTag(t.getAttribute('data-scv-comp') || '');
+const compsOf = pb => [...pb.children].filter(c => c.localName === 'template' && _comps.get(_tagOf(c))?.held.has(c)).map(_tagOf); // tags this patchbay holds
+const compConflict = (pb, tpl) => { // one element per tag on page - another patchbay keeps its version
+  const c = _comps.get(_tagOf(tpl));
+  return !!c && c.tpl.outerHTML !== tpl.outerHTML && [...c.held].some(t => t !== tpl && t.isConnected && patchbayOf(t) !== pb);
+};
+const addComponent = (pb, tpl) => { // > tag, null when refused
+  if (compConflict(pb, tpl)) return null;
+  const tag = _tagOf(tpl), held = [...pb.children].find(c => c.localName === 'template' && _tagOf(c) === tag);
+  if (held?.outerHTML === tpl.outerHTML) return defineComponent(held);
+  const t = document.importNode(tpl, true);
+  if (held) held.replaceWith(t); else pb.insertBefore(t, _defAt(pb));
+  return defineComponent(t);
 };
 
 // state is light dom (items, nodes), chrome is shadow
@@ -1366,8 +1407,7 @@ class ScvPatchbay extends HTMLElement {
   }
   static boot() { // asset table to blobs, authored defs registered - before harvest defs run
     asset.boot();
-    document.querySelectorAll('template[data-scv-comp]').forEach(defineComponent);
-    document.querySelectorAll('script[type="scv/node"]').forEach(s => runNodeSource(s.textContent));
+    document.querySelectorAll('scv-patchbay').forEach(pb => pb._sync(true));
     if (!document.documentElement.hasAttribute('data-scv-runtime')) return; // mounted in host page - host owns window
     window.routeSend ??= (channel, value) => document.querySelector('scv-patchbay')?.routeSend(channel, value); // same-origin parent reaches standalone file through it
     _bridge();
@@ -1388,6 +1428,12 @@ class ScvPatchbay extends HTMLElement {
       onRefuse: el => this._onRefuse?.(el),
     });
     this._installed = new Set();
+    this._code = new Map(); this._dirty = this._compsDirty = true; // types index derived from def children, like routing from wiring
+    const moved = rs => rs.some(r => [...r.addedNodes, ...r.removedNodes].some(isDef));
+    this._defMo = new MutationObserver(rs => { if (moved(rs)) { this._dirty = this._compsDirty = true; if (document.readyState !== 'loading') this._sync(); } }); // parsing - script text may be half in
+    this._defMo.observe(this, { childList: true });
+    this._moved = moved;
+    whenReady(() => this._sync());
     new MutationObserver(records => { // refs arriving later - paste, drop, undo
       for (const r of records) {
         if (r.type === 'attributes') resolveRefs(r.target);
@@ -1417,16 +1463,32 @@ class ScvPatchbay extends HTMLElement {
   invalidate() { this._router.invalidate(); }
   onRoute(fn) { this._routeHooks.add(fn); return () => this._routeHooks.delete(fn); }
   nodeType(name) { // registered def for static checks - a copy, registry stays ours
-    const d = NODE_TYPES.get(name), ports = l => l?.map(p => ({ ...p }));
+    const d = this._typeOf(name) || NODE_TYPES.get(name), ports = l => l?.map(p => ({ ...p }));
     return d ? { ...d, inputs: ports(d.inputs), outputs: ports(d.outputs) } : null;
   }
+  _sync(boot) { // types rebuilt from def children - placed nodes re-pointed
+    if (this._moved(this._defMo.takeRecords())) this._dirty = this._compsDirty = true;
+    if (this._compsDirty && (boot || document.readyState !== 'loading')) { // mid-parse define would cost instances their saved shadows
+      this._compsDirty = false;
+      for (const c of this.children) if (c.localName === 'template' && c.hasAttribute('data-scv-comp')) defineComponent(c);
+    }
+    if (!this._dirty) return this._types;
+    this._dirty = false;
+    const types = this._types = new Map();
+    for (const c of this.children) if (isNodeScript(c)) nodeDefs(c).forEach(d => types.set(d.name, d));
+    this._code.forEach((d, n) => types.set(n, d));
+    this.querySelectorAll('scv-logic').forEach(n => { if (n._live && patchbayOf(n) === this && n._def !== typeOf(n)) { n._stop(); n._start(); } });
+    return types;
+  }
+  _typeOf(name) { return this._sync().get(name); }
 }
 
 Object.assign(kit, {
   ATTR_EMITS, ATTR_RECEIVES, ATTR_ACTION, WIRING_SEL, NODE_TYPES, VERBS,
   splitWords, uid, px, debug, channelOf, collectChannels, hostOf, itemOf, patchbayOf, onFrame, whenGone, whenReady,
   pulse, isPulse, asset, quests, clock, shared, unshare, isShared: key => _shared.has(key), patch, resolveRefs, patchbayOfEvent, chOf, portOf, channels, portAngle,
-  isEmitter: el => _emitters.has(el), defineNode, runNodeSource, nodeSources: _nodeSources, defineComponent, comps: _comps, compTag,
+  isEmitter: el => _emitters.has(el), defineNode, addNodeSource, nodeDefs, isDef, isNodeScript, defineComponent, addComponent, compConflict, compsOf, comps: _comps, compTag,
+  nodeTypes: pb => new Map([...NODE_TYPES, ...(pb?._sync() || [])]),
   mountHarvest, harvestOf, defineHarvest, defang, remap, reframe, morphShadow, extractShadowMarkup, boxScopeCss, snapSlots, restoreSlots, slotValue, setSlot,
 });
 
@@ -2152,7 +2214,7 @@ const studio = pb => {
     m.style.left = Math.max(r.left, Math.min(x, r.right - b.width)) - r.left + 'px'; m.style.top = Math.max(r.top, Math.min(y, r.bottom - b.height)) - r.top + 'px';
   };
   pb.menu = () => st.menu && [...st.menu.querySelectorAll('button')].map(b => b.firstChild.textContent);
-  const nodeItems = fn => [...kit.NODE_TYPES.values()].sort((a, b) => (+a.key || 99) - (+b.key || 99)).map(d => ({ label: '[node] - ' + d.name, fn: () => { setMode('edit'); fn(d.name); } }));
+  const nodeItems = fn => [...kit.nodeTypes(pb).values()].sort((a, b) => (+a.key || 99) - (+b.key || 99)).map(d => ({ label: '[node] - ' + d.name, fn: () => { setMode('edit'); fn(d.name); } }));
   pb.addEventListener('contextmenu', e => {
     const path = ownPath(e); if (!path) return;
     e.preventDefault();
@@ -2162,7 +2224,7 @@ const studio = pb => {
     if (st.chain && st.last) st.lock = mod(e);
     const items = [{ label: pb.editing ? '[mode] - use' : '[mode] - edit', cls: 'mode', fn: () => setMode(pb.editing ? 'use' : 'edit') }];
     items.push(...nodeItems(type => { const last = st.chain ? st.last : null, rev = st.lock; const n = spawn(type, p.x - 16, p.y - 16); if (last) rev ? wire(n, last) : wire(last, n); disarm(); }));
-    for (const [tag] of kit.comps) items.push({ label: '[comp] - ' + tag.replace(/^scv-/, ''), fn: () => { setMode('edit'); const it = document.createElement('scv-item'); it.style.left = p.x + 'px'; it.style.top = p.y + 'px'; const c = document.createElement(tag); c.dataset.scvId = 'comp_' + uid(9); it.append(c); pb.append(it); record(() => pb.append(it), () => it.remove(), 'spawn'); } });
+    for (const tag of kit.compsOf(pb)) items.push({ label: '[comp] - ' + tag.replace(/^scv-/, ''), fn: () => { setMode('edit'); const it = document.createElement('scv-item'); it.style.left = p.x + 'px'; it.style.top = p.y + 'px'; const c = document.createElement(tag); c.dataset.scvId = 'comp_' + uid(9); it.append(c); pb.append(it); record(() => pb.append(it), () => it.remove(), 'spawn'); } });
     items.push({ label: '[save] - quine (keeps editing)', cls: 'save', fn: () => pb.export('quine') }, { label: '[save] - canvas (infinite, no editing)', cls: 'save', fn: () => pb.export('canvas') }, { label: '[save] - publish (document, no editing)', cls: 'save', fn: () => pb.export('publish') });
     menu(items, e.clientX, e.clientY, () => { st.lock = null; });
   });
@@ -2225,7 +2287,7 @@ const studio = pb => {
       if (st.last?.isConnected) { st.chain = true; st.last.states?.add('chained'); showTemp(st.last, { clientX: st.pointer.x, clientY: st.pointer.y, ctrlKey: e.ctrlKey, metaKey: e.metaKey }); } // ring takes chain line color
       return;
     }
-    const type = /^[0-9]$/.test(k) && !e.shiftKey && !e.altKey && [...kit.NODE_TYPES.values()].find(d => d.key === k);
+    const type = /^[0-9]$/.test(k) && !e.shiftKey && !e.altKey && [...kit.nodeTypes(pb).values()].find(d => d.key === k);
     const armed = st.chain && st.last;
     if (type && !e.repeat && (!m || armed)) { // ctrl+digit only while chain is armed - ctrl+0 would reset browser zoom
       e.preventDefault();
@@ -2267,8 +2329,14 @@ const studio = pb => {
   const wiredIn = (u, fn) => { if (u.matches(kit.WIRING_SEL)) fn(u); walk(u, kit.WIRING_SEL, fn); };
   const putAt = (u, x, y) => { u.style.left = Math.round(x) + 'px'; u.style.top = Math.round(y) + 'px'; return u; };
   const itemFor = (child, x, y) => { const it = document.createElement('scv-item'); it.append(child); return putAt(it, x, y); };
+  const defangKeepingDefs = u => { // markup runs nothing - nested patchbay keeps its defs, trusted like copy's
+    const defs = [...u.querySelectorAll('scv-patchbay')].map(p => [p, [...p.children].filter(kit.isDef)]);
+    defs.forEach(([, ds]) => ds.forEach(d => d.remove()));
+    kit.defang(u);
+    defs.forEach(([p, ds]) => p.prepend(...ds));
+  };
   const adopt = (units, at, offset) => { // fresh ids, colliding channels re-minted, centred on pointer
-    units.forEach(u => { kit.defang(u); [u, ...u.querySelectorAll('[data-scv-id]')].forEach(n => { if (n.dataset.scvId) n.dataset.scvId = (n.localName === 'scv-logic' ? 'logic_' : 'comp_') + uid(9); }); });
+    units.forEach(u => { defangKeepingDefs(u); [u, ...u.querySelectorAll('[data-scv-id]')].forEach(n => { if (n.dataset.scvId) n.dataset.scvId = (n.localName === 'scv-logic' ? 'logic_' : 'comp_') + uid(9); }); });
     const live = new Set(), em = new Set(), rc = new Set();
     walk(pb, kit.WIRING_SEL, n => kit.collectChannels(n, live, live));
     units.forEach(u => wiredIn(u, n => kit.collectChannels(n, em, rc)));
@@ -2290,8 +2358,13 @@ const studio = pb => {
     const boxed = new Set(); // harvests whose css queries their own box
     doc.querySelectorAll('script[data-scv-def]').forEach(s => { const hv = kit.harvestOf(kit.boxScopeCss(s.textContent)); if (!hv) return unknown++; kit.defineHarvest(hv); if (hv.markup.includes('@container')) boxed.add(hv.tag); });
     kit.asset.boot(doc);
-    const tags = [...doc.querySelectorAll('template[data-scv-comp]')].map(t => kit.defineComponent(document.importNode(t, true))).filter(Boolean); // authored code runs - same trust as opening its file
-    const types = [...doc.querySelectorAll('script[data-scv-node]')].flatMap(s => kit.runNodeSource(s.textContent));
+    const top = doc.querySelector('scv-patchbay'), mine = n => { const p = n.parentElement?.closest('scv-patchbay'); return !p || p === top; }; // nested patchbay keeps its own types
+    const tags = [];
+    for (const t of [...doc.querySelectorAll('template[data-scv-comp]')].filter(mine)) { // authored code runs - same trust as opening its file
+      const tag = kit.addComponent(pb, t);
+      if (tag) tags.push(tag); else if (kit.compConflict(pb, t)) note(kit.compTag(t.getAttribute('data-scv-comp')).slice(4) + ' already on page as another version');
+    }
+    const types = [...doc.querySelectorAll('script[data-scv-node]')].filter(mine).flatMap(s => kit.addNodeSource(pb, s.textContent));
     if (opts.redefine) return [];
     const src = doc.querySelector('scv-patchbay') || doc.body;
     let units = [...src.children].filter(isUnit);
@@ -2349,7 +2422,7 @@ const studio = pb => {
   root.addEventListener('error', e => { if (e.target.classList?.contains('scv-lc-thumb') && !e.target.src.startsWith('data:')) e.target.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }, true); // broken thumb shows nothing
 
   const typingIn = e => { const t = e.composedPath()[0]; return !!(t?.closest?.('input, textarea, select') || t?.isContentEditable); };
-  pb.copy = () => clip(movable(selection()));
+  pb.copy = () => clip(movable(selection()), pb);
   pb.addEventListener('copy', e => {
     if (typingIn(e) || !ownPath(e) || !selection().length) return;
     e.preventDefault();
@@ -2399,7 +2472,7 @@ const studio = pb => {
     const h = await handle?.catch(() => null);
     if (h && /data-scv-comp|data-scv-node/.test(text) && !/<scv-patchbay|<scv-item/.test(text)) follow(h, text); // sources only, never quines
   });
-  const duplicate = async () => { const sel = movable(selection()); if (sel.length) importText(await (await clip(sel)).text(), { offset: GRID }); };
+  const duplicate = async () => { const sel = movable(selection()); if (sel.length) importText(await (await clip(sel, pb)).text(), { offset: GRID }); };
   pb.duplicate = duplicate;
   enrich();
 
@@ -2467,13 +2540,14 @@ const internRemote = async roots => { // servers without cors stay remote links
   }));
 };
 
+const defHtml = el => el.localName === 'script' ? startTag(el) + el.textContent.replace(/<\/script/gi, '<\\/script') + '<\/script>' : el.outerHTML;
 const _item = async (el, defs, used) => { // component shadows only where they differ from def
   if (el.localName === 'scv-logic') { used.nodes.add(el.dataset.type); return startTag(el) + '</scv-logic>'; }
-  const roots = [el], shadows = [];
+  const roots = [el], shadows = [], own = kit.patchbayOf(el);
   const walk = async r => {
     for (const n of r.querySelectorAll('*')) {
       if (n.localName.includes('-')) used.tags.add(n.localName);
-      if (n.localName === 'scv-logic') { used.nodes.add(n.dataset.type); continue; }
+      if (n.localName === 'scv-logic') { if (kit.patchbayOf(n) === own) used.nodes.add(n.dataset.type); continue; } // nested patchbay carries its own
       if (!n.shadowRoot || n.localName === 'scv-patchbay') continue; // nested patchbay saves its light dom, chrome rebuilds
       freeze(n.shadowRoot); roots.push(n.shadowRoot);
       if (await _asDef(n, defs)) { n.shadowRoot.querySelectorAll('*').forEach(c => { if (c.localName.includes('-')) used.tags.add(c.localName); }); continue; } // def rebuilds it - defs it uses still ship
@@ -2488,18 +2562,23 @@ const _item = async (el, defs, used) => { // component shadows only where they d
   return html;
 };
 const _defsOf = async (used, defs) => { // what items use, each once
-  const assets = [], authored = [], harvests = [];
+  const assets = [], harvests = [];
   for (const h of used.refs) assets.push(new Blob([await kit.asset.element(h)])); // referenced assets only
-  for (const t of used.tags) { const c = kit.comps.get(t); if (c) authored.push(c.tpl.outerHTML, '\n'); }
-  new Set([...used.nodes].map(n => kit.nodeSources.get(n)).filter(Boolean)).forEach(src => authored.push(`<script type="scv/node" data-scv-node>${src.replace(/<\/script/gi, '<\\/script')}<\/script>\n`)); // one file may define several
   new Set([...used.tags].map(t => defs.get(t)).filter(Boolean)).forEach(s => harvests.push(new Blob(['<script data-scv-def>', s.textContent, '<\/script>\n']))); // runs as written - rebuilt ones sit inert while live
-  return { assets, authored, harvests };
+  return { assets, harvests };
 };
-const clip = async list => { // selection as mini save - items, then defs and assets they use
+const _authored = (used, pb) => { // types copy needs, as its patchbay resolves them
+  const out = [], wins = new Map();
+  for (const c of pb.children) if (kit.isNodeScript(c)) kit.nodeDefs(c).forEach(d => wins.set(d.name, c)); // later script wins name
+  for (const t of used.tags) { const c = kit.comps.get(t); if (c) out.push(c.tpl.outerHTML, '\n'); }
+  new Set([...used.nodes].map(n => wins.get(n)).filter(Boolean)).forEach(s => out.push(defHtml(s), '\n')); // one file may define several
+  return out;
+};
+const clip = async (list, pb) => { // selection as mini save - items, then defs and assets they use
   const defs = _defs(), used = { tags: new Set(), nodes: new Set(), refs: new Set() }, parts = ['<scv-patchbay>\n'];
   for (const el of list) parts.push(new Blob([await _item(el, defs, used)]), '\n');
   const d = await _defsOf(used, defs);
-  parts.push('</scv-patchbay>\n', ...d.assets, ...d.authored, ...d.harvests);
+  parts.push('</scv-patchbay>\n', ...d.assets, ..._authored(used, pb), ...d.harvests);
   return new Blob(parts, { type: 'text/html' });
 };
 
@@ -2517,12 +2596,13 @@ const extentOf = pb => {
 const save = async (pb, kind = 'quine') => {
   if (!SCRIPTS[kind]) throw new Error('unknown export ' + kind);
   pb.setAttribute('extent', extentOf(pb));
-  const defs = _defs(), used = { tags: new Set(kit.comps.keys()), nodes: new Set(kit.nodeSources.keys()), refs: new Set() }; // registered types ship, placed or not
+  const defs = _defs(), used = { tags: new Set(), nodes: new Set(), refs: new Set() };
   const parts = [LICENSE, `<html lang="en" data-scv-runtime="${escAttr(VERSION)}">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>${NAMES[kind]}</title>\n`,
     document.querySelector('link[rel="icon"]')?.outerHTML || '', '\n', outer('scv-runtime-css'), '\n', outer('scv-runtime'), '\n</head>\n<body>\n', startTag(pb), '\n'];
-  for (const el of pb.children) if (!el.hasAttribute('data-scv-appended')) parts.push(new Blob([await _item(el, defs, used)]), '\n'); // string freed now, not at end of save
-  const d = await _defsOf(used, defs);
-  parts.push('</scv-patchbay>\n', ...d.assets, ...d.authored, outer('scv-boot'), '\n', ...d.harvests);
+  for (const el of pb.children) if (!el.hasAttribute('data-scv-appended')) parts.push(new Blob([kit.isDef(el) ? defHtml(el) : await _item(el, defs, used)]), '\n'); // string freed now, not at end of save - own types ride as children
+  const d = await _defsOf(used, defs), held = new Set(kit.compsOf(pb));
+  for (const t of used.tags) if (kit.comps.has(t) && !held.has(t)) parts.push(kit.comps.get(t).tpl.outerHTML, '\n'); // placed without its def - def ships along
+  parts.push('</scv-patchbay>\n', ...d.assets, outer('scv-boot'), '\n', ...d.harvests);
   SCRIPTS[kind].forEach(id => parts.push(outer(id), '\n'));
   parts.push('</body>\n</html>\n');
   return new Blob(parts, { type: 'text/html' });

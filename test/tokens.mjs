@@ -16,16 +16,12 @@ const ok = (c, m) => { if (!c) { fails++; console.log('  ✗', m); } };
 const defsOf = s => { const m = {}; const re = /--([\w-]+)\s*:\s*([^;{}]+);/g; let x; while ((x = re.exec(s))) m['--' + x[1]] = x[2].trim(); return m; };
 const dashDefs = defsOf(dash);
 
-// shared design system, patchbay is source of truth
-const SYSTEM = [
-  '--output', '--input', '--danger', '--success',
-  '--background-sunk', '--background-raised',
-  '--text-base', '--text-dim', '--text-faint', '--border',
-  '--corner-low', '--corner-high',
-  '--ease-out', '--ease-swift', '--duration-fast', '--duration-base', '--duration-slow',
-  '--font-mono', '--fs-a', '--fs-b', '--fs-c', '--fs-d',
-];
+// shared design system, patchbay is source of truth - list read from runtime, saver checks same one
+const SYSTEM = (dash.match(/const THEME_TOKENS = \[([^\]]+)\]/)?.[1].match(/'--[\w-]+'/g) || []).map(t => t.slice(1, -1));
+ok(SYSTEM.length >= 22, `runtime THEME_TOKENS lists the design system (${SYSTEM.length})`);
 for (const t of SYSTEM) ok(dashDefs[t] !== undefined, `patchbay :root defines ${t}`);
+const versions = [dash.match(/<html[^>]*data-scv-runtime="([^"]+)"/)?.[1], dash.match(/const VERSION = '([^']+)'/)?.[1], dashDefs['--scv-theme'], tui.match(/SCV_QUESTS_VERSION\s*= '([^']+)'/)?.[1]];
+ok(versions[0] && versions.every(v => v === versions[0]), `file stamp, runtime VERSION, theme marker and quests agree (${versions})`);
 ok(/:root\[data-scv-runtime\], scv-patchbay \{/.test(dash), 'tokens sit on patchbay file root and on element - mounted patchbay never themes host page');
 
 // kernel uses js theme object - must carry same names + brand values

@@ -11,7 +11,7 @@ const ok = (c, m) => { if (!c) { fails++; console.log('  ✗', m); } };
 const here = dirname(fileURLToPath(import.meta.url));
 const pbFile = readFileSync(join(here, '..', 'patchbay.html'), 'utf8');
 const kernelSrc = readFileSync(join(here, '..', 'kernel.js'), 'utf8');
-const part = id => pbFile.match(new RegExp(`<(style|script) id="${id}">[\\s\\S]*?</(style|script)>`))?.[0] || '';
+const part = id => pbFile.match(new RegExp(`<(style|script) id="${id}">[\\s\\S]*?</\\1>`))?.[0] || '';
 
 // in-page mount in every order - no boot call anywhere, element starts itself
 const HASH = 'ab'.repeat(16), PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
@@ -24,8 +24,31 @@ const ORDERS = {
   '/order/studio-before-canvas-element-later': table + part('scv-runtime-css') + part('scv-runtime') + part('scv-studio') + part('scv-canvas') + later('a'),
   '/order/second-added-later': table + part('scv-runtime-css') + part('scv-runtime') + el('a') + part('scv-canvas') + part('scv-studio') + later('b'),
   '/order/shadow-mount': table + part('scv-runtime') + `<div id="host"></div><script>host.attachShadow({ mode: 'open' }).innerHTML = ${JSON.stringify(part('scv-runtime-css') + el('a'))};</script>` + part('scv-canvas') + part('scv-studio'), // style inside host's shadow
+  '/order/canvas-studio-before-runtime': table + part('scv-runtime-css') + part('scv-canvas') + part('scv-studio') + part('scv-runtime') + el('a'),
   '/bare': part('scv-runtime') + el('a') + el('b'), // no style block - unthemed
 };
+
+// saves from in-page mounts - pieces loaded however host likes, export written by runtime alone
+const inner = id => part(id).replace(/^<[^>]+>/, '').replace(/<\/(style|script)>$/, '');
+const THEME_CSS = inner('scv-runtime-css');
+const PIECES = {
+  '/pieces/runtime.js': inner('scv-runtime'), '/pieces/canvas.js': inner('scv-canvas'), '/pieces/studio.js': inner('scv-studio'),
+  '/pieces/theme.css': THEME_CSS,
+  '/pieces/runtime-probe.js': inner('scv-runtime').replace("'use strict';\n", "'use strict';\nwindow.__probe = '</script></style>';\n"), // only a src file can hold it raw
+  '/pieces/theme-probe.css': THEME_CSS + '\n.scv-probe::after { content: "</style>"; }',
+  '/pieces/theme-lossy.css': THEME_CSS.replace(/^\s*--danger:[^\n]*\n/m, ''),
+};
+const src = (rt = 'runtime') => `<script src="/pieces/${rt}.js"></script><script src="/pieces/canvas.js"></script><script src="/pieces/studio.js"></script>`;
+const mountEl = '<scv-patchbay id="m" style="width:300px;height:200px"></scv-patchbay>';
+const MOUNTS = {
+  '/mount/src': `<link rel="stylesheet" href="/pieces/theme.css">${src()}${mountEl}`,
+  '/mount/module': `<link id="scv-runtime-css" rel="stylesheet" href="/pieces/theme.css">${['runtime', 'canvas', 'studio'].map(k => `<script type="module" src="/pieces/${k}.js"></script>`).join('')}${mountEl}`,
+  '/mount/shadow': `${src()}<div id="host"></div><script>host.attachShadow({ mode: 'open' }).innerHTML = ${JSON.stringify(part('scv-runtime-css') + mountEl)};</script>`,
+  '/mount/probe': `<link rel="stylesheet" href="/pieces/theme-probe.css">${src('runtime-probe')}${mountEl}`,
+  '/mount/lossy': `<link rel="stylesheet" href="/pieces/theme-lossy.css">${src()}${mountEl}`,
+  '/mount/overrides': `<style>scv-patchbay { --background-sunk: rgb(9, 9, 9); }</style><link rel="stylesheet" href="/pieces/theme.css">${src()}<scv-patchbay id="m" style="--text-base: rgb(7, 7, 7); width:300px;height:200px"></scv-patchbay>`,
+};
+const savedFiles = new Map();
 
 // foreign document: no patchbay file around it, only the named pieces - runtime, then canvas, then studio
 const foreign = ids => `<!doctype html><html><head>${part('scv-runtime-css')}${part('scv-runtime')}</head><body><scv-patchbay style="width:200px;height:100px"></scv-patchbay>${ids.map(part).join('')}</body></html>`;
@@ -38,10 +61,17 @@ const srv = createServer((req, res) => {
   if (path === '/studio') return res.end(foreign(['scv-canvas', 'scv-studio']));
   if (path === '/page') return res.end('<!doctype html><title>k</title><p id="k">kernel</p>');
   if (ORDERS[path]) return res.end(`<!doctype html><html><head></head><body>${ORDERS[path]}</body></html>`);
+  if (PIECES[path]) { res.setHeader('content-type', path.endsWith('.css') ? 'text/css' : 'text/javascript'); return res.end(PIECES[path]); }
+  if (MOUNTS[path]) return res.end(`<!doctype html><html><head></head><body>${MOUNTS[path]}</body></html>`);
+  if (path === '/mount/xorigin') return res.end(`<!doctype html><html><head></head><body><link rel="stylesheet" href="${other}/pieces/theme.css">${src()}${mountEl}</body></html>`);
+  if (path.startsWith('/saved/')) return res.end(savedFiles.get(path.slice(7)) || '');
   res.statusCode = 404; res.end();
 });
 await new Promise(r => srv.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${srv.address().port}`;
+const xsrv = createServer((req, res) => { res.setHeader('content-type', 'text/css'); res.end(THEME_CSS); }); // other origin, no cors - rules unreadable
+await new Promise(r => xsrv.listen(0, '127.0.0.1', r));
+const other = `http://127.0.0.1:${xsrv.address().port}`;
 
 const { pageWsUrl, cleanup } = await launchChrome();
 const { ws, send, waitEvent } = await connect(pageWsUrl);
@@ -54,7 +84,21 @@ ws.addEventListener('message', e => {
 });
 const js = async expr => (await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true }))?.result?.result?.value;
 const nav = async url => { await send('Page.navigate', { url }); await waitEvent('Page.loadEventFired'); await js('new Promise(r => requestAnimationFrame(() => r()))'); };
-const done = () => { try { ws.close(); } catch {} cleanup(); srv.close(); };
+const done = () => { try { ws.close(); } catch {} cleanup(); srv.close(); xsrv.close(); };
+const PB = `(document.querySelector('scv-patchbay') || document.getElementById('host')?.shadowRoot.querySelector('scv-patchbay'))`;
+const saveFrom = (kinds, setup = '') => js(`(async () => { // waits for studio, wires one receiver, saves each kind
+  for (let i = 0; i < 100 && typeof ${PB}?.save !== 'function'; i++) await new Promise(r => setTimeout(r, 20));
+  const pb = ${PB}; ${setup}
+  if (!pb.querySelector('output')) { const it = document.createElement('scv-item'), out = document.createElement('output'); out.setAttribute('data-scv-receives', 'o'); out.dataset.scvId = 'out'; it.append(out); pb.append(it); }
+  const r = {}; for (const k of ${JSON.stringify(kinds)}) r[k] = await (await pb.save(k)).text();
+  return r;
+})()`);
+const opened = async (key, text, route = true) => { // saved file on its own - starts, themed, routes
+  savedFiles.set(key, text); uncaught.length = 0;
+  await nav(`${base}/saved/${key}`);
+  return js(`(() => { const pb = document.querySelector('scv-patchbay'); if (${route}) { pb.setMode?.('use'); pb.routeSend('o', 'v'); }
+    return { stamp: document.documentElement.dataset.scvRuntime, themed: !!getComputedStyle(pb).getPropertyValue('--background-sunk'), routed: pb.querySelector('output')?.value, studio: typeof pb.save }; })()`);
+};
 
 const RUNTIME = ['routeSend', 'onRoute', 'invalidate', 'nodeType'];
 const CANVAS = ['setView', 'setZoom'];
@@ -156,6 +200,65 @@ try {
   })()`);
   ok(moved && moved.boots === 0 && moved.same && moved.routed === 'here' && moved.studio === 'function', `moved patchbay never boots again, keeps items and routing (${JSON.stringify(moved)})`);
   ok(moved && moved.before.join() === '1,1' && moved.after.join() === '1,1', `moved patchbay keeps node and component state - nothing reruns (${JSON.stringify(moved)})`);
+
+  // saves from in-page mounts open as complete files, however host loaded the pieces
+  for (const path of ['/mount/src', '/mount/module', '/mount/shadow']) {
+    await nav(base + path);
+    const saves = await saveFrom(['quine', 'publish']);
+    for (const kind of ['quine', 'publish']) {
+      const r = await opened(path.slice(7) + '-' + kind, saves?.[kind] || '');
+      ok(r?.stamp === '1.5.0' && r.themed && r.routed === 'v' && r.studio === (kind === 'quine' ? 'function' : 'undefined'), `${path} ${kind}: saved file starts on its own, themed, routes, stamped 1.5.0 (${JSON.stringify(r)})`);
+      ok(uncaught.length === 0, `${path} ${kind}: saved file opens with no page errors (${uncaught.join(' | ')})`);
+    }
+  }
+
+  // round trip: in-page save, opened standalone, saved again - same bytes
+  await nav(base + '/mount/module');
+  const first = (await saveFrom(['quine']))?.quine;
+  await opened('trip', first || '', false); // untouched - a routed value would change what it holds
+  const second = (await saveFrom(['quine']))?.quine;
+  const at = first && second ? [...first].findIndex((c, i) => c !== second[i]) : -1;
+  ok(first && first === second, `save from in-page mount, reopened and saved again, is byte-identical (${first?.length} vs ${second?.length}, first difference ${JSON.stringify(first?.slice(at - 60, at + 40))} / ${JSON.stringify(second?.slice(at - 60, at + 40))})`);
+
+  // patchbay file writes its own blocks back byte for byte
+  await nav(base + '/pb');
+  const own = await js(`(async () => {
+    const pb = document.querySelector('scv-patchbay'), r = {};
+    for (const k of ['quine', 'canvas', 'publish']) {
+      const t = await (await pb.save(k)).text();
+      r[k] = ['scv-runtime-css', 'scv-runtime', 'scv-canvas', 'scv-studio'].map(id => t.includes(document.getElementById(id).outerHTML) ? 1 : 0).join('')
+        + (t.includes(document.querySelector('link[rel="icon"]').outerHTML) ? ' icon' : '') + (t.includes('data-scv-runtime="' + document.documentElement.dataset.scvRuntime + '"') ? ' stamp' : '');
+    }
+    return r;
+  })()`);
+  ok(own?.quine === '1111 icon stamp' && own?.canvas === '1110 icon stamp' && own?.publish === '1100 icon stamp', `patchbay file saves its blocks byte for byte - nothing sits outside a block's function (${JSON.stringify(own)})`);
+
+  // </script and </style inside a block or theme still save into a file that opens
+  await nav(base + '/mount/probe');
+  const probe = await opened('probe', (await saveFrom(['quine']))?.quine || '');
+  const probed = await js(`(() => { const d = document.createElement('div'); d.className = 'scv-probe'; document.body.append(d); return [window.__probe, getComputedStyle(d, '::after').content]; })()`);
+  ok(probe?.themed && probe.routed === 'v' && uncaught.length === 0, `block and theme holding </script and </style save into a file that opens (${JSON.stringify(probe)} ${uncaught.join(' | ')})`);
+  ok(probed?.[0] === '</script></style>' && probed?.[1] === '"</style>"', `escaped sequences come back as written (${JSON.stringify(probed)})`);
+
+  // cross-origin theme: save works, one warning, no theme written
+  await nav(base + '/mount/xorigin'); warned.length = 0;
+  const xo = (await saveFrom(['quine']))?.quine || '';
+  ok(warned.filter(w => w.includes('theme not saved - load scv-runtime-css inline or from the same origin')).length === 1 && !xo.slice(0, xo.indexOf('<script id="scv-runtime">')).includes('<style'), `cross-origin theme: one warning, no theme in file (${warned.join(' | ')})`);
+  const xr = await opened('xorigin', xo);
+  ok(xr?.routed === 'v' && uncaught.length === 0, `cross-origin theme: saved file still opens and routes (${JSON.stringify(xr)})`);
+
+  // token missing from read-back theme is named
+  await nav(base + '/mount/lossy'); warned.length = 0;
+  await saveFrom(['publish']);
+  ok(warned.some(w => /theme read back without --danger$/.test(w)), `read-back theme missing a token warns, naming it (${warned.join(' | ')})`);
+
+  // marker, not selector: host's own sheet styling scv-patchbay never travels - inline override does
+  await nav(base + '/mount/overrides');
+  const ov = (await saveFrom(['quine']))?.quine || '';
+  const ovr = await opened('overrides', ov);
+  const tokens = await js(`(() => { const s = getComputedStyle(document.querySelector('scv-patchbay')); return [s.getPropertyValue('--text-base').trim(), s.getPropertyValue('--background-sunk').trim()]; })()`);
+  ok(!/rgb\(9, 9, 9\)/.test(ov) && ovr?.themed && tokens?.[1] && tokens[1] !== 'rgb(9, 9, 9)', `host sheet styling scv-patchbay never written into export (${tokens})`);
+  ok(tokens?.[0] === 'rgb(7, 7, 7)', `inline override on element travels with save (${tokens})`);
 
   // runtime-only host takes in harvest by hand: def read as data, element defined, its code never runs
   await nav(base + '/runtime');

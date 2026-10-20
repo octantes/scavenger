@@ -5,9 +5,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>patchbay</title>
-<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="%23986c98"/></svg>'>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%226%22 fill=%22%23986c98%22/%3E%3C/svg%3E">
 <style id="scv-runtime-css">
 :root[data-scv-runtime], scv-patchbay { /* theme enforced by token tests - on element, never themes host page */
+  --scv-theme: 1.5.0; /* marks theme sheet for saves, wherever host loaded it */
 
   --font-mono: 'SF Mono', 'Consolas', 'Menlo', 'DejaVu Sans Mono', monospace;
 
@@ -55,8 +56,7 @@
 :root[data-scv-runtime] *, scv-patchbay * { box-sizing: border-box; }
 :root[data-scv-runtime], :root[data-scv-runtime] > body { margin: 0; padding: 0; background: var(--background-sunk); color: var(--text-base); font-family: var(--font-mono); font-size: var(--fs-b); }
 </style>
-<script id="scv-runtime">
-(() => {
+<script id="scv-runtime">(function scvRuntime() {
 'use strict';
 if (customElements.get('scv-patchbay')) return; // one definition per page
 
@@ -1088,7 +1088,7 @@ const _describe = pb => { // what patch offers - read from dom, nothing runs
     splitWords(n.getAttribute(ATTR_ACTION)).forEach(t => { const c = channelOf(t); if (c) note(c, 'receives'); });
   });
   pb.querySelectorAll('scv-logic').forEach(n => { if (patchbayOf(n) === pb && !types.has(n.dataset.type)) types.set(n.dataset.type, { type: n.dataset.type, inputs: data(n.def.inputs), outputs: data(n.def.outputs) }); });
-  return { scv: 'description', version: document.documentElement.getAttribute('data-scv-runtime') || '', channels: [...chs.values()], nodes: [...types.values()] };
+  return { scv: 'description', version: VERSION, channels: [...chs.values()], nodes: [...types.values()] };
 };
 let _bridged = false;
 const _bridge = () => {
@@ -1400,6 +1400,15 @@ const SHADOW_CSS = `
 `;
 const sheet = css => { const s = new CSSStyleSheet(); s.replaceSync(css); return s; };
 let _shadowSheet = null;
+const VERSION = '1.5.0'; // written into every save - never read from page
+const THEME_TOKENS = [ // theme's own - tokens tier and saver both check this list
+  '--output', '--input', '--danger', '--success',
+  '--background-sunk', '--background-raised',
+  '--text-base', '--text-dim', '--text-faint', '--border',
+  '--corner-low', '--corner-high',
+  '--ease-out', '--ease-swift', '--duration-fast', '--duration-base', '--duration-slow',
+  '--font-mono', '--fs-a', '--fs-b', '--fs-c', '--fs-d',
+];
 const _addons = [];
 const _pbs = []; // weak - use() reaches patchbays already up
 let _themed = false;
@@ -1503,6 +1512,7 @@ class ScvPatchbay extends HTMLElement {
 }
 
 Object.assign(kit, {
+  VERSION, THEME_TOKENS, sources: { runtime: '(' + scvRuntime + ')()' }, // block is one function - saves write it back whole
   ATTR_EMITS, ATTR_RECEIVES, ATTR_ACTION, WIRING_SEL, NODE_TYPES, VERBS,
   splitWords, uid, px, debug, channelOf, collectChannels, hostOf, itemOf, patchbayOf, onFrame, whenGone, whenReady,
   pulse, isPulse, asset, quests, clock, shared, unshare, isShared: key => _shared.has(key), patch, resolveRefs, patchbayOfEvent, chOf, portOf, channels, portAngle,
@@ -1515,16 +1525,15 @@ document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet(PAGE_CSS)];
 customElements.define('scv-item', ScvItem);
 customElements.define('scv-logic', ScvLogic);
 customElements.define('scv-patchbay', ScvPatchbay);
-})();
-</script>
+})()</script>
 </head>
 <body>
 <scv-patchbay></scv-patchbay>
-<script id="scv-canvas">
-(() => {
+<script id="scv-canvas">(function scvCanvas() {
 'use strict';
 const PB = customElements.get('scv-patchbay');
-if (!PB) return;
+if (!PB) return void customElements.whenDefined('scv-patchbay').then(scvCanvas); // runtime comes later - start then
+PB.kit.sources.canvas = '(' + scvCanvas + ')()'; // block is one function - saves write it back whole
 
 // infinite pan and zoom - view never saved
 
@@ -1597,13 +1606,12 @@ PB.use((pb, kit) => {
   [...pb.children].forEach(watch);
   new MutationObserver(rs => rs.forEach(r => r.addedNodes.forEach(watch))).observe(pb, { childList: true });
 });
-})();
-</script>
-<script id="scv-studio">
-(() => {
+})()</script>
+<script id="scv-studio">(function scvStudio() {
 'use strict';
 const PB = customElements.get('scv-patchbay');
-if (!PB) return;
+if (!PB) return void customElements.whenDefined('scv-patchbay').then(scvStudio); // runtime comes later - start then
+PB.kit.sources.studio = '(' + scvStudio + ')()'; // block is one function - saves write it back whole
 const kit = PB.kit;
 const { ATTR_EMITS, ATTR_RECEIVES, ATTR_ACTION, splitWords, uid, px, itemOf, onFrame, isPulse } = kit;
 
@@ -2502,14 +2510,32 @@ const studio = pb => {
 
 // save by item into blob parts - peak is largest, never whole document
 
-const VERSION = document.documentElement.getAttribute('data-scv-runtime') || '';
 const LICENSE = '<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->\n\n';
 const NAMES = { quine: 'scavenger quine', canvas: 'scavenger canvas', publish: 'scavenger publish' };
-const SCRIPTS = { quine: ['scv-canvas', 'scv-studio'], canvas: ['scv-canvas'], publish: [] };
+const SCRIPTS = { quine: ['canvas', 'studio'], canvas: ['canvas'], publish: [] };
+const ICON = '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%226%22 fill=%22%23986c98%22/%3E%3C/svg%3E">'; // own icon, never host's
 
 const escAttr = v => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 const startTag = el => '<' + el.localName + [...el.attributes].map(a => ` ${a.name}="${escAttr(a.value)}"`).join('') + '>';
-const outer = id => document.getElementById(id)?.outerHTML || '';
+const scriptOf = k => kit.sources[k] ? `<script id="scv-${k}">${kit.sources[k].replace(/<\/script/gi, '<\\/script')}<\/script>\n` : (console.warn('[scav] scv-' + k + ' not loaded - save goes without it'), '');
+
+// theme: exact text from its style block, else marked sheet read back - never by selector, host overrides match it
+
+const THEME_MARK = '--scv-theme';
+const themeOf = pb => {
+  const root = pb.getRootNode(), el = root.getElementById?.('scv-runtime-css') || document.getElementById('scv-runtime-css');
+  if (el?.localName === 'style') return el.textContent;
+  for (const sh of new Set([el?.sheet, ...(root.styleSheets || []), ...(root.adoptedStyleSheets || []), ...document.styleSheets, ...document.adoptedStyleSheets])) {
+    let rules; try { rules = sh && [...sh.cssRules]; } catch { continue; } // cross-origin - rules unreadable
+    if (!rules?.some(r => r.style?.getPropertyValue(THEME_MARK))) continue;
+    const text = rules.map(r => r.cssText).join('\n'), lost = kit.THEME_TOKENS.filter(t => !text.includes(t + ':'));
+    if (lost.length) console.warn('[scav] theme read back without ' + lost.join(', ')); // cssom drops what this browser can't parse
+    return text;
+  }
+  console.warn('[scav] theme not saved - load scv-runtime-css inline or from the same origin');
+  return null;
+};
+const themeHtml = pb => { const t = themeOf(pb); return t == null ? '' : `<style id="scv-runtime-css">${t.replace(/<\/style/gi, '<\\/style')}<\/style>\n`; };
 
 const freeze = root => root.querySelectorAll('input, textarea, select').forEach(f => { // live values aren't attributes
   if (f.tagName === 'INPUT') {
@@ -2615,13 +2641,13 @@ const save = async (pb, kind = 'quine') => {
   if (!SCRIPTS[kind]) throw new Error('unknown export ' + kind);
   pb.setAttribute('extent', extentOf(pb));
   const defs = _defs(), used = { tags: new Set(), nodes: new Set(), refs: new Set() };
-  const parts = [LICENSE, `<html lang="en" data-scv-runtime="${escAttr(VERSION)}">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>${NAMES[kind]}</title>\n`,
-    document.querySelector('link[rel="icon"]')?.outerHTML || '', '\n', outer('scv-runtime-css'), '\n', outer('scv-runtime'), '\n</head>\n<body>\n', startTag(pb), '\n'];
+  const parts = [LICENSE, `<html lang="en" data-scv-runtime="${escAttr(kit.VERSION)}">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>${NAMES[kind]}</title>\n`,
+    ICON, '\n', themeHtml(pb), scriptOf('runtime'), '</head>\n<body>\n', startTag(pb), '\n']; // written by runtime, never copied from page
   for (const el of pb.children) if (!el.hasAttribute('data-scv-appended')) parts.push(new Blob([kit.isDef(el) ? defHtml(el) : await _item(el, defs, used)]), '\n'); // string freed now, not at end of save - own types ride as children
   const d = await _defsOf(used, defs), held = new Set(kit.compsOf(pb));
   for (const t of used.tags) if (kit.comps.has(t) && !held.has(t)) parts.push(kit.comps.get(t).tpl.outerHTML, '\n'); // placed without its def - def ships along
   parts.push('</scv-patchbay>\n', ...d.assets, ...d.harvests);
-  SCRIPTS[kind].forEach(id => parts.push(outer(id), '\n'));
+  SCRIPTS[kind].forEach(k => parts.push(scriptOf(k)));
   parts.push('</body>\n</html>\n');
   return new Blob(parts, { type: 'text/html' });
 };
@@ -2635,7 +2661,6 @@ const download = (blob, name) => {
 };
 
 PB.use(studio);
-})();
-</script>
+})()</script>
 </body>
 </html>

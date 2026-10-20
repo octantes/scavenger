@@ -20,7 +20,7 @@ const srv = createServer((req, res) => {
   const path = req.url.split('?')[0];
   if (path === '/pb') { res.setHeader('content-type', 'text/html'); return res.end(readFileSync(pbFile)); }
   if (path === '/host') { // host page mounting two patchbays from runtime and canvas pieces - not a patchbay file
-    const f = readFileSync(pbFile, 'utf8'), part = id => f.match(new RegExp(`<(style|script) id="${id}">[\\s\\S]*?</(style|script)>`))[0];
+    const f = readFileSync(pbFile, 'utf8'), part = id => f.match(new RegExp(`<(style|script) id="${id}">[\\s\\S]*?</\\1>`))[0];
     res.setHeader('content-type', 'text/html');
     return res.end(`<!doctype html><html><head><style>body{background:rgb(1,2,3)} #b{--background-sunk:rgb(9,9,9)}</style>${part('scv-runtime-css')}${part('scv-runtime')}</head><body><scv-patchbay id="a" style="width:200px;height:100px"></scv-patchbay><scv-patchbay id="b" style="width:200px;height:100px"></scv-patchbay>${part('scv-canvas')}</body></html>`);
   }

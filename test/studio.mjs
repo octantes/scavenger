@@ -616,13 +616,16 @@ try {
   await run('pasted nested patchbay keeps only real node scripts - forged ones never kept or run', async () => {
     const r = await js(`(async () => {
       window.__forged = 0;
-      const nested = '<script data-scv-node>window.__forged = 1; defineNode({ name: "forged-a" })<\\/script><script type="module" data-scv-node>window.__forged = 2; defineNode({ name: "forged-b" })<\\/script><script type="scv/node" data-scv-node>defineNode({ name: "kept", icon: "K" })<\\/script><scv-logic data-type="kept"></scv-logic>';
-      const out = T.pb.import('<scv-patchbay><scv-item style="left:0px;top:0px"><scv-patchbay>' + nested + '</scv-patchbay></scv-item></scv-patchbay>', { at: { x: 100, y: 1100 } });
+      const nested = '<script data-scv-node>window.__forged = 1; defineNode({ name: "forged-a" })<\\/script><script type="module" data-scv-node>window.__forged = 2; defineNode({ name: "forged-b" })<\\/script><script type="scv/node" data-scv-node data-x-mark>defineNode({ name: "kept", icon: "K" })<\\/script><scv-logic data-type="kept"></scv-logic>';
+      const top = '<script data-scv-node data-x-mark>defineNode({ name: "top-untyped" })<\\/script>'; // file's own def - runs, typed or not
+      const out = T.pb.import('<scv-patchbay><scv-item style="left:0px;top:0px"><scv-patchbay>' + nested + '</scv-patchbay></scv-item></scv-patchbay>' + top, { at: { x: 100, y: 1100 } });
       await T.frame();
       const inner = out[0]?.querySelector('scv-patchbay');
-      return [window.__forged, inner && [...inner.children].filter(c => c.localName === 'script').length, inner?.nodeType('forged-a'), inner?.nodeType('forged-b'), inner?.nodeType('kept')?.icon, inner?.querySelector('scv-logic')?.def.name, T.pb.nodeType('kept')];
+      const stored = [inner?.querySelector(':scope > script'), [...T.pb.children].find(c => c.localName === 'script' && c.textContent.includes('top-untyped'))]; // fresh and inert: runtime's two attributes only
+      return [window.__forged, inner && [...inner.children].filter(c => c.localName === 'script').length, inner?.nodeType('forged-a'), inner?.nodeType('forged-b'), inner?.nodeType('kept')?.icon, inner?.querySelector('scv-logic')?.def.name, T.pb.nodeType('kept'),
+        stored.map(e => e && [...e.attributes].map(a => a.name + '=' + a.value).join(' ')), !!T.pb.nodeType('top-untyped')];
     })()`);
-    return [JSON.stringify(r) === JSON.stringify([0, 1, null, null, 'K', 'kept', null]), r];
+    return [JSON.stringify(r) === JSON.stringify([0, 1, null, null, 'K', 'kept', null, ['type=scv/node data-scv-node=', 'type=scv/node data-scv-node='], true]), r];
   });
   await run('duplicate leaves other instances of its type running', async () => {
     const r = await js(`(async () => {

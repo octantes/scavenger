@@ -1342,11 +1342,15 @@ const nodeDefs = s => {
 };
 const typeOf = (el, name = el.dataset.type) => patchbayOf(el)?._typeOf?.(name) || NODE_TYPES.get(name) || UNKNOWN;
 const _defAt = pb => [...pb.children].find(c => !isDef(c)) || null; // defs lead, in arrival order
+const nodeScript = text => { // stored script always written here, inert - never parsed one moved in
+  const s = document.createElement('script');
+  s.type = 'scv/node'; s.setAttribute('data-scv-node', ''); s.textContent = text;
+  return s;
+};
 const addNodeSource = (pb, text) => { // > names defined - script kept as child, older one fully redefined goes
   const held = [...pb.children].find(c => isNodeScript(c) && c.textContent === text);
   if (held) return nodeDefs(held).map(d => d.name); // same source - placed nodes keep running
-  const s = document.createElement('script');
-  s.type = 'scv/node'; s.setAttribute('data-scv-node', ''); s.textContent = text;
+  const s = nodeScript(text);
   const names = nodeDefs(s).map(d => d.name);
   if (!names.length) return names;
   pb.insertBefore(s, _defAt(pb));
@@ -1502,7 +1506,7 @@ Object.assign(kit, {
   ATTR_EMITS, ATTR_RECEIVES, ATTR_ACTION, WIRING_SEL, NODE_TYPES, VERBS,
   splitWords, uid, px, debug, channelOf, collectChannels, hostOf, itemOf, patchbayOf, onFrame, whenGone, whenReady,
   pulse, isPulse, asset, quests, clock, shared, unshare, isShared: key => _shared.has(key), patch, resolveRefs, patchbayOfEvent, chOf, portOf, channels, portAngle,
-  isEmitter: el => _emitters.has(el), defineNode, addNodeSource, nodeDefs, isDef, isNodeScript, defineComponent, addComponent, compConflict, compsOf, comps: _comps, compTag,
+  isEmitter: el => _emitters.has(el), defineNode, addNodeSource, nodeScript, nodeDefs, isDef, isNodeScript, defineComponent, addComponent, compConflict, compsOf, comps: _comps, compTag,
   nodeTypes: pb => new Map([...NODE_TYPES, ...(pb?._sync() || [])]),
   mountHarvest, harvestOf, defineHarvest, defang, remap, reframe, morphShadow, extractShadowMarkup, boxScopeCss, snapSlots, restoreSlots, slotValue, setSlot,
 });
@@ -2347,7 +2351,7 @@ const studio = pb => {
     const defs = [...u.querySelectorAll('scv-patchbay')].map(p => [p, [...p.children].filter(kit.isDef)]);
     defs.forEach(([, ds]) => ds.forEach(d => d.remove()));
     kit.defang(u);
-    defs.forEach(([p, ds]) => p.prepend(...ds));
+    defs.forEach(([p, ds]) => p.prepend(...ds.map(d => d.localName === 'script' ? kit.nodeScript(d.textContent) : d)));
   };
   const adopt = (units, at, offset) => { // fresh ids, colliding channels re-minted, centred on pointer
     units.forEach(u => { defangKeepingDefs(u); [u, ...u.querySelectorAll('[data-scv-id]')].forEach(n => { if (n.dataset.scvId) n.dataset.scvId = (n.localName === 'scv-logic' ? 'logic_' : 'comp_') + uid(9); }); });

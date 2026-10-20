@@ -1426,9 +1426,13 @@ const pageSheet = sh => { // > sh, on page and in every shadow root holding a pa
   return sh;
 };
 let _themed = false;
-const _themeCheck = pb => whenReady(() => { // one read - host may place style block after element
-  if (_themed || !pb.isConnected || getComputedStyle(pb).getPropertyValue('--background-sunk')) return;
-  _themed = true; console.warn('[scav] scv-runtime-css missing - patchbay has no theme');
+const _themeCheck = pb => whenReady(() => { // style block may come after element, linked theme may still be loading
+  const bare = () => !_themed && pb.isConnected && !getComputedStyle(pb).getPropertyValue('--background-sunk');
+  if (!bare()) return;
+  const root = pb.getRootNode(), waits = [...(root instanceof ShadowRoot ? root.querySelectorAll('link[rel~="stylesheet"]') : [])].filter(l => !l.sheet) // shadow root mounted after page load - nothing else waits on its links
+    .map(l => new Promise(r => { l.addEventListener('load', r, { once: true }); l.addEventListener('error', r, { once: true }); setTimeout(r, 5000); })); // one failed already fires nothing
+  if (document.readyState !== 'complete') waits.push(new Promise(r => addEventListener('load', r, { once: true })));
+  Promise.all(waits).then(() => { if (bare()) { _themed = true; console.warn('[scav] scv-runtime-css missing - patchbay has no theme'); } });
 });
 const kit = {}; // internals for canvas and studio
 

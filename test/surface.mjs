@@ -50,6 +50,9 @@ const MOUNTS = {
  '/mount/fonts': `<style>body { font-family: serif; font-size: 23px; line-height: 3; letter-spacing: 4px; text-transform: uppercase; word-spacing: 9px; }</style><link rel="stylesheet" href="/pieces/theme.css">${src()}${mountEl}`, // host text styles that would leak in
   '/mount/layout': `<link rel="stylesheet" href="/pieces/theme.css">${src()}${layoutPair}`, // same patch in document and shadow root - every piece there before mount
   '/mount/layout-late': `<link rel="stylesheet" href="/pieces/theme.css"><script src="/pieces/runtime.js"></script>${layoutPair}<script src="/pieces/canvas.js"></script><script src="/pieces/studio.js"></script>`, // canvas and studio sheets arrive after mount
+  '/mount/slow-link': `${src()}${mountEl}<script>document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: '/pieces/theme-slow.css' }));</script>`, // parsing never waits for it - lands after
+  '/mount/slow-link-shadow': `${src()}<div id="host"></div><script>addEventListener('load', () => { host.attachShadow({ mode: 'open' }).innerHTML = '<link rel="stylesheet" href="/pieces/theme-slow.css">${mountEl}'; });</script>`, // mounted after page load, own link still coming
+  '/mount/dead-link': `${src()}${mountEl}<link rel="stylesheet" href="/pieces/missing.css">`,
   '/mount/overrides': `<style>scv-patchbay { --background-sunk: rgb(9, 9, 9); }</style><link rel="stylesheet" href="/pieces/theme.css">${src()}<scv-patchbay id="m" style="--text-base: rgb(7, 7, 7); width:300px;height:200px"></scv-patchbay>`,
 };
 const savedFiles = new Map();
@@ -65,6 +68,7 @@ const srv = createServer((req, res) => {
   if (path === '/studio') return res.end(foreign(['scv-canvas', 'scv-studio']));
   if (path === '/page') return res.end('<!doctype html><title>k</title><p id="k">kernel</p>');
   if (ORDERS[path]) return res.end(`<!doctype html><html><head></head><body>${ORDERS[path]}</body></html>`);
+  if (path === '/pieces/theme-slow.css') return void setTimeout(() => { res.setHeader('content-type', 'text/css'); res.end(THEME_CSS); }, 800); // lands after parsing ends
   if (PIECES[path]) { res.setHeader('content-type', path.endsWith('.css') ? 'text/css' : 'text/javascript'); return res.end(PIECES[path]); }
   if (MOUNTS[path]) return res.end(`<!doctype html><html><head></head><body>${MOUNTS[path]}</body></html>`);
   if (path === '/mount/xorigin') return res.end(`<!doctype html><html><head></head><body><link rel="stylesheet" href="${other}/pieces/theme.css">${src()}${mountEl}</body></html>`);
@@ -182,6 +186,15 @@ try {
     ok(uncaught.length === 0, `${path}: no page errors (${uncaught.join(' | ')})`);
     ok(!warned.some(w => w.includes(THEME)), `${path}: no theme warning with style block (${warned.join(' | ')})`);
   }
+  // linked theme still loading when parsing ends - no warning once it applies, a dead link still warns
+  for (const [path, warns] of [['/mount/slow-link', 0], ['/mount/slow-link-shadow', 0], ['/mount/dead-link', 1]]) {
+    warned.length = 0;
+    await nav(base + path);
+    const themed = await js(`(async () => { await new Promise(r => setTimeout(r, 1200)); return !!getComputedStyle(${PB}).getPropertyValue('--background-sunk'); })()`);
+    const n = warned.filter(w => w.includes(THEME)).length;
+    ok(n === warns && themed === !warns, `${path}: ${warns ? 'warns once, unthemed' : 'themed, no warning'} (${n} warnings, themed ${themed})`);
+  }
+
   uncaught.length = 0; warned.length = 0;
   await nav(base + '/bare');
   const bare = await js(`(() => { const pb = document.getElementById('b'), out = document.createElement('output'), it = document.createElement('scv-item');

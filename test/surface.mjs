@@ -40,6 +40,7 @@ const PIECES = {
 };
 const src = (rt = 'runtime') => `<script src="/pieces/${rt}.js"></script><script src="/pieces/canvas.js"></script><script src="/pieces/studio.js"></script>`;
 const mountEl = '<scv-patchbay id="m" style="width:300px;height:200px"></scv-patchbay>';
+const layoutPair = `<scv-patchbay id="d" style="width:300px;height:200px"></scv-patchbay><div id="host"></div><script>host.attachShadow({ mode: 'open' }).innerHTML = ${JSON.stringify(part('scv-runtime-css') + '<scv-patchbay id="s" style="width:300px;height:200px"></scv-patchbay>')};</script>`;
 const MOUNTS = {
   '/mount/src': `<link rel="stylesheet" href="/pieces/theme.css">${src()}${mountEl}`,
   '/mount/module': `<link id="scv-runtime-css" rel="stylesheet" href="/pieces/theme.css">${['runtime', 'canvas', 'studio'].map(k => `<script type="module" src="/pieces/${k}.js"></script>`).join('')}${mountEl}`,
@@ -47,6 +48,8 @@ const MOUNTS = {
   '/mount/probe': `<link rel="stylesheet" href="/pieces/theme-probe.css">${src('runtime-probe')}${mountEl}`,
   '/mount/lossy': `<link rel="stylesheet" href="/pieces/theme-lossy.css">${src()}${mountEl}`,
  '/mount/fonts': `<style>body { font-family: serif; font-size: 23px; line-height: 3; letter-spacing: 4px; text-transform: uppercase; word-spacing: 9px; }</style><link rel="stylesheet" href="/pieces/theme.css">${src()}${mountEl}`, // host text styles that would leak in
+  '/mount/layout': `<link rel="stylesheet" href="/pieces/theme.css">${src()}${layoutPair}`, // same patch in document and shadow root - every piece there before mount
+  '/mount/layout-late': `<link rel="stylesheet" href="/pieces/theme.css"><script src="/pieces/runtime.js"></script>${layoutPair}<script src="/pieces/canvas.js"></script><script src="/pieces/studio.js"></script>`, // canvas and studio sheets arrive after mount
   '/mount/overrides': `<style>scv-patchbay { --background-sunk: rgb(9, 9, 9); }</style><link rel="stylesheet" href="/pieces/theme.css">${src()}<scv-patchbay id="m" style="--text-base: rgb(7, 7, 7); width:300px;height:200px"></scv-patchbay>`,
 };
 const savedFiles = new Map();
@@ -211,6 +214,31 @@ try {
       ok(r?.stamp === '1.5.0' && r.themed && r.routed === 'v' && r.studio === (kind === 'quine' ? 'function' : 'undefined'), `${path} ${kind}: saved file starts on its own, themed, routes, stamped 1.5.0 (${JSON.stringify(r)})`);
       ok(uncaught.length === 0, `${path} ${kind}: saved file opens with no page errors (${uncaught.join(' | ')})`);
     }
+  }
+
+  // shadow-root mount lays out like document mount - page sheets reach its root too
+  for (const path of ['/mount/layout', '/mount/layout-late']) {
+    await nav(base + path);
+    const layout = await js(`(async () => {
+      const frame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      for (let i = 0; i < 100 && typeof document.getElementById('host').shadowRoot.getElementById('s')?.save !== 'function'; i++) await new Promise(r => setTimeout(r, 20));
+      const look = async pb => {
+        pb.setMode('edit');
+        const it = document.createElement('scv-item'); it.style.left = '40px'; it.style.top = '30px'; it.innerHTML = '<div data-scv-id="b" style="width:50px;height:20px">x</div>'; pb.append(it);
+        const n = document.createElement('scv-logic'); n.dataset.type = 'accumulator'; n.style.left = '120px'; n.style.top = '60px'; pb.append(n);
+        await frame();
+        const box = pb.getBoundingClientRect(), at = el => { const r = el.getBoundingClientRect(); return [Math.round(r.left - box.left), Math.round(r.top - box.top)]; };
+        const out = { item: at(it), node: at(n), edit: getComputedStyle(n).display };
+        pb.setMode('use'); await frame(); out.use = getComputedStyle(n).display;
+        it.states.add('dimmed'); out.dimmed = getComputedStyle(it).opacity;
+        const s = getComputedStyle(pb); out.overflow = s.overflow; out.touch = s.touchAction;
+        return out;
+      };
+      return [await look(document.getElementById('d')), await look(document.getElementById('host').shadowRoot.getElementById('s'))];
+    })()`);
+    ok(layout && JSON.stringify(layout[1]) === JSON.stringify(layout[0]), `${path}: shadow-root mount lays out like document mount (${JSON.stringify(layout)})`);
+    ok(layout?.[1]?.item?.join() === '40,30' && layout[1].edit === 'flex' && layout[1].use === 'none' && layout[1].dimmed === '0.5' && layout[1].overflow === 'hidden' && layout[1].touch === 'none',
+      `${path}: shadow-root mount: items placed, nodes shown editing and hidden in use, dimmed at half, patchbay clips and takes touch (${JSON.stringify(layout?.[1])})`);
   }
 
   // mounted patchbay ignores host's text styles - text item measures same in host and in saved file

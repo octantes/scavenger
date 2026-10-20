@@ -1412,6 +1412,19 @@ const THEME_TOKENS = [ // theme's own - tokens tier and saver both check this li
 ];
 const _addons = [];
 const _pbs = []; // weak - use() reaches patchbays already up
+const _pageSheets = [];
+const lendSheets = pb => { // page sheets style patchbay's children - shadow root mount needs them in that root
+  const root = pb.getRootNode();
+  if (!(root instanceof ShadowRoot)) return;
+  const add = _pageSheets.filter(sh => !root.adoptedStyleSheets.includes(sh)); // once per root
+  if (add.length) root.adoptedStyleSheets = [...root.adoptedStyleSheets, ...add];
+};
+const pageSheet = sh => { // > sh, on page and in every shadow root holding a patchbay
+  _pageSheets.push(sh);
+  document.adoptedStyleSheets = [...document.adoptedStyleSheets, sh];
+  _pbs.forEach(r => { const pb = r.deref(); if (pb?.isConnected) lendSheets(pb); });
+  return sh;
+};
 let _themed = false;
 const _themeCheck = pb => whenReady(() => { // one read - host may place style block after element
   if (_themed || !pb.isConnected || getComputedStyle(pb).getPropertyValue('--background-sunk')) return;
@@ -1456,6 +1469,7 @@ class ScvPatchbay extends HTMLElement {
     }).observe(this, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-scv-src', 'data-scv-href'] });
   }
   connectedCallback() {
+    lendSheets(this);
     _addons.forEach(a => this._install(a));
     if (this._booted) return; // moved or re-inserted - boots once, state stays
     this._booted = true;
@@ -1519,10 +1533,10 @@ Object.assign(kit, {
   pulse, isPulse, asset, quests, clock, shared, unshare, isShared: key => _shared.has(key), patch, resolveRefs, patchbayOfEvent, chOf, portOf, channels, portAngle,
   isEmitter: el => _emitters.has(el), defineNode, addNodeSource, nodeScript, nodeDefs, isDef, isNodeScript, defineComponent, addComponent, compConflict, compsOf, comps: _comps, compTag,
   nodeTypes: pb => new Map([...NODE_TYPES, ...(pb?._sync() || [])]),
-  mountHarvest, harvestOf, defineHarvest, defang, remap, reframe, morphShadow, extractShadowMarkup, boxScopeCss, snapSlots, restoreSlots, slotValue, setSlot,
+  pageSheet, mountHarvest, harvestOf, defineHarvest, defang, remap, reframe, morphShadow, extractShadowMarkup, boxScopeCss, snapSlots, restoreSlots, slotValue, setSlot,
 });
 
-document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet(PAGE_CSS)];
+pageSheet(sheet(PAGE_CSS));
 customElements.define('scv-item', ScvItem);
 customElements.define('scv-logic', ScvLogic);
 customElements.define('scv-patchbay', ScvPatchbay);
@@ -1541,7 +1555,7 @@ PB.kit.sources.canvas = '(' + scvCanvas + ')()'; // block is one function - save
 const PAGE_CSS = new CSSStyleSheet(); // page level - beats runtime's own scv-patchbay rule, a :host rule wouldn't
 PAGE_CSS.replaceSync(`scv-patchbay:state(canvas) { overflow: hidden; user-select: none; touch-action: none; }
 :root[data-scv-runtime] > body > scv-patchbay:state(canvas) { position: fixed; inset: 0; }`); // patchbay file fills window, mounted one fills its box
-document.adoptedStyleSheets = [...document.adoptedStyleSheets, PAGE_CSS];
+PB.kit.pageSheet(PAGE_CSS);
 const CANVAS_CSS = `
 .layer:focus { outline: none; }
 .grid { position: absolute; inset: 0; pointer-events: none;
@@ -1630,7 +1644,7 @@ scv-patchbay:state(edit) scv-item { cursor: crosshair; }
 scv-item:state(dimmed) { opacity: .5; }
 scv-item:state(dragging) { box-shadow: 0 0 28px rgba(0,0,0,.5); }
 `); // runtime hides nodes
-document.adoptedStyleSheets = [...document.adoptedStyleSheets, DOC_CSS];
+kit.pageSheet(DOC_CSS);
 const HOVER_TAGS = 'div, a, span, p, h1, h2, h3, h4, h5, h6, img, button, input, textarea, select, label, li, td, th, video, canvas, svg';
 const HOVER_CSS = sheet(`
 :is(${HOVER_TAGS}):hover { outline: 1px dashed var(--output) !important; background: var(--selection) !important; cursor: crosshair !important; }

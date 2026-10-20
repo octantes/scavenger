@@ -1323,9 +1323,10 @@ class ScvLogic extends HTMLElement {
 const DEF_SEL = 'script[data-scv-node], template[data-scv-comp]';
 const isDef = n => n?.nodeType === 1 && n.matches(DEF_SEL);
 const isNodeScript = n => n.localName === 'script' && n.hasAttribute('data-scv-node');
+const RESERVED_TYPES = ['inlet', 'outlet']; // built-ins to come - nested patchbay's ports to its parent
 const _valid = def => {
   if (!def?.name || typeof def.name !== 'string') return false;
-  if (NODE_TYPES.get(def.name)?.builtIn) { console.warn('[scav] node type ' + def.name + ' is built in, def ignored'); return false; }
+  if (NODE_TYPES.get(def.name)?.builtIn || RESERVED_TYPES.includes(def.name)) { console.warn('[scav] node type ' + def.name + ' is a built-in name, def ignored'); return false; }
   return true;
 };
 const _read = new WeakMap(); // script > { text, defs } - source runs once per text

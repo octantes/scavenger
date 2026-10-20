@@ -618,6 +618,13 @@ try {
     return [d.log.join() === '2' && n.shadowRoot.querySelector('.dot').textContent === 'L8', d.log];
   });
 
+  await run('reserved inlet and outlet refused with built-in note, rest of file registers', async () => {
+    const pb = T.pb(), warns = [], warn = console.warn; console.warn = (...a) => warns.push(a.join(' '));
+    let out; try { out = pb.import('<script type="scv/node" data-scv-node>defineNode({ name: "inlet" }); defineNode({ name: "outlet" }); defineNode({ name: "beside" });</script>'); } finally { console.warn = warn; }
+    const types = out.map(u => u.dataset.type), noted = warns.filter(w => /node type (inlet|outlet) is a built-in name, def ignored/.test(w)).length;
+    return [types.join() === 'beside' && pb.nodeType('inlet') === null && pb.nodeType('outlet') === null && !!pb.nodeType('beside') && noted === 2, { types, noted }];
+  });
+
   await run('built-in names refused for custom defs', async () => {
     const warn = console.warn; console.warn = () => {};
     let r; try { r = T.kit.defineNode(T.pb(), { name: 'clock' }); } finally { console.warn = warn; }

@@ -2526,8 +2526,9 @@ const studio = pb => {
   pb.duplicate = duplicate;
   enrich();
 
-  pb.save = kind => save(pb, kind);
-  pb.export = async (kind = 'quine') => download(await save(pb, kind), NAMES[kind]);
+  let queue = Promise.resolve(); // save writes to the live page (frozen fields, interned images, extent) - one at a time, so two never interleave
+  pb.save = kind => (queue = queue.catch(() => {}).then(() => save(pb, kind))); // a failed save must not wedge the queue
+  pb.export = async (kind = 'quine') => download(await pb.save(kind), NAMES[kind]);
   setMode('edit');
   if (document.body.children[0] === pb || document.querySelectorAll('scv-patchbay').length === 1) layer.focus({ preventScroll: true }); // standalone takes focus on load
 };

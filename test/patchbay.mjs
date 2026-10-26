@@ -1272,6 +1272,34 @@ try {
     return [unwired === 0 && walks > 0 && span.textContent === 'wired' && sink.log.length === 7, { unwired, afterWiring: walks, got: span.textContent, delivered: sink.log.length }];
   });
 
+  // save - one at a time, so two never interleave their writes to the live page
+
+  await run('two saves started together run one after the other and match', async () => {
+    const pb = T.pb();
+    T.item(pb, T.el('<div data-scv-id="s1">one</div>'), 20, 20);
+    await T.frame();
+    const log = [], real = Element.prototype.setAttribute;
+    pb.setAttribute = function (n, v) { if (n === 'extent') log.push('start'); return real.call(this, n, v); }; // save writes extent first
+    const p1 = pb.save('quine').then(b => { log.push('end1'); return b.text(); });
+    const p2 = pb.save('quine').then(b => { log.push('end2'); return b.text(); });
+    const [a, b] = await Promise.all([p1, p2]);
+    delete pb.setAttribute;
+    return [log.join() === 'start,end1,start,end2' && a === b && a.length > 1000, { log, same: a === b, len: a.length }];
+  });
+
+  await run('saving while a dirty textarea has focus leaves its value, selection and focus', async () => {
+    const pb = T.pb();
+    T.comp('tap', '<textarea data-scv-slot="t">default</textarea>', pb);
+    const el = T.item(pb, document.createElement('scv-tap'));
+    await T.frame();
+    const ta = el.shadowRoot.querySelector('textarea');
+    ta.focus(); ta.value = 'user typed this'; ta.setSelectionRange(5, 9);
+    const before = [ta.value, ta.selectionStart, ta.selectionEnd, el.shadowRoot.activeElement === ta].join();
+    await pb.save('quine');
+    const after = [ta.value, ta.selectionStart, ta.selectionEnd, el.shadowRoot.activeElement === ta].join();
+    return [before === after && after === 'user typed this,5,9,true', { before, after, baked: ta.defaultValue }];
+  });
+
   // clock wakes
 
   await send('Page.addScriptToEvaluateOnNewDocument', { source: `window.__timeouts = 0; const _st = window.setTimeout; window.setTimeout = (...a) => { window.__timeouts++; return _st(...a); };` });

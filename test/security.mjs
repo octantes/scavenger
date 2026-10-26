@@ -96,7 +96,7 @@ ok(isReadAllowed('http://127.0.0.1:3000') === true, 'read gate: 127.0.0.1 on any
 ok(isReadAllowed('http://[::1]:8080') === true, 'read gate: bracketed ipv6 loopback passes');
 ok(isReadAllowed('https://pub.example', ['pub.example']) === true, 'read gate: origin matching request host passes (publish behind proxy)');
 ok(isReadAllowed('https://pub.example:8443', ['pub.example']) === false, 'read gate: same hostname, other port refused');
-ok(isReadAllowed('chrome-extension://abcdef') === true, 'read gate: non-http origin passes');
+ok(isReadAllowed('chrome-extension://abcdef') === false, 'read gate: extension origin refused - an extension is not the local page');
 ok(isReadAllowed('::not a url') === false, 'read gate: malformed origin refused');
 configure({ allowOrigins: ['https://pub.example/'] });
 ok(isReadAllowed('https://pub.example') === true, 'read gate: --allow-origin origin passes, trailing slash normalized');
@@ -141,6 +141,18 @@ if (apiUp) try {
   const namedRead = await call('GET', '/quests', { headers: { origin: 'https://pub.example' } });
   configure({ allowOrigins: [] });
   ok(namedRead.status === 200 && Array.isArray(await namedRead.json()), `GET /quests from --allow-origin origin returns data (${namedRead.status})`);
+
+  // an extension is not the local page - its origin reads nothing unless it is named
+  const EXT = 'chrome-extension://aaaabbbbccccddddeeeeffffgggghhhh';
+  const extRead = await call('GET', '/quests', { headers: { origin: EXT } });
+  ok(extRead.status === 403 && (await extRead.text()) === '' && !extRead.headers.get('access-control-allow-origin'),
+    `GET /quests from an extension origin: 403, empty, no cors (${extRead.status})`);
+  configure({ allowOrigins: [EXT] });
+  const extNamed = await call('GET', '/quests', { headers: { origin: EXT } });
+  configure({ allowOrigins: [] });
+  ok(extNamed.status === 200 && Array.isArray(await extNamed.json()), `extension origin reads only when --allow-origin names it (${extNamed.status})`);
+  const extAfter = await call('GET', '/quests', { headers: { origin: EXT } });
+  ok(extAfter.status === 403, `extension origin refused again once it is no longer named (${extAfter.status})`);
 
   // get /component: serves harvested component file, rejects traversal + missing
   mkdirSync('component', { recursive: true });

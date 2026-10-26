@@ -121,7 +121,8 @@ let TRUST_IPS = (flagValue(['--trust-ip']) || process.env.SCAV_TRUST_IP || '')
 let BIND_HOST = TRUST_IPS.length ? '0.0.0.0' : '127.0.0.1';
 
 // publish served from different origin - named, everything else refused
-const parseOrigins = s => String(s || '').split(',').map(o => o.trim()).filter(Boolean).map(o => { try { return new URL(o).origin; } catch (e) { debug('--allow-origin entry unparseable, ignored', e); return null; } }).filter(o => o && o !== 'null');
+const originKey = u => u.origin !== 'null' ? u.origin : (u.host ? u.protocol + '//' + u.host : null); // a non-special scheme (an extension) serialises its origin as "null" - keep scheme+host so one can still be named
+const parseOrigins = s => String(s || '').split(',').map(o => o.trim()).filter(Boolean).map(o => { try { return originKey(new URL(o)); } catch (e) { debug('--allow-origin entry unparseable, ignored', e); return null; } }).filter(Boolean);
 let ALLOW_ORIGINS = parseOrigins(flagValue(['--allow-origin']) || process.env.SCAV_ALLOW_ORIGIN);
 
 async function findChrome() { // locate chromium binary - checks all os well-known paths
@@ -240,7 +241,7 @@ function isLocalOrigin(origin, port) { // report whether http origin header refe
 function isReadAllowed(origin, hosts = []) { // quests can carry scrapes from logged-in pages - other websites must not read them
   if (!origin || origin === 'null') return true; // same-origin get sends no origin, file:// sends null, curl/node send none
   let u; try { u = new URL(origin); } catch { return false; }
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') return true;
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') { const k = originKey(u); return !!k && ALLOW_ORIGINS.includes(k); } // an extension or other scheme is not the local page - only --allow-origin lets one in
   const hostname = u.hostname.replace(/^\[|\]$/g, '');
   if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return true;
   if (hosts.includes(u.host)) return true; // publish reading own quests through reverse proxy

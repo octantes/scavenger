@@ -31,9 +31,18 @@ const ORDERS = {
 // saves from in-page mounts - pieces loaded however host likes, export written by runtime alone
 const inner = id => part(id).replace(/^<[^>]+>/, '').replace(/<\/(style|script)>$/, '');
 const THEME_CSS = inner('scv-runtime-css');
+// hand-added head elements, and the floor stubs - both go in before scv-runtime
+const HAND = ['<link rel="stylesheet" href="/pieces/extra.css">', '<script src="/pieces/extra.js"></script>', '<style>.hand { color: rgb(1, 2, 3) }</style>'];
+const DROPPED = '<base href="https://example.test/">'; // would repoint every relative url in the saved file
+const pbWith = inject => pbFile.replace('<title>patchbay</title>\n', '<title>patchbay</title>\n' + inject + '\n');
+const linkedTheme = `<!doctype html><html lang="en" data-scv-runtime="1.5.0"><head><meta charset="UTF-8"><title>linked</title>
+<link rel="stylesheet" href="/pieces/theme.css">${HAND[2]}${part('scv-runtime')}</head><body><scv-patchbay></scv-patchbay>${part('scv-canvas')}${part('scv-studio')}</body></html>`; // patchbay file whose theme arrives by link
+
 const PIECES = {
   '/pieces/runtime.js': inner('scv-runtime'), '/pieces/canvas.js': inner('scv-canvas'), '/pieces/studio.js': inner('scv-studio'),
   '/pieces/theme.css': THEME_CSS,
+  '/pieces/extra.css': '.hand-sheet { color: rgb(4, 5, 6) }',
+  '/pieces/extra.js': 'window.__hand = 1;',
   '/pieces/runtime-probe.js': inner('scv-runtime').replace("'use strict';\n", "'use strict';\nwindow.__probe = '</script></style>';\n"), // only a src file can hold it raw
   '/pieces/theme-probe.css': THEME_CSS + '\n.scv-probe::after { content: "</style>"; }',
   '/pieces/theme-lossy.css': THEME_CSS.replace(/^\s*--danger:[^\n]*\n/m, ''),
@@ -63,6 +72,9 @@ const srv = createServer((req, res) => {
   res.setHeader('content-type', 'text/html');
   const path = req.url.split('?')[0];
   if (path === '/pb') return res.end(pbFile);
+  if (path === '/pb/head') return res.end(pbWith(HAND.join('\n') + '\n' + DROPPED));
+  if (path === '/pb/linked-theme') return res.end(linkedTheme);
+  if (path === '/mount/head-host') return res.end(`<!doctype html><html><head>${HAND.join('\n')}<link rel="stylesheet" href="/pieces/theme.css">${src()}</head><body>${mountEl}</body></html>`); // host page, not a patchbay file
   if (path === '/runtime') return res.end(foreign([]));
   if (path === '/canvas') return res.end(foreign(['scv-canvas']));
   if (path === '/studio') return res.end(foreign(['scv-canvas', 'scv-studio']));
@@ -283,6 +295,44 @@ try {
     return r;
   })()`);
   ok(own?.quine === '1111 icon stamp' && own?.canvas === '1110 icon stamp' && own?.publish === '1100 icon stamp', `patchbay file saves its blocks byte for byte - nothing sits outside a block's function (${JSON.stringify(own)})`);
+
+  // what the owner added to <head> is theirs - kept in every kind, theme and runtime still last
+  await nav(base + '/pb/head');
+  const saveKinds = kinds => js(`(async () => {
+    const pb = document.querySelector('scv-patchbay'), r = {};
+    for (let i = 0; i < 100 && typeof pb.save !== 'function'; i++) await new Promise(r => setTimeout(r, 20));
+    for (const k of ${JSON.stringify(kinds)}) r[k] = await (await pb.save(k)).text();
+    return r;
+  })()`);
+  const handSaves = await saveKinds(['quine', 'canvas', 'publish']);
+  for (const kind of ['quine', 'canvas', 'publish']) {
+    const t = handSaves?.[kind] || '', head = t.slice(0, t.indexOf('</head>'));
+    const lost = HAND.filter(h => !head.includes(h));
+    ok(lost.length === 0, `${kind}: hand-added link, script and style survive the save (lost ${JSON.stringify(lost)})`);
+    ok(head.indexOf(HAND[2]) > 0 && head.indexOf('<style id="scv-runtime-css">') > head.indexOf(HAND[2]) && head.indexOf('<script id="scv-runtime">') > head.indexOf('<style id="scv-runtime-css">'),
+      `${kind}: hand-added head sits before the theme, theme before the runtime`);
+    ok(!/<base\b/i.test(t), `${kind}: a hand-added <base> is dropped - it would repoint every relative url in the file`);
+  }
+  const trip1 = handSaves?.quine || '';
+  await opened('head-trip', trip1, false); // untouched - a routed value would change what it holds
+  const trip2 = (await saveKinds(['quine']))?.quine;
+  ok(trip1 && trip1 === trip2, `hand-added head survives save → reopen → save byte-identical (${trip1.length} vs ${trip2?.length})`);
+
+  // theme carried by a link: inlined once, that link dropped, the rest of the head kept
+  await nav(base + '/pb/linked-theme');
+  const lt = (await saveKinds(['quine']))?.quine || '';
+  const ltHead = lt.slice(0, lt.indexOf('</head>')); // the studio block carries this literal too - head is what counts
+  const themeCount = (ltHead.match(/<style id="scv-runtime-css">/g) || []).length;
+  ok(themeCount === 1 && ltHead.includes('--scv-theme') && !ltHead.includes('/pieces/theme.css') && ltHead.includes(HAND[2]),
+    `linked theme inlined once, its link dropped, other hand-added head kept (${themeCount} themes, link kept ${ltHead.includes('/pieces/theme.css')})`);
+  const ltr = await opened('linked-theme', lt, false);
+  ok(ltr?.themed && ltr.stamp === '1.5.0' && uncaught.length === 0, `linked theme: saved file opens themed (${JSON.stringify(ltr)} ${uncaught.join(' | ')})`);
+
+  // in-page mount reads none of the host's head, however much the host put there
+  await nav(base + '/mount/head-host');
+  const hostSave = (await saveFrom(['quine']))?.quine || '';
+  const leaked = ['/pieces/extra.css', '/pieces/extra.js', '.hand {'].filter(s => hostSave.includes(s));
+  ok(hostSave.length > 1000 && leaked.length === 0, `save from in-page mount carries none of the host's head (leaked ${JSON.stringify(leaked)})`);
 
   // </script and </style inside a block or theme still save into a file that opens
   await nav(base + '/mount/probe');

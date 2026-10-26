@@ -2537,24 +2537,36 @@ const ICON = '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://w
 const escAttr = v => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 const startTag = el => '<' + el.localName + [...el.attributes].map(a => ` ${a.name}="${escAttr(a.value)}"`).join('') + '>';
 const scriptOf = k => kit.sources[k] ? `<script id="scv-${k}">${kit.sources[k].replace(/<\/script/gi, '<\\/script')}<\/script>\n` : (console.warn('[scav] scv-' + k + ' not loaded - save goes without it'), '');
+const defHtml = el => el.localName === 'script' ? startTag(el) + el.textContent.replace(/<\/script/gi, '<\\/script') + '<\/script>' : el.outerHTML;
 
 // theme: exact text from its style block, else marked sheet read back - never by selector, host overrides match it
 
 const THEME_MARK = '--scv-theme';
-const themeOf = pb => {
+const themeOf = pb => { // > { text, el } - el is what carried it, so the head pass never ships the theme twice
   const root = pb.getRootNode(), el = root.getElementById?.('scv-runtime-css') || document.getElementById('scv-runtime-css');
-  if (el?.localName === 'style') return el.textContent;
+  if (el?.localName === 'style') return { text: el.textContent, el };
   for (const sh of new Set([el?.sheet, ...(root.styleSheets || []), ...(root.adoptedStyleSheets || []), ...document.styleSheets, ...document.adoptedStyleSheets])) {
     let rules; try { rules = sh && [...sh.cssRules]; } catch { continue; } // cross-origin - rules unreadable
     if (!rules?.some(r => r.style?.getPropertyValue(THEME_MARK))) continue;
     const text = rules.map(r => r.cssText).join('\n'), lost = kit.THEME_TOKENS.filter(t => !text.includes(t + ':'));
     if (lost.length) console.warn('[scav] theme read back without ' + lost.join(', ')); // cssom drops what this browser can't parse
-    return text;
+    return { text, el: sh.ownerNode || el || null };
   }
   console.warn('[scav] theme not saved - load scv-runtime-css inline or from the same origin');
-  return null;
+  return { text: null, el: null };
 };
-const themeHtml = pb => { const t = themeOf(pb); return t == null ? '' : `<style id="scv-runtime-css">${t.replace(/<\/style/gi, '<\\/style')}<\/style>\n`; };
+const themeHtml = t => t == null ? '' : `<style id="scv-runtime-css">${t.replace(/<\/style/gi, '<\\/style')}<\/style>\n`;
+
+// head: what the owner added by hand is theirs and survives a save - network loads included, scav adds none of its own
+
+const HEAD_OWN = 'meta[charset], meta[name="viewport"], title, link[rel~="icon"]'; // the saver writes these itself
+const HEAD_DROP = 'base'; // rewrites how every other url in the file resolves - defang and the kernel drop it too, a portable file needs none
+const headExtras = themeEl => {
+  if (!document.documentElement.hasAttribute('data-scv-runtime')) return []; // mounted in a host page - save reads none of its head
+  return [...document.head.children]
+    .filter(el => !el.id.startsWith('scv-') && el !== themeEl && !el.matches(HEAD_OWN) && !el.matches(HEAD_DROP))
+    .map(el => defHtml(el) + '\n');
+};
 
 const freeze = root => root.querySelectorAll('input, textarea, select').forEach(f => { // live values aren't attributes
   if (f.tagName === 'INPUT') {
@@ -2603,7 +2615,6 @@ const internRemote = async roots => { // servers without cors stay remote links
   }));
 };
 
-const defHtml = el => el.localName === 'script' ? startTag(el) + el.textContent.replace(/<\/script/gi, '<\\/script') + '<\/script>' : el.outerHTML;
 const _item = async (el, defs, used) => { // component shadows only where they differ from def
   if (el.localName === 'scv-logic') { used.nodes.add(el.dataset.type); return startTag(el) + '</scv-logic>'; }
   const roots = [el], shadows = [], own = kit.patchbayOf(el);
@@ -2659,9 +2670,9 @@ const extentOf = pb => {
 const save = async (pb, kind = 'quine') => {
   if (!SCRIPTS[kind]) throw new Error('unknown export ' + kind);
   pb.setAttribute('extent', extentOf(pb));
-  const defs = _defs(), used = { tags: new Set(), nodes: new Set(), refs: new Set() };
+  const defs = _defs(), used = { tags: new Set(), nodes: new Set(), refs: new Set() }, theme = themeOf(pb);
   const parts = [LICENSE, `<html lang="en" data-scv-runtime="${escAttr(kit.VERSION)}">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>${NAMES[kind]}</title>\n`,
-    ICON, '\n', themeHtml(pb), scriptOf('runtime'), '</head>\n<body>\n', startTag(pb), '\n']; // written by runtime, never copied from page
+    ICON, '\n', ...headExtras(theme.el), themeHtml(theme.text), scriptOf('runtime'), '</head>\n<body>\n', startTag(pb), '\n']; // scav's own written by the runtime, never copied from a page - theme and runtime stay last
   for (const el of pb.children) if (!el.hasAttribute('data-scv-appended')) parts.push(new Blob([kit.isDef(el) ? defHtml(el) : await _item(el, defs, used)]), '\n'); // string freed now, not at end of save - own types ride as children
   const d = await _defsOf(used, defs), held = new Set(kit.compsOf(pb));
   for (const t of used.tags) if (kit.comps.has(t) && !held.has(t)) parts.push(kit.comps.get(t).tpl.outerHTML, '\n'); // placed without its def - def ships along

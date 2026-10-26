@@ -1188,6 +1188,57 @@ try {
   ok(lent?.slice(0, 4).join() === 'true,frame,true,true', `same-origin frame borrows host's shared instance, makes its own when host has none (${lent})`);
   ok(lent?.[4] === 'daw' && lent[5] === 'daw', `frame takes instance plain host page offers in window.scvShared (${lent})`);
 
+  // teardown - a hidden tab paints no frames, so the timer has to be what releases
+
+  await nav(base + '/pb'); // earlier blocks navigated away - helpers live per document
+  await js(`(${helpers.toString()})()`);
+
+  await run('timer in a node removed while no frames come stops', async () => {
+    const pb = T.pb(), n = T.node(pb, 'delay', { value: '30' });
+    await T.frame();
+    const fired = [];
+    n.emit = v => fired.push(v); // detached node routes nowhere, so watch the node itself
+    const raf = window.requestAnimationFrame;
+    window.requestAnimationFrame = () => 0; // what a hidden tab does to the callback
+    try { n.receive(5, 'in'); n.remove(); await T.sleep(150); } finally { window.requestAnimationFrame = raf; }
+    return [fired.length === 0, { fired, live: n._live }];
+  });
+
+  await run('component removed while no frames come runs its onTeardown', async () => {
+    const pb = T.pb();
+    window.__torn = 0;
+    T.comp('tdn', '<b>t</b><script>onTeardown(() => { window.__torn++; });<\/script>', pb);
+    const el = T.item(pb, document.createElement('scv-tdn'));
+    await T.frame();
+    const raf = window.requestAnimationFrame;
+    window.requestAnimationFrame = () => 0;
+    try { el.closest('scv-item').remove(); await T.sleep(80); } finally { window.requestAnimationFrame = raf; }
+    return [window.__torn === 1, { torn: window.__torn }];
+  });
+
+  await run('moved node and component never tear down', async () => {
+    const pb = T.pb(), box = document.createElement('div');
+    document.body.append(box);
+    window.__torn2 = 0;
+    T.comp('mvd', '<b>m</b><script>onTeardown(() => { window.__torn2++; });<\/script>', pb);
+    const el = T.item(pb, document.createElement('scv-mvd'));
+    const n = T.node(pb, 'clock', { value: '1000' });
+    await T.frame();
+    box.append(el.closest('scv-item'), n); // append moves - disconnect then connect, same task
+    await T.frame(); await T.sleep(40);
+    return [window.__torn2 === 0 && n._live === true, { torn: window.__torn2, live: n._live }];
+  });
+
+  await run('node removed and re-added in one task keeps running', async () => {
+    const pb = T.pb(), n = T.node(pb, 'delay', { value: '30', 'data-scv-emits': 'back' });
+    const sink = T.sink(pb, 'back');
+    await T.frame();
+    n.receive(7, 'in');
+    n.remove(); pb.append(n); // same task
+    await T.sleep(150);
+    return [sink.log.length === 1 && sink.log[0] === 7, { emitted: sink.log, live: n._live }];
+  });
+
   // clock wakes
 
   await send('Page.addScriptToEvaluateOnNewDocument', { source: `window.__timeouts = 0; const _st = window.setTimeout; window.setTimeout = (...a) => { window.__timeouts++; return _st(...a); };` });

@@ -133,7 +133,12 @@ const unshare = key => {
   _shared.delete(key);
   try { s.release?.(s.value); } catch (e) { debug('shared release failed', e); }
 };
-const whenGone = (el, fn) => requestAnimationFrame(() => { if (!el.isConnected) fn(); }); // disconnect also fires on moves
+const whenGone = (el, fn) => { // disconnect also fires on moves - frame is immediate, timer still fires in a hidden tab
+  let ran = false, raf = 0, timer = 0;
+  const check = () => { if (ran) return; ran = true; cancelAnimationFrame(raf); clearTimeout(timer); if (!el.isConnected) fn(); };
+  raf = requestAnimationFrame(check);
+  timer = setTimeout(check, 0);
+};
 
 // assets: bytes once in document, blobs live, refs elsewhere
 

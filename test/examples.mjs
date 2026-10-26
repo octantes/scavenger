@@ -4,6 +4,7 @@ import { launchChrome, connect } from './_cdp.mjs';
 import { pathToFileURL, fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync, readdirSync, writeFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
 
 let fails = 0;
 const ok = (c, m) => { if (!c) { fails++; console.log('  ✗', m); } };
@@ -11,7 +12,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const ex = join(here, '..', 'examples');
 const pbUrl = pathToFileURL(join(here, '..', 'patchbay.html')).href;
 const files = ['components', 'nodes', 'tools'].flatMap(d => readdirSync(join(ex, d)).filter(f => f.endsWith('.html')).map(f => join(d, f))).concat('template.html');
-const savedPath = join(here, '_examples_quine.html');
+const savedPath = join(tmpdir(), 'scv-examples-quine.html'); // out of the repo - a killed tier can never leave a stray in a tracked directory
 
 const { pageWsUrl, cleanup } = await launchChrome();
 const { ws, send, waitEvent } = await connect(pageWsUrl);

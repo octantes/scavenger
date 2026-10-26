@@ -84,6 +84,7 @@ const collectChannels = (el, emits, recvs) => {
   channels(el, ATTR_RECEIVES).forEach(c => recvs.add(c));
   splitWords(el.getAttribute(ATTR_ACTION)).forEach(t => { const c = channelOf(t); if (c) recvs.add(c); });
 };
+const _wiredDeep = n => n.nodeType === 1 && (n.matches(WIRING_SEL) || !!n.querySelector(WIRING_SEL)); // node a cable can attach to, or holding one
 const hostOf = el => el?.getRootNode?.()?.host || null;
 const _up = (el, tag) => { for (let n = el; n; n = n.parentElement || hostOf(n)) if (n.localName === tag) return n; return null; }; // crosses shadow roots
 const itemOf = el => _up(el, 'scv-item');
@@ -225,15 +226,15 @@ const createRouter = (root, {
   let _cache = null; // channel > receivers in walk order
 
   const invalidate = () => { _cache = null; };
-  const _stale = recs => recs.some(r => r.type === 'attributes' || [...r.addedNodes, ...r.removedNodes].some(n => n.nodeType === 1)); // text writes never rewire
+  const _stale = recs => recs.some(r => r.type === 'attributes' || [...r.addedNodes, ...r.removedNodes].some(_wiredDeep)); // only wiring moving in or out rewires - text writes and unwired re-renders don't
   const _observer = new MutationObserver(recs => { if (_stale(recs)) invalidate(); });
   const _observed = new WeakSet();
-  const _observe = (r, childList) => {
+  const _observe = r => {
     if (_observed.has(r)) return;
     _observed.add(r);
-    _observer.observe(r, { subtree: true, childList, attributes: true, attributeFilter: [ATTR_EMITS, ATTR_RECEIVES, ATTR_ACTION] });
+    _observer.observe(r, { subtree: true, childList: true, attributes: true, attributeFilter: [ATTR_EMITS, ATTR_RECEIVES, ATTR_ACTION] });
   };
-  _observe(root, true); // shadows watch wiring attrs only - text churn must not drop cache every frame
+  _observe(root); // shadows too - a component adding a wired element must reach the cache
 
   const _own = n => patchbayOf(n) === root; // nested patchbay keeps its own wiring
   const _rebuild = () => { // light dom first, then component shadows by host
@@ -247,7 +248,7 @@ const createRouter = (root, {
       });
       r.querySelectorAll('*').forEach(n => {
         if (!n.shadowRoot || n.localName === 'scv-logic' || !_own(n)) return;
-        _observe(n.shadowRoot, false); walk(n.shadowRoot);
+        _observe(n.shadowRoot); walk(n.shadowRoot);
       });
     };
     walk(root);
@@ -580,7 +581,6 @@ const restoreSlots = (root, d) => root.querySelectorAll('[data-scv-slot]').forEa
 
 // update live shadow from markup - wired subtrees not replaced, cables survive
 
-const _wiredDeep = n => n.nodeType === 1 && (n.matches(WIRING_SEL) || !!n.querySelector(WIRING_SEL));
 const morphAttrs = (a, b) => { // wiring attrs belong to canvas, never to markup
   for (const at of b.attributes) if (!at.name.startsWith('data-scv-') && a.getAttribute(at.name) !== at.value) a.setAttribute(at.name, at.value);
   for (const at of [...a.attributes]) if (!at.name.startsWith('data-scv-') && !b.hasAttribute(at.name)) a.removeAttribute(at.name);

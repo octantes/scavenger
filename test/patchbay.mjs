@@ -1239,6 +1239,39 @@ try {
     return [sink.log.length === 1 && sink.log[0] === 7, { emitted: sink.log, live: n._live }];
   });
 
+  // shadow wiring - wiring moving in reaches the cache, unwired re-renders never drop it
+
+  await run('wired element added to a shadow after routing gets the next value', async () => {
+    const pb = T.pb();
+    T.comp('shw', '<div class="box"></div>', pb);
+    const el = T.item(pb, document.createElement('scv-shw'));
+    await T.frame();
+    pb.routeSend('sh', 'first'); // warms the cache with nothing wired in that shadow
+    const span = document.createElement('span');
+    span.setAttribute('data-scv-receives', 'sh');
+    el.shadowRoot.querySelector('.box').append(span);
+    pb.routeSend('sh', 'second');
+    return [span.textContent === 'second', { got: span.textContent }];
+  });
+
+  await run('unwired shadow re-render never rebuilds the router cache', async () => {
+    const pb = T.pb();
+    T.comp('shr', '<div class="box"><i>a</i></div>', pb);
+    const el = T.item(pb, document.createElement('scv-shr'));
+    const sink = T.sink(pb, 'rr');
+    await T.frame();
+    pb.routeSend('rr', 'warm');
+    let walks = 0; // a rebuild walks this shadow, nothing else does
+    const sr = el.shadowRoot, real = sr.querySelectorAll.bind(sr);
+    Object.defineProperty(sr, 'querySelectorAll', { configurable: true, value: sel => { walks++; return real(sel); } });
+    for (let i = 0; i < 5; i++) { sr.querySelector('.box').innerHTML = '<i>' + i + '</i>'; pb.routeSend('rr', i); } // the shape patch(el, { html }) makes
+    const unwired = walks;
+    const span = document.createElement('span'); span.setAttribute('data-scv-receives', 'rr');
+    sr.querySelector('.box').append(span);
+    pb.routeSend('rr', 'wired');
+    return [unwired === 0 && walks > 0 && span.textContent === 'wired' && sink.log.length === 7, { unwired, afterWiring: walks, got: span.textContent, delivered: sink.log.length }];
+  });
+
   // clock wakes
 
   await send('Page.addScriptToEvaluateOnNewDocument', { source: `window.__timeouts = 0; const _st = window.setTimeout; window.setTimeout = (...a) => { window.__timeouts++; return _st(...a); };` });

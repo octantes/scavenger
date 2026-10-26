@@ -390,6 +390,47 @@ try {
   ok(hv?.tag === 'scv-surf1' && hv?.text === 'surf', `harvestOf + defineHarvest build harvest in runtime-only host (${JSON.stringify(hv)})`);
   ok(hv && !hv.code && hv.ran === 0, `harvest code never runs - handlers and scripts defanged (${JSON.stringify(hv)})`);
 
+  // defang drops inline-document frames and keeps everything a harvest's fidelity rests on - data: urls are load-bearing everywhere else
+  const PX = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+  const FRAMES = [
+    '<iframe id="remote" src="https://example.com/e"></iframe>',
+    '<iframe id="protorel" src="//example.com/e"></iframe>',
+    '<iframe id="aboutblank" src="about:blank"></iframe>',
+    '<iframe id="dataframe" src="data:text/html,<b>x</b>"></iframe>',
+    '<iframe id="blobframe" src="blob:http://x/y"></iframe>',
+    '<iframe id="jsframe" src="javascript:1"></iframe>',
+    '<iframe id="relframe" src="inner.html"></iframe>',
+    `<img id="dataimg" src="${PX}">`,
+    `<img id="setimg" srcset="${PX} 1x, ${PX} 2x" src="${PX}">`,
+    `<img id="refimg" data-scv-src="scv-asset:${HASH}">`,
+    `<div id="cssbg" style="background-image:url(${PX})"></div>`,
+    `<style>@font-face{font-family:f;src:url(${PX})} .q{background:url(${PX})}</style>`,
+    `<svg><image id="svgimg" href="${PX}"></image></svg>`,
+  ].join('');
+  const fid = await js(`(() => {
+    const k = customElements.get('scv-patchbay').kit, t = document.createElement('template');
+    t.innerHTML = ${JSON.stringify(FRAMES)};
+    k.defang(t.content);
+    const at = id => t.content.querySelector('#' + id);
+    const src = id => at(id)?.getAttribute('src') ?? null;
+    return {
+      remote: src('remote'), protorel: src('protorel'), about: src('aboutblank'),
+      data: src('dataframe'), blob: src('blobframe'), js: src('jsframe'), rel: src('relframe'),
+      img: src('dataimg'), srcset: at('setimg')?.getAttribute('srcset') ?? '',
+      ref: at('refimg')?.getAttribute('data-scv-src') ?? '',
+      cssbg: at('cssbg')?.getAttribute('style') ?? '',
+      faces: (t.content.querySelector('style')?.textContent.split('data:image/gif').length ?? 1) - 1, // no regex - a template literal would eat the escaped slash
+      svg: at('svgimg')?.getAttribute('href') ?? '',
+    };
+  })()`);
+  ok(fid && fid.remote === 'https://example.com/e' && fid.protorel === '//example.com/e' && fid.about === 'about:blank',
+    `defang keeps a frame holding a real remote page - content the owner chose to carry (${JSON.stringify(fid && { remote: fid.remote, protorel: fid.protorel, about: fid.about })})`);
+  ok(fid && fid.data === null && fid.blob === null && fid.js === null && fid.rel === null,
+    `defang drops inline-document and relative frame srcs, the same allowlist the kernel's purge uses (${JSON.stringify(fid && { data: fid.data, blob: fid.blob, js: fid.js, rel: fid.rel })})`);
+  const kept = fid && [fid.img === PX, fid.srcset.split('data:image/gif').length - 1 === 2 && fid.srcset.includes('1x') && fid.srcset.includes('2x'), fid.ref === 'scv-asset:' + HASH,
+    /url\(data:image\/gif/.test(fid.cssbg), fid.faces === 2, fid.svg === PX];
+  ok(kept && kept.every(Boolean), `data: urls untouched everywhere a harvest needs them - img src, srcset, asset ref, css background, @font-face, svg image (${JSON.stringify(kept)})`);
+
   // below the 2024 floor: one plain line, the names logged, nothing thrown, markup untouched
   const LINE = 'this file needs a 2024+ browser - its content is intact';
   const FLOOR_GONE = {

@@ -940,12 +940,13 @@ const literalAfter = (text, marker) => { // unescaped template literal following
 };
 const extractShadowMarkup = defText => literalAfter(defText, ".attachShadow({mode: 'open'}).innerHTML = `");
 const embed = t => t.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$').replace(/<\/script/gi, '<\\/script').replace(/<!--/g, '<\\!--'); // kernel's escaping
-const defang = root => { // markup keeps no code: scripts, handlers, javascript: urls, srcdoc frames, refresh
+const defang = root => { // markup keeps no code: scripts, handlers, javascript: urls, inline-document frames, refresh
   root.querySelectorAll('script, meta, base, object, embed').forEach(s => s.remove());
   root.querySelectorAll('*').forEach(el => {
     for (const a of [...el.attributes]) if (/^on/i.test(a.name) || a.name === 'srcdoc' || /^javascript:/i.test(a.value.replace(/[\u0000-\u0020\u007f]/g, ''))) el.removeAttribute(a.name); // urls ignore tabs and newlines inside
     if (el.shadowRoot) defang(el.shadowRoot);
   });
+  root.querySelectorAll('iframe[src], frame[src]').forEach(n => { if (!/^\s*((https?:)?\/\/|about:)/i.test(n.getAttribute('src') || '')) n.removeAttribute('src'); }); // same allowlist the kernel's purge uses - a real remote page is content, an inline document is code
   root.querySelectorAll('template').forEach(t => defang(t.content));
   return root;
 };

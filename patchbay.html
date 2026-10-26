@@ -2613,7 +2613,7 @@ const freeze = root => root.querySelectorAll('input, textarea, select').forEach(
 const _defs = () => { // tag > harvest def script
   const m = new Map();
   document.querySelectorAll('script[data-scv-def]').forEach(s => {
-    const tags = s.dataset.scvTag ? [s.dataset.scvTag] : [...s.textContent.matchAll(/customElements\.define\(\s*['"]([^'"]+)['"]/g)].map(x => x[1]);
+    const tags = [...s.textContent.matchAll(/customElements\.define\(\s*['"]([^'"]+)['"]/g)].map(x => x[1]);
     tags.forEach(t => m.set(t, s));
   });
   return m;

@@ -24,6 +24,12 @@ const versions = [dash.match(/<html[^>]*data-scv-runtime="([^"]+)"/)?.[1], dash.
 ok(versions[0] && versions.every(v => v === versions[0]), `file stamp, runtime VERSION, theme marker and quests agree (${versions})`);
 ok(/:root\[data-scv-runtime\], scv-patchbay \{/.test(dash), 'tokens sit on patchbay file root and on element - mounted patchbay never themes host page');
 
+// a token written inline as a var() fallback (the floor message, which may render before any theme) must carry the token's own value - a hardcoded colour that drifts is worse than none
+const norm = v => v.replace(/['"]/g, '').replace(/\s*,\s*/g, ',').replace(/\s+/g, ' ').trim().toLowerCase(); // quote style and comma spacing are not value differences
+const inlined = [...dash.matchAll(/var\(\s*(--[\w-]+)\s*,\s*([^()]*)\)/g)].filter(([, name]) => SYSTEM.includes(name));
+ok(inlined.length >= 4, `theme tokens inlined as var() fallbacks are checked (${inlined.length} found)`);
+for (const [, name, fb] of inlined) ok(norm(fb) === norm(dashDefs[name] || ''), `inline fallback for ${name} repeats the token (${norm(fb)} vs ${norm(dashDefs[name])})`);
+
 // kernel uses js theme object - must carry same names + brand values
 for (const [key, hex] of [['backgroundSunk', '#1a1c1c'], ['output', '#986c98'], ['input', '#8ab6bb'], ['textBase', '#aaabac'], ['danger', '#985954']])
   ok(new RegExp(`${key}\\s*:\\s*'#${hex.slice(1)}'`, 'i').test(kernel), `kernel theme.${key} = ${hex}`);

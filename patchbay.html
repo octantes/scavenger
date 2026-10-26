@@ -61,6 +61,32 @@ scv-patchbay { all: initial; display: block; position: relative; background: var
 'use strict';
 if (customElements.get('scv-patchbay')) return; // one definition per page
 
+// 2024 floor - below it the file says so instead of failing blank, and its markup stays untouched
+
+const _missing = [
+  ['Element.prototype.getHTML',          () => typeof Element.prototype.getHTML === 'function'],
+  ['ElementInternals.prototype.states',  () => 'states' in ElementInternals.prototype],
+  ['Document.parseHTMLUnsafe',           () => typeof Document.parseHTMLUnsafe === 'function'],
+].filter(([, has]) => { try { return !has(); } catch { return true; } }).map(([name]) => name);
+if (_missing.length) {
+  console.warn('[scav] runtime needs ' + _missing.join(', ') + ' - not starting');
+  if (document.documentElement.hasAttribute('data-scv-runtime')) { // own file says so in the page - a host page's document is not ours to write into
+    const say = () => { // plain dom, no custom element - palette where the theme loaded, token values inline where it did not
+      if (document.getElementById('scv-unsupported')) return;
+      const p = document.createElement('p');
+      p.id = 'scv-unsupported';
+      p.style.cssText = 'margin:0;padding:12px;'
+        + 'background:var(--background-sunk,#1A1C1C);color:var(--text-base,#AAABAC);'
+        + 'border-bottom:1px solid var(--border,#3A3C3C);' // themed page is this background too - the edge is what separates them
+        + 'font-family:var(--font-mono,"SF Mono","Consolas","Menlo","DejaVu Sans Mono",monospace);font-size:var(--fs-c,14px)';
+      p.textContent = 'this file needs a 2024+ browser - its content is intact';
+      document.body.prepend(p);
+    };
+    document.body ? say() : document.addEventListener('DOMContentLoaded', say, { once: true }); // runtime sits in head
+  }
+  return; // canvas and studio wait on whenDefined, so neither runs
+}
+
 const ATTR_EMITS = 'data-scv-emits', ATTR_RECEIVES = 'data-scv-receives', ATTR_ACTION = 'data-scv-action';
 const WIRING_SEL = `[${ATTR_EMITS}],[${ATTR_RECEIVES}],[${ATTR_ACTION}]`;
 const COMPOUND_VERBS = ['prop', 'method', 'event'];

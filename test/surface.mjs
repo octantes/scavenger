@@ -35,6 +35,12 @@ const THEME_CSS = inner('scv-runtime-css');
 const HAND = ['<link rel="stylesheet" href="/pieces/extra.css">', '<script src="/pieces/extra.js"></script>', '<style>.hand { color: rgb(1, 2, 3) }</style>'];
 const DROPPED = '<base href="https://example.test/">'; // would repoint every relative url in the saved file
 const pbWith = inject => pbFile.replace('<title>patchbay</title>\n', '<title>patchbay</title>\n' + inject + '\n');
+const KEPT = '<scv-patchbay><scv-item><div data-scv-id="keep">intact</div></scv-item></scv-patchbay>'; // content the file keeps when the runtime refuses to start
+const FLOOR = { // each api the runtime needs, taken away before it reads for it
+  getHTML: 'delete Element.prototype.getHTML;',
+  states: 'delete ElementInternals.prototype.states;',
+  parseHTMLUnsafe: 'delete Document.parseHTMLUnsafe;',
+};
 const linkedTheme = `<!doctype html><html lang="en" data-scv-runtime="1.5.0"><head><meta charset="UTF-8"><title>linked</title>
 <link rel="stylesheet" href="/pieces/theme.css">${HAND[2]}${part('scv-runtime')}</head><body><scv-patchbay></scv-patchbay>${part('scv-canvas')}${part('scv-studio')}</body></html>`; // patchbay file whose theme arrives by link
 
@@ -74,6 +80,17 @@ const srv = createServer((req, res) => {
   if (path === '/pb') return res.end(pbFile);
   if (path === '/pb/head') return res.end(pbWith(HAND.join('\n') + '\n' + DROPPED));
   if (path === '/pb/linked-theme') return res.end(linkedTheme);
+  if (path.startsWith('/floor/')) { const s = FLOOR[path.slice(7)]; return s ? res.end(pbWith(`<script>${s}</script>`).replace('<scv-patchbay></scv-patchbay>', KEPT)) : void (res.statusCode = 404, res.end()); }
+  if (path.startsWith('/floor-bare/')) { // patchbay file with no theme block - the message styles itself from inline token values
+    const s = FLOOR[path.slice(12)];
+    return s ? res.end(pbWith(`<script>${s}</script>`).replace('<scv-patchbay></scv-patchbay>', KEPT).replace(part('scv-runtime-css'), ''))
+      : void (res.statusCode = 404, res.end());
+  }
+  if (path.startsWith('/floor-host/')) { // same floor, but the patchbay is mounted in someone else's page
+    const s = FLOOR[path.slice(12)];
+    return s ? res.end(`<!doctype html><html><head><script>${s}</script>${part('scv-runtime-css')}${part('scv-runtime')}</head><body><p id="host-first">host content</p>${mountEl}${part('scv-canvas')}${part('scv-studio')}</body></html>`)
+      : void (res.statusCode = 404, res.end());
+  }
   if (path === '/mount/head-host') return res.end(`<!doctype html><html><head>${HAND.join('\n')}<link rel="stylesheet" href="/pieces/theme.css">${src()}</head><body>${mountEl}</body></html>`); // host page, not a patchbay file
   if (path === '/runtime') return res.end(foreign([]));
   if (path === '/canvas') return res.end(foreign(['scv-canvas']));
@@ -372,6 +389,53 @@ try {
   })()`);
   ok(hv?.tag === 'scv-surf1' && hv?.text === 'surf', `harvestOf + defineHarvest build harvest in runtime-only host (${JSON.stringify(hv)})`);
   ok(hv && !hv.code && hv.ran === 0, `harvest code never runs - handlers and scripts defanged (${JSON.stringify(hv)})`);
+
+  // below the 2024 floor: one plain line, the names logged, nothing thrown, markup untouched
+  const LINE = 'this file needs a 2024+ browser - its content is intact';
+  const FLOOR_GONE = {
+    getHTML: `typeof Element.prototype.getHTML !== 'function'`,
+    states: `!('states' in ElementInternals.prototype)`,
+    parseHTMLUnsafe: `typeof Document.parseHTMLUnsafe !== 'function'`,
+  };
+  for (const name of Object.keys(FLOOR)) {
+    uncaught.length = 0; warned.length = 0;
+    await nav(base + '/floor/' + name);
+    const r = await js(`(() => ({
+      stubbed: ${FLOOR_GONE[name]},
+      line: document.getElementById('scv-unsupported')?.textContent || '',
+      first: document.body.firstElementChild?.id,
+      defined: !!customElements.get('scv-patchbay'),
+      kept: document.querySelector('scv-patchbay [data-scv-id="keep"]')?.textContent,
+    }))()`);
+    ok(r?.stubbed, `floor ${name}: the stub actually took the api away`);
+    ok(r?.line === LINE && r?.first === 'scv-unsupported', `floor ${name}: one plain line at the top of body (${JSON.stringify(r)})`);
+    ok(r && !r.defined && r.kept === 'intact', `floor ${name}: runtime never starts and the markup is untouched (${JSON.stringify(r)})`);
+    ok(warned.filter(w => w.includes(name)).length === 1, `floor ${name}: named once in the log (${warned.join(' | ')})`);
+    ok(uncaught.length === 0, `floor ${name}: no page errors (${uncaught.join(' | ')})`);
+
+    // same floor in a host page - the names are logged, but the host's document is not ours to write into
+    uncaught.length = 0; warned.length = 0;
+    await nav(base + '/floor-host/' + name);
+    const h = await js(`(() => ({
+      line: !!document.getElementById('scv-unsupported'),
+      first: document.body.firstElementChild?.id,
+      defined: !!customElements.get('scv-patchbay'),
+    }))()`);
+    ok(h && !h.line && h.first === 'host-first', `floor ${name} in a host page: no line written into someone else's page (${JSON.stringify(h)})`);
+    ok(warned.filter(w => w.includes(name)).length === 1 && h && !h.defined && uncaught.length === 0,
+      `floor ${name} in a host page: still logged once, runtime never starts, nothing thrown (${warned.join(' | ')} ${uncaught.join(' | ')})`);
+  }
+
+  // the message wears the palette, and looks the same with no theme loaded at all - styling never depends on which api is missing
+  const look = `(() => { const s = getComputedStyle(document.getElementById('scv-unsupported'));
+    return [s.backgroundColor, s.color, s.borderBottomColor, s.fontSize, /SF Mono/.test(s.fontFamily)].join(' | '); })()`;
+  await nav(base + '/floor/getHTML');
+  const themed = await js(look);
+  await nav(base + '/floor-bare/getHTML');
+  const unthemed = await js(look);
+  ok(themed === 'rgb(26, 28, 28) | rgb(170, 171, 172) | rgb(58, 60, 60) | 14px | true',
+    `floor message wears the palette - sunk background, base text, border, fs-c, mono (${themed})`);
+  ok(unthemed === themed, `floor message looks the same with no theme block - inline token values carry it (${unthemed} vs ${themed})`);
 
   // kernel controls
   await nav(base + '/page');

@@ -12,6 +12,8 @@ import {
 
 let fails = 0;
 const ok = (c, m) => { if (!c) { fails++; console.log('  ✗', m); } };
+// registered urls are a literal public ip, never a name: the suite resolves nothing, so a host whose node dns differs from its browser's still runs it
+const PUB = 'https://203.0.113.9/'; // TEST-NET-3, in the isPrivateAddr public list below
 chdir(mkdtempSync(join(tmpdir(), 'scv-sec-'))); // isolate quests.json writes
 
 // ssrf: private / internal targets are rejected
@@ -170,11 +172,11 @@ if (apiUp) try {
   ok(unf.status === 200 && JSON.stringify(await unf.json()) === '{}', 'unfurl on unreachable public host → 200 {} (never leaks fetch error)');
 
   // direct loopback write is accepted (owner)
-  const reg = await call('POST', '/quests', { body: JSON.stringify({ channel: 'sec_a', url: 'https://example.com/', target: 'sel:.p' }) });
+  const reg = await call('POST', '/quests', { body: JSON.stringify({ channel: 'sec_a', url: PUB, target: 'sel:.p' }) });
   ok(reg.status === 200, `owner (loopback) register accepted (${reg.status})`);
 
   // proxied write is rejected even though socket is loopback
-  const proxied = await call('POST', '/quests', { headers: { 'x-forwarded-for': '9.9.9.9' }, body: JSON.stringify({ channel: 'sec_b', url: 'https://example.com/' }) });
+  const proxied = await call('POST', '/quests', { headers: { 'x-forwarded-for': '9.9.9.9' }, body: JSON.stringify({ channel: 'sec_b', url: PUB }) });
   ok(proxied.status === 403, `proxied write rejected 403 (${proxied.status})`);
 
   // cross-origin write with no token is rejected; with valid token it passes
@@ -188,7 +190,7 @@ if (apiUp) try {
   ok(badJson.status === 400, `malformed json body → 400 (${badJson.status})`);
 
   // adversarial: channel is required
-  const noChan = await call('POST', '/quests', { body: JSON.stringify({ url: 'https://example.com/' }) });
+  const noChan = await call('POST', '/quests', { body: JSON.stringify({ url: PUB }) });
   ok(noChan.status === 400, `missing channel → 400 (${noChan.status})`);
 
   // adversarial: oversized body is refused (413), never buffered whole
@@ -211,24 +213,24 @@ if (apiUp) try {
   ok(opt.status === 204, `OPTIONS preflight → 204 (${opt.status})`);
 
   // re-registration clears stale extraction fields: register key:, then re-register with sel:
-  await call('POST', '/quests', { body: JSON.stringify({ channel: 're_reg', url: 'https://example.com/', jsonKey: 'price', onChange: { emit: 're_reg_alert' } }) });
-  await call('POST', '/quests', { body: JSON.stringify({ channel: 're_reg', url: 'https://example.com/', target: 'sel:.p' }) });
+  await call('POST', '/quests', { body: JSON.stringify({ channel: 're_reg', url: PUB, jsonKey: 'price', onChange: { emit: 're_reg_alert' } }) });
+  await call('POST', '/quests', { body: JSON.stringify({ channel: 're_reg', url: PUB, target: 'sel:.p' }) });
   const reReg = (await (await call('GET', '/quests')).json()).find(q => q.channel === 're_reg');
   ok(reReg && reReg.selector === '.p' && reReg.jsonKey === undefined, `re-register clears stale jsonKey (${JSON.stringify(reReg)})`);
   ok(reReg && reReg.onChange === undefined, `re-register without onChange clears stale alert wiring, not just extraction fields (${JSON.stringify(reReg)})`);
 
   // string "Infinity" interval must not persist - would wedge due-filter forever
-  await call('POST', '/quests', { body: JSON.stringify({ channel: 'inf_iv', url: 'https://example.com/', interval: 'Infinity' }) });
+  await call('POST', '/quests', { body: JSON.stringify({ channel: 'inf_iv', url: PUB, interval: 'Infinity' }) });
   const infQ = (await (await call('GET', '/quests')).json()).find(q => q.channel === 'inf_iv');
   ok(infQ && Number.isFinite(infQ.interval) && infQ.interval >= 3000, `non-finite interval falls back to sane value (${infQ?.interval})`);
 
   // structured target object is used as-is - never stringified into "[object Object]"
-  await call('POST', '/quests', { body: JSON.stringify({ channel: 'obj_tgt', url: 'https://example.com/', target: { selector: '.price' } }) });
+  await call('POST', '/quests', { body: JSON.stringify({ channel: 'obj_tgt', url: PUB, target: { selector: '.price' } }) });
   const objQ = (await (await call('GET', '/quests')).json()).find(q => q.channel === 'obj_tgt');
   ok(objQ && objQ.selector === '.price' && !String(objQ.selector).includes('object Object'), 'structured target object is stored as-is, not "[object Object]"');
 
   // delete: registered channel is removed; nonexistent one is 404, distinct from pinned no-op
-  await call('POST', '/quests', { body: JSON.stringify({ channel: 'del_me', url: 'https://example.com/' }) });
+  await call('POST', '/quests', { body: JSON.stringify({ channel: 'del_me', url: PUB }) });
   const delOk = await call('DELETE', '/quests/del_me');
   ok(delOk.status === 200 && (await delOk.json()).ok === true, 'DELETE removes registered channel');
   const delMissing = await call('DELETE', '/quests/nope_nope');
@@ -239,7 +241,7 @@ if (apiUp) try {
   ok(delBad.status === 400, `DELETE with malformed URI → 400 (${delBad.status})`);
 
   // delete no-ops on pinned channel - pinned isn't http-settable, so set it by direct disk write (updateQuests reads fresh each call)
-  await call('POST', '/quests', { body: JSON.stringify({ channel: 'pinned_ch', url: 'https://example.com/' }) });
+  await call('POST', '/quests', { body: JSON.stringify({ channel: 'pinned_ch', url: PUB }) });
   const disk = JSON.parse(readFileSync('quests.json', 'utf8'));
   disk.find(q => q.channel === 'pinned_ch').pinned = true;
   writeFileSync('quests.json', JSON.stringify(disk));
@@ -271,7 +273,7 @@ if (apiUp) try {
   capSrv.close(); configure({ allowLocal: false });
 
   // adversarial: 100-quest cap holds (register up to limit, then refuse)
-  for (let i = 0; i < 110; i++) await call('POST', '/quests', { body: JSON.stringify({ channel: 'cap_' + i, url: 'https://example.com/' }) });
+  for (let i = 0; i < 110; i++) await call('POST', '/quests', { body: JSON.stringify({ channel: 'cap_' + i, url: PUB }) });
   const list = await (await call('GET', '/quests')).json();
   ok(Array.isArray(list) && list.length <= 100, `quest count capped at 100 (got ${list.length})`);
 

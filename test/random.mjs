@@ -17,6 +17,7 @@ const rng = (s => () => { s |= 0; s = s + 0x6d2b79f5 | 0; let t = Math.imul(s ^ 
 const int = n => Math.floor(rng() * n);
 const pick = list => list[int(list.length)];
 
+let where = 'startup', trail = []; // a hang reports where it was, not just that it happened
 const saved = new Map();
 const srv = createServer((req, res) => {
   res.setHeader('content-type', 'text/html');
@@ -137,6 +138,7 @@ try {
     const start = await js(`F.snap()`), log = [];
     for (let i = 0; i < OPS && fails < 3; i++) {
       const kind = drawOp();
+      where = `round ${round}, op ${i} (${kind})`;
       log.push(await js(`F.op(${JSON.stringify(kind)}, ${int(1e6)}, ${int(1e6)}, ${int(1e6)})`));
       await js(`F.frame()`);
       const bad = await js(`F.cables()`);
@@ -145,14 +147,18 @@ try {
       ok(!errors.length, `edit throws nothing - ${errors.slice(0, 2).join(' | ')} ${trail}`);
       errors.length = 0;
     }
+    where = `round ${round}, redo to end`; trail = log.slice(-6);
     const end = await js(`(async () => { for (let i = 0; i < 120; i++) pb.redo(); await F.frame(); return F.snap(); })()`); // run may end on undo - redo steps still ahead
+    where = `round ${round}, undo everything`;
     const undone = await js(`(async () => { for (let i = 0; i < 120; i++) pb.undo(); await F.frame(); return [F.snap(), F.cables()]; })()`);
     ok(undone[0] === start && !undone[1], `undoing everything returns starting patchbay ${first(start, undone[0])} ${JSON.stringify(undone[1])} (seed ${SEED}, round ${round}: ${log.join(' | ')})`);
+    where = `round ${round}, redo everything`;
     const redone = await js(`(async () => { for (let i = 0; i < 120; i++) pb.redo(); await F.frame(); return [F.snap(), F.cables()]; })()`);
     ok(redone[0] === end && !redone[1], `redoing everything returns finished patchbay ${first(end, redone[0])} ${JSON.stringify(redone[1])} (seed ${SEED}, round ${round}: ${log.join(' | ')})`);
     ok(!errors.length, `undo and redo throw nothing - ${errors.slice(0, 2).join(' | ')} (seed ${SEED}, round ${round})`);
 
     errors.length = 0;
+    where = `round ${round}, save/reopen/save`;
     const diff = await saveReopenSave(`r${round}`);
     ok(!diff, `save, reopen, save writes same file ${JSON.stringify(diff)} (seed ${SEED}, round ${round})`);
     ok(!await js(`F.cables()`), `reopened file draws cables its wiring names (seed ${SEED}, round ${round})`);
@@ -160,14 +166,20 @@ try {
     const chans = await js(`F.channels()`);
     errors.length = 0;
     await js(`pb.setMode('use')`);
-    for (let i = 0; i < 120 && chans.length; i++) { const v = pick(STORM); await js(`pb.routeSend(${JSON.stringify(pick(chans))}, ${v === 'pulse' ? 'kit.pulse()' : JSON.stringify(v)})`); }
+    for (let i = 0; i < 120 && chans.length; i++) { const v = pick(STORM), ch = pick(chans);
+      where = `round ${round}, routing storm ${i}: ${ch} <- ${v}`; // a cascade that never returns is named by the value that started it
+      await js(`pb.routeSend(${JSON.stringify(ch)}, ${v === 'pulse' ? 'kit.pulse()' : JSON.stringify(v)})`); }
     await js(`F.frame()`);
     ok(!errors.length, `routing storm throws nothing - ${errors.slice(0, 2).join(' | ')} (seed ${SEED}, round ${round})`);
+    where = `round ${round}, save/reopen/save after storm`;
     const after = await saveReopenSave(`s${round}`);
     ok(!after, `after storm, save, reopen, save writes same file ${JSON.stringify(after)} (seed ${SEED}, round ${round})`);
   }
 } catch (e) {
-  fails++; console.log(`  ✗ random tier threw (seed ${SEED}):`, e.message);
+  fails++;
+  console.log(`  ✗ random tier threw at ${where} (seed ${SEED}): ${e.message}`);
+  if (trail.length) console.log(`    last ops: ${trail.join(' | ')}`);
+  if (/timeout/i.test(e.message)) console.log(`    a timeout here means the page stopped answering - the step above is what blocked it`);
 }
 
 done();

@@ -41,7 +41,7 @@ const FLOOR = { // each api the runtime needs, taken away before it reads for it
   states: 'delete ElementInternals.prototype.states;',
   parseHTMLUnsafe: 'delete Document.parseHTMLUnsafe;',
 };
-const linkedTheme = `<!doctype html><html lang="en" data-scv-runtime="1.5.0"><head><meta charset="UTF-8"><title>linked</title>
+const linkedTheme = `<!doctype html><html lang="en" data-scv-runtime="2.0.0"><head><meta charset="UTF-8"><title>linked</title>
 <link rel="stylesheet" href="/pieces/theme.css">${HAND[2]}${part('scv-runtime')}</head><body><scv-patchbay></scv-patchbay>${part('scv-canvas')}${part('scv-studio')}</body></html>`; // patchbay file whose theme arrives by link
 
 const PIECES = {
@@ -253,7 +253,7 @@ try {
     const saves = await saveFrom(['quine', 'publish']);
     for (const kind of ['quine', 'publish']) {
       const r = await opened(path.slice(7) + '-' + kind, saves?.[kind] || '');
-      ok(r?.stamp === '1.5.0' && r.themed && r.routed === 'v' && r.studio === (kind === 'quine' ? 'function' : 'undefined'), `${path} ${kind}: saved file starts on its own, themed, routes, stamped 1.5.0 (${JSON.stringify(r)})`);
+      ok(r?.stamp === '2.0.0' && r.themed && r.routed === 'v' && r.studio === (kind === 'quine' ? 'function' : 'undefined'), `${path} ${kind}: saved file starts on its own, themed, routes, stamped 2.0.0 (${JSON.stringify(r)})`);
       ok(uncaught.length === 0, `${path} ${kind}: saved file opens with no page errors (${uncaught.join(' | ')})`);
     }
   }
@@ -343,7 +343,7 @@ try {
   ok(themeCount === 1 && ltHead.includes('--scv-theme') && !ltHead.includes('/pieces/theme.css') && ltHead.includes(HAND[2]),
     `linked theme inlined once, its link dropped, other hand-added head kept (${themeCount} themes, link kept ${ltHead.includes('/pieces/theme.css')})`);
   const ltr = await opened('linked-theme', lt, false);
-  ok(ltr?.themed && ltr.stamp === '1.5.0' && uncaught.length === 0, `linked theme: saved file opens themed (${JSON.stringify(ltr)} ${uncaught.join(' | ')})`);
+  ok(ltr?.themed && ltr.stamp === '2.0.0' && uncaught.length === 0, `linked theme: saved file opens themed (${JSON.stringify(ltr)} ${uncaught.join(' | ')})`);
 
   // in-page mount reads none of the host's head, however much the host put there
   await nav(base + '/mount/head-host');
@@ -469,13 +469,16 @@ try {
 
   // the message wears the palette, and looks the same with no theme loaded at all - styling never depends on which api is missing
   const look = `(() => { const s = getComputedStyle(document.getElementById('scv-unsupported'));
-    return [s.backgroundColor, s.color, s.borderBottomColor, s.fontSize, /SF Mono/.test(s.fontFamily)].join(' | '); })()`;
+    return [s.backgroundColor, s.color, s.borderBottomColor, s.fontSize, /SF Mono/.test(s.fontFamily), s.borderTopLeftRadius, s.maxWidth, s.textAlign].join(' | '); })()`;
   await nav(base + '/floor/getHTML');
   const themed = await js(look);
   await nav(base + '/floor-bare/getHTML');
   const unthemed = await js(look);
-  ok(themed === 'rgb(26, 28, 28) | rgb(170, 171, 172) | rgb(58, 60, 60) | 14px | true',
-    `floor message wears the palette - sunk background, base text, border, fs-c, mono (${themed})`);
+  ok(themed === 'rgb(26, 28, 28) | rgb(170, 171, 172) | rgb(58, 60, 60) | 14px | true | 8px | 532px | center',
+    `floor message is a themed card - sunk background, base text, border all round, fs-c, mono, corner-high, capped width, centred (${themed})`);
+  const laid = await js(`(() => { const p = document.getElementById('scv-unsupported'), s = getComputedStyle(p);
+    return { centred: Math.abs(p.getBoundingClientRect().left - (innerWidth - p.getBoundingClientRect().width) / 2) < 2, capped: p.getBoundingClientRect().width <= 532, wraps: s.overflowWrap }; })()`);
+  ok(laid?.centred && laid.capped && laid.wraps === 'break-word', `floor message sits centred, never wider than its cap, and wraps (${JSON.stringify(laid)})`);
   ok(unthemed === themed, `floor message looks the same with no theme block - inline token values carry it (${unthemed} vs ${themed})`);
 
   // kernel controls

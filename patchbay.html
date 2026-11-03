@@ -1,6 +1,6 @@
 <!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->
 
-<html lang="en" data-scv-runtime="1.5.0">
+<html lang="en" data-scv-runtime="2.0.0">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,7 +8,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%226%22 fill=%22%23986c98%22/%3E%3C/svg%3E">
 <style id="scv-runtime-css">
 :root[data-scv-runtime], scv-patchbay { /* theme enforced by token tests - on element, never themes host page */
-  --scv-theme: 1.5.0; /* marks theme sheet for saves, wherever host loaded it */
+  --scv-theme: 2.0.0; /* marks theme sheet for saves, wherever host loaded it */
 
   --font-mono: 'SF Mono', 'Consolas', 'Menlo', 'DejaVu Sans Mono', monospace;
 
@@ -75,10 +75,11 @@ if (_missing.length) {
       if (document.getElementById('scv-unsupported')) return;
       const p = document.createElement('p');
       p.id = 'scv-unsupported';
-      p.style.cssText = 'margin:0;padding:12px;'
+      p.style.cssText = 'margin:24px auto;padding:16px 20px;max-width:38em;box-sizing:border-box;'
         + 'background:var(--background-sunk,#1A1C1C);color:var(--text-base,#AAABAC);'
-        + 'border-bottom:1px solid var(--border,#3A3C3C);' // themed page is this background too - the edge is what separates them
-        + 'font-family:var(--font-mono,"SF Mono","Consolas","Menlo","DejaVu Sans Mono",monospace);font-size:var(--fs-c,14px)';
+        + 'border:1px solid var(--border,#3A3C3C);border-radius:var(--corner-high,8px);' // themed page is this background too - the edge is what separates them
+        + 'font-family:var(--font-mono,"SF Mono","Consolas","Menlo","DejaVu Sans Mono",monospace);font-size:var(--fs-c,14px);'
+        + 'line-height:1.5;text-align:center;overflow-wrap:break-word';
       p.textContent = 'this file needs a 2024+ browser - its content is intact';
       document.body.prepend(p);
     };
@@ -248,8 +249,10 @@ const createRouter = (root, {
   onRoute     = () => {},
   onRefuse    = () => {},
 } = {}) => {
-  let _depth = 0;
-  let _cache = null; // channel > receivers in walk order
+  const LOOP_MAX = 20, BUDGET = 20000; // a channel may re-enter itself 20 times; one cascade delivers 20k values whatever its shape
+  const _active = new Map(); // channel > times on the stack right now - a channel already in flight means a loop, a long chain never is
+  const _blamed = new Set(); // nodes this router marked - cleared at the next cascade, so a quest's own error is never touched
+  let _sent = 0, _loops = 0, _stopped = false, _from = null, _badFrom = null, _current = null, _cache = null; // _current: whose emission we are inside, so a stop can name it
 
   const invalidate = () => { _cache = null; };
   const _stale = recs => recs.some(r => r.type === 'attributes' || [...r.addedNodes, ...r.removedNodes].some(_wiredDeep)); // only wiring moving in or out rewires - text writes and unwired re-renders don't
@@ -351,6 +354,9 @@ const createRouter = (root, {
 
   const _deliver = (node, channel, value) => {
     const toks = splitWords(node.getAttribute(ATTR_RECEIVES)).filter(t => chOf(t) === channel), isRecv = toks.length > 0;
+    _sent++;
+    const prev = _current; _current = node; // anything this node emits is emitted by it
+    try {
     if (isRecv) {
       if (node.localName === 'scv-logic') toks.forEach(t => node.receive?.(value, channel, portOf(t)));
       else {
@@ -358,10 +364,20 @@ const createRouter = (root, {
         const ev = new CustomEvent('scv-receive', { detail: value, bubbles: true, composed: true });
         ev.channel = channel;
         node.dispatchEvent(ev); // before own verb
-        if (_depth < 20) channels(node, ATTR_EMITS).forEach(c => { if (c !== channel) routeSend(c, value); }); // pass through, never back out incoming channel
+        channels(node, ATTR_EMITS).forEach(c => { if (c !== channel) routeSend(c, value); }); // pass through, never back out incoming channel - routeSend holds the loop and budget guards
       }
     }
     _runAction(node, channel, value, isRecv);
+    } finally { _current = prev; }
+  };
+
+  const _stop = (reason, channel) => { // the emitter wears it: status text on the node, its outgoing cables go red
+    if (_stopped) return; // once per cascade - unwinding hits the same wall on every branch, and eleven red nodes say less than one
+    _stopped = true; _badFrom = _from;
+    const n = _current;
+    if (n) { try { n.stall?.(reason); _blamed.add(n); } catch (e) { debug('stall failed', e, true); } }
+    console.warn(`[scav] ${reason} on ${channel} - cascade stopped`);
+    try { root.dispatchEvent?.(new CustomEvent('scv-overload', { detail: { node: n || null, channel, reason }, bubbles: false })); } catch {}
   };
 
   const _receivers = ch => {
@@ -369,12 +385,26 @@ const createRouter = (root, {
     return (_cache ??= _rebuild()).get(ch);
   };
   const routeSend = (channel, value) => {
-    if (_depth >= 20) return console.warn('[scav] depth limit (20) reached on ' + channel + ', chain stopped');
-    _depth++;
+    const held = _active.get(channel) || 0, reentry = held > 0; // already running means we came back round to it
+    const outer = _active.size === 0;
+    if (outer) _from = channel; // what the whole cascade started from
+    if (outer) { // only re-sending the channel that caused it clears it - an unrelated clock tick must not wipe the warning a second later
+      _sent = _loops = 0; _stopped = false;
+      if (channel === _badFrom) {
+        _badFrom = null; _blamed.forEach(n => { try { n.unstall?.(); } catch {} }); _blamed.clear();
+        try { root.dispatchEvent?.(new CustomEvent('scv-overload', { detail: { node: null, channel, reason: null }, bubbles: false })); } catch {} // same event, nothing to blame - whoever paints cables repaints
+      }
+    }
+    else {
+      if (reentry && _loops >= LOOP_MAX) return _stop('infinite loop', channel); // feedback, and it has gone round enough
+      if (_sent >= BUDGET) return _stop('too many values', channel); // acyclic still doubles at every rejoin - the budget is what bounds every shape
+      if (reentry) _loops++;
+    }
+    _active.set(channel, held + 1);
     try {
       try { onRoute(channel, value); } catch (e) { debug('onRoute failed', e, true); }
       _receivers(channel)?.forEach(n => _deliver(n, channel, value));
-    } finally { _depth--; }
+    } finally { held ? _active.set(channel, held) : _active.delete(channel); }
   };
 
   const applyAction = (verb, channel, value) => { // action node: verb on every receiver of channel
@@ -713,7 +743,7 @@ const NODE_CSS = `
 :host(:hover)::before, :host(:focus-within)::before { opacity: 1; }
 :host(:state(dragging)) { box-shadow: 0 0 0 2px var(--background-sunk), 0 0 0 4px var(--cs), 0 0 24px rgba(0,0,0,.55); }
 :host(:state(busy)) { --cs: var(--success); }
-:host(:state(error)), :host(:state(danger)) { --cs: var(--danger); }
+:host(:state(error)), :host(:state(danger)), :host(:state(stalled)) { --cs: var(--danger); }
 .dot { position: relative; width: 32px; height: 32px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   background: var(--node); color: var(--glyph); font-weight: bold; user-select: none; }
 .dot svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; }
@@ -1335,6 +1365,7 @@ class ScvLogic extends HTMLElement {
     splitWords(this.getAttribute(ATTR_EMITS)).forEach(t => { if (portOf(t) === port) r.routeSend(chOf(t), v); });
   }
   showFloat(v) {
+    if (this._stallText && v !== this._stallText) return; // a stopped node keeps saying why - the values still unwinding past it do not get to overwrite that
     this._parts.text = floatText(v);
     onFrame(this, () => {
       const f = this._parts.float;
@@ -1343,6 +1374,8 @@ class ScvLogic extends HTMLElement {
       this._parts.fade = f.animate([{ opacity: 1 }, { opacity: 1, offset: 0.65 }, { opacity: 0 }], { duration: 900, easing: 'ease-out' });
     });
   }
+  stall(reason) { this._internals.states.add('stalled'); this._stallText = reason; this.showFloat(reason); } // the router stopped a cascade here - its own state, because `error` clears on the node's next success and in a loop that is immediate
+  unstall() { this._internals.states.delete('stalled'); this._stallText = null; }
   flashError(where, err) {
     console.warn('[scav] ' + (this.dataset.type || 'node') + ' ' + where + ' failed', err);
     this._errored = true;
@@ -1433,7 +1466,7 @@ const SHADOW_CSS = `
 `;
 const sheet = css => { const s = new CSSStyleSheet(); s.replaceSync(css); return s; };
 let _shadowSheet = null;
-const VERSION = '1.5.0'; // written into every save - never read from page
+const VERSION = '2.0.0'; // written into every save - never read from page
 const THEME_TOKENS = [ // theme's own - tokens tier and saver both check this list
   '--output', '--input', '--danger', '--success',
   '--background-sunk', '--background-raised',
@@ -1691,13 +1724,15 @@ const CHROME_CSS = sheet(`
 .cable { fill: none; stroke: var(--cs, var(--cable)); stroke-width: 3px; stroke-linecap: round; pointer-events: visibleStroke; cursor: pointer; transition: stroke var(--duration-base); }
 .cable:hover { stroke: var(--danger); stroke-width: 4px; }
 .cable.dim { --cs: var(--dim); }
+.cable.hot { --cs: var(--danger); } /* leaves a node the router stopped */
 .temp { fill: none; stroke: var(--input); stroke-width: 3px; stroke-linecap: round; stroke-dasharray: 6 6; opacity: .8; pointer-events: none; animation: dash .5s linear infinite; }
 .temp.rev { animation-direction: reverse; }
 @keyframes dash { to { stroke-dashoffset: -12; } }
 .box { position: absolute; z-index: 102; pointer-events: none;
-  box-shadow: 0 0 0 calc(2px / var(--zoom, 1)) var(--background-sunk), 0 0 0 calc(4px / var(--zoom, 1)) var(--input); } /* node ring, around selection */
-.corner { position: absolute; width: calc(8px / var(--zoom, 1)); height: calc(8px / var(--zoom, 1)); background: var(--input); pointer-events: auto;
+  box-shadow: 0 0 0 calc(1px / var(--zoom, 1)) var(--input); } /* a hairline around the selection - the node ring is the node's own */
+.corner { position: absolute; width: calc(6px / var(--zoom, 1)); height: calc(6px / var(--zoom, 1)); background: var(--input); pointer-events: auto;
   transform: translate(-50%, -50%) rotate(45deg); }
+.corner::before { content: ''; position: absolute; inset: calc(-3px / var(--zoom, 1)); transform: rotate(-45deg); } /* small to look at, still big enough to grab - squared back up so the grab area is not a diamond reaching into the crop band, and a pseudo never becomes the target */
 .corner[data-c="nw"] { left: 0; top: 0; cursor: nwse-resize; } .corner[data-c="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
 .corner[data-c="ne"] { left: 100%; top: 0; cursor: nesw-resize; } .corner[data-c="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
 .lasso { position: absolute; border: 1px dashed var(--input); background: var(--selection); pointer-events: none; z-index: 9998; }
@@ -1870,7 +1905,7 @@ const studio = pb => {
   // positions are state, sizes from resize observer - no layout read in a loop
 
   const sizes = new WeakMap(), inner = new WeakMap(), innerBy = new WeakMap(); // unit > ends measured inside it
-  const ro = new ResizeObserver(es => { for (const e of es) { const b = e.borderBoxSize[0]; sizes.set(e.target, { w: b.inlineSize, h: b.blockSize }); remeasure(e.target); } draw(); });
+  const ro = new ResizeObserver(es => { for (const e of es) { const b = e.borderBoxSize[0]; sizes.set(e.target, { w: b.inlineSize, h: b.blockSize }); remeasure(e.target); } draw(); paint(); });
   const at = u => { const [tx, ty] = (u.style.translate || '0 0').split(' ').map(parseFloat); return [px(u, 'left') + (tx || 0), px(u, 'top') + (ty || 0)]; }; // translate only while dragging
   const place = u => { // canvas position and scale, through parent items
     let [x, y] = at(u), s = parseFloat(u.style.scale) || 1;
@@ -1879,7 +1914,8 @@ const studio = pb => {
   };
   const cropOf = item => { const m = (item.firstElementChild?.style.clipPath || '').match(/inset\(([^)]*)\)/), v = m ? m[1].split(/\s+/).map(parseFloat) : []; return { t: v[0] || 0, r: v[1] ?? v[0] ?? 0, b: v[2] ?? v[0] ?? 0, l: v[3] ?? v[1] ?? v[0] ?? 0 }; };
   const boxOf = u => { // visible box on canvas
-    const { x, y, s } = place(u), z = sizes.get(u) || { w: u.localName === 'scv-logic' ? 32 : 0, h: u.localName === 'scv-logic' ? 32 : 0 };
+    const UNMEASURED = u.localName === 'scv-logic' ? 32 : 40; // never measured yet - a square big enough to grab by, as 1.0's handles floored at 40px; the observer replaces it
+    const { x, y, s } = place(u), z = sizes.get(u) || { w: UNMEASURED, h: UNMEASURED };
     const c = u.localName === 'scv-item' ? cropOf(u) : { t: 0, r: 0, b: 0, l: 0 };
     return { x: x + c.l * s, y: y + c.t * s, w: (z.w - c.l - c.r) * s, h: (z.h - c.t - c.b) * s };
   };
@@ -2016,10 +2052,18 @@ const studio = pb => {
     tint();
   });
   const paintKey = {};
+  const hot = new Set(); // emitters the router stopped - it clears their error state on the next clean cascade, and these follow
+  pb.addEventListener('scv-overload', e => { // blamed or cleared, the cables follow
+    if (e.detail?.node) hot.add(e.detail.node);
+    else { hot.clear(); root.querySelectorAll('.cable.hot').forEach(p => p.classList.remove('hot')); } // straight off the paths - tint only visits cables that still exist
+    draw();
+  });
   const tint = () => {
+    for (const n of hot) if (!n.states?.has('stalled')) hot.delete(n); // the router owns the state, this only follows it
     const sel = new Set(selection()), hv = st.hover;
     for (const c of cables.values()) if (c.path) {
       const su = unitOf(c.src), tu = unitOf(c.tgt);
+      c.path.classList.toggle('hot', hot.has(c.src)); // outgoing only - the wires carrying what was stopped
       c.path.classList.toggle('dim', !!(hv && su !== hv && tu !== hv) || (sel.size > 0 && !sel.has(su) && !sel.has(tu)));
       su === hv || sel.has(su) ? c.path.style.setProperty('--cs', 'var(--input)') : c.path.style.removeProperty('--cs');
     }
@@ -2440,7 +2484,7 @@ const studio = pb => {
   };
   const importDoc = (doc, opts = {}) => {
     const at = opts.at || toCanvas(st.pointer.x, st.pointer.y);
-    if (parseFloat(doc.documentElement?.getAttribute('data-scv-runtime')) < 1.5 || doc.querySelector('.comp-wrapper')) { note('1.0 file, open it directly'); return []; } // carries its own editor
+    if (parseFloat(doc.documentElement?.getAttribute('data-scv-runtime')) < 2 || doc.querySelector('.comp-wrapper')) { note('older file, open it directly'); return []; } // refused, never adapted - an older file carries its own editor and opens on its own; the class catches a pasted fragment, which has no stamp
     let unknown = 0;
     const boxed = new Set(); // harvests whose css queries their own box
     doc.querySelectorAll('script[data-scv-def]').forEach(s => { const hv = kit.harvestOf(kit.boxScopeCss(s.textContent)); if (!hv) return unknown++; kit.defineHarvest(hv); if (hv.markup.includes('@container')) boxed.add(hv.tag); });

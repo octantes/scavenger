@@ -183,11 +183,11 @@ try {
     return [echoes === 1 && b.log[0] === 5, { echoes, b: b.log }];
   });
 
-  await run('cycle stops at depth limit, no hang', async () => {
+  await run('a feedback loop goes round a bounded number of times, no hang', async () => {
     const pb = T.pb(), a = T.sink(pb, 'x'); a.setAttribute('data-scv-emits', 'y');
     const b = T.sink(pb, 'y'); b.setAttribute('data-scv-emits', 'x');
     pb.routeSend('x', 1);
-    return [a.log.length === 10 && b.log.length === 10, { a: a.log.length, b: b.log.length }];
+    return [a.log.length === 11 && b.log.length === 11, { a: a.log.length, b: b.log.length }]; // 20 re-entries of a channel already in flight, then it stops
   });
 
   await run('wire made this turn routes at once', async () => {
@@ -689,13 +689,28 @@ try {
     return [d.log.length === 1 && d.log[0] === 0, d.log];
   });
 
-  await run('node chain past 20 hops stops with one warning', async () => {
+  await run('a long chain runs its whole length - depth is not what is capped', async () => {
     const pb = T.pb(); let prev = T.node(pb, 'mutator', { value: 'v + 1', 'data-scv-emits': 'h0' });
     const first = prev;
-    for (let i = 1; i < 25; i++) prev = T.node(pb, 'mutator', { value: 'v + 1', 'data-scv-receives': 'h' + (i - 1), 'data-scv-emits': 'h' + i });
-    const d = T.sink(pb, 'h24'); const warn = console.warn; let warned = 0; console.warn = () => warned++;
+    for (let i = 1; i < 60; i++) prev = T.node(pb, 'mutator', { value: 'v + 1', 'data-scv-receives': 'h' + (i - 1), 'data-scv-emits': 'h' + i });
+    const d = T.sink(pb, 'h59'); const warn = console.warn; let warned = 0; console.warn = () => warned++;
     try { first.receive(0, 'x'); } finally { console.warn = warn; }
-    return [d.log.length === 0 && warned === 1, { got: d.log, warned }];
+    return [d.log.join() === '60' && warned === 0, { got: d.log, warned }]; // 60 hops, every one of them delivered, nothing warned
+  });
+
+  await run('a cascade that doubles at every rejoin stops on the budget and blames its emitter', async () => {
+    const pb = T.pb(); // diamonds in a row: split, rejoin, split again - strictly acyclic, and it doubles each time
+    for (let i = 0; i < 16; i++) {
+      T.node(pb, 'mutator', { value: 'v', 'data-scv-receives': 's' + i, 'data-scv-emits': 'a' + i });
+      T.node(pb, 'mutator', { value: 'v', 'data-scv-receives': 's' + i, 'data-scv-emits': 'b' + i });
+      T.node(pb, 'mutator', { value: 'v', 'data-scv-receives': 'a' + i + ' b' + i, 'data-scv-emits': 's' + (i + 1) });
+    }
+    const warn = console.warn; const said = []; console.warn = m => said.push(String(m));
+    const t0 = Date.now();
+    try { pb.routeSend('s0', 1); } finally { console.warn = warn; }
+    const blamed = [...pb.querySelectorAll('scv-logic')].filter(n => n.states.has('stalled'));
+    return [said.some(m => /too many values/.test(m)) && blamed.length === 1 && Date.now() - t0 < 5000,
+      { said: said.slice(0, 1), blamed: blamed.length, ms: Date.now() - t0 }];
   });
 
   // component api
@@ -912,7 +927,7 @@ try {
   ok(shadows.join() === 'false,true', `unchanged harvest instance saved bare, changed one with its shadow (${shadows})`);
   ok(imgFetches === 1, `remote image fetched once into table (${imgFetches})`);
 
-  ok(/^<!DOCTYPE html>  <!-- scavenge\.ar[^\n]*-->\n\n<html lang="en" data-scv-runtime="1\.5\.\d+">/.test(q), 'header: doctype and license, blank line, html lang en stamped');
+  ok(/^<!DOCTYPE html>  <!-- scavenge\.ar[^\n]*-->\n\n<html lang="en" data-scv-runtime="2\.0\.\d+">/.test(q), 'header: doctype and license, blank line, html lang en stamped');
   ok(!/127\.0\.0\.1:9876/.test(body), 'quine bakes no quest api');
 
   await run('last instance gone drops its def from save, undo-free live page keeps it', async () => {
@@ -1165,7 +1180,7 @@ try {
     const d = await Promise.race([got, new Promise(r => setTimeout(() => r(null), 500))]); f.remove();
     return d && { version: d.version, channels: d.channels.map(c => c.name + (c.emits ? '>' : '') + (c.receives ? '<' : '') + (c.ports.length ? '@' + c.ports.join('|') : '')).sort().join(), nodes: d.nodes.map(n => n.type + ':' + n.inputs.map(p => p.name + '/' + (p.type || '')).join() + '>' + n.outputs.map(p => p.name).join()).sort().join() };
   })()`);
-  ok(described?.version === '1.5.0' && described.channels === 'price<@in,verdict><@out' && described.nodes === 'accumulator:>,ds-port:in/text>out', `describe lists channels with ports and node types with declared ports (${JSON.stringify(described)})`);
+  ok(described?.version === '2.0.0' && described.channels === 'price<@in,verdict><@out' && described.nodes === 'accumulator:>,ds-port:in/text>out', `describe lists channels with ports and node types with declared ports (${JSON.stringify(described)})`);
 
   const lent = await js(`(async () => {
     const kit = customElements.get('scv-patchbay').kit, own = { id: 'host' };

@@ -217,6 +217,45 @@ try {
     const u = await js(`[...T.pb.querySelectorAll('scv-item')].map(i => i.style.left + ',' + i.style.top)`);
     return [m.join() === '150px,450px,350px,450px' && u.join() === '100px,400px,300px,400px', { m, u }];
   });
+  await run('selection frame takes a size that only arrives later, and follows a resize', async () => {
+    const r = await js(`(async () => { const b = () => T.pb.shadowRoot.querySelector('.box');
+      const it = document.createElement('scv-item'); it.style.left = '1400px'; it.style.top = '1400px';
+      it.innerHTML = '<p style="margin:0;padding:20px 30px;background:#252727">late</p>';
+      T.pb.append(it); T.pb.select([it]); // selected in the same tick - its size is not measured yet
+      await new Promise(x => requestAnimationFrame(() => requestAnimationFrame(x)));
+      const blind = [b().style.width, b().style.height]; // no measurement yet - a square, never a point
+      await new Promise(x => setTimeout(x, 300));
+      const fresh = [b().style.width, Math.round(it.getBoundingClientRect().width) + 'px'];
+      it.querySelector('p').style.padding = '60px 90px'; // a selected item that grows
+      await new Promise(x => setTimeout(x, 300));
+      const grown = [b().style.width, Math.round(it.getBoundingClientRect().width) + 'px'];
+      T.pb.select([]); it.remove();
+      return { blind, fresh, grown }; })()`);
+    const near = ([a, b]) => Math.abs(parseFloat(a) - parseFloat(b)) < 1.5;
+    return [r.blind.join() === '40px,40px' && near(r.fresh) && near(r.grown), r]; // the observer learns the size after the paint - it has to repaint
+  });
+  await run('a stopped cascade reddens the wires leaving its emitter, and clears on the next clean one', async () => {
+    const r = await js(`(async () => {
+      const ring = ['r1', 'r2', 'r3'];
+      const made = ring.map((ch, i) => T.node('mutator', 1200 + i * 60, 1200, { value: 'v',
+        'data-scv-emits': ch, 'data-scv-receives': ring.filter((_, j) => j !== i).join(' ') }));
+      await T.frame();
+      T.pb.setMode('use'); window.__got = 0;
+      T.pb.addEventListener('scv-overload', e => window.__ov.push({ reason: e.detail.reason, why: e.detail._why, mine: made.includes(e.detail.node), err: e.detail.node?._errored, st: e.detail.node?.states?.has('error') })); made.forEach(n => { const o = n.receive.bind(n); n.receive = (...a) => { window.__got++; return o(...a); }; });
+      T.pb.routeSend('r1', '1');
+      const atOnce = made.filter(n => n.states.has('stalled')); // read before a frame - a clock tick must not be what decides this
+      await T.frame(); await T.frame();
+      const float = atOnce[0]?.shadowRoot?.querySelector('.float')?.textContent || ''; // showFloat writes on a frame
+      const hot = () => [...T.pb.shadowRoot.querySelectorAll('.cable.hot')].length;
+      const stopped = { hot: hot(), blamed: atOnce.length, stillBlamed: made.filter(n => n.states.has('stalled')).length, float };
+      made[1].removeAttribute('data-scv-receives'); made[2].removeAttribute('data-scv-receives'); // break the ring for real, then send the same channel again
+      await T.frame(); T.pb.routeSend('r1', '3'); await T.frame(); await T.frame();
+      const after = { hot: hot(), blamed: made.filter(n => n.states.has('stalled')).length };
+      made.forEach(n => n.remove()); T.pb.setMode('edit'); await T.frame();
+      return { stopped, after }; })()`);
+    return [r.stopped.blamed === 1 && r.stopped.hot > 0 && r.stopped.float === 'infinite loop' && r.after.blamed === 0 && r.after.hot === 0, r];
+  });
+
   await run('corner diamond scales item, alt in whole cells, undo', async () => {
     await click(130, 420);
     const c = await js(`(() => { const r = T.shadow('.corner[data-c="se"]').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
@@ -884,9 +923,9 @@ try {
     })()`);
     return [r[0] && r[1] === null && r[2], r];
   });
-  await run('1.0 file refused with note, 1.5 taken', async () => {
-    const r = await js(`(() => { const n = T.pb.children.length, a = T.pb.import('<html data-scv-runtime="1.0.0"><body><scv-item><p data-scv-id="o">old</p></scv-item></body></html>'), b = T.pb.import('<div class="comp-wrapper"></div>'), c = T.pb.import('<html data-scv-runtime="1.5.0"><body><scv-item><p data-scv-id="n">new</p></scv-item></body></html>'); return [a.length + b.length, c.length, T.pb.children.length === n + 1, T.shadow('.tip').textContent]; })()`);
-    return [r[0] === 0 && r[1] === 1 && r[2] && r[3] === '1.0 file, open it directly', r];
+  await run('pre-2.0 files refused with note, 2.0 taken', async () => {
+    const r = await js(`(() => { const n = T.pb.children.length, a = T.pb.import('<html data-scv-runtime="1.0.0"><body><scv-item><p data-scv-id="o">old</p></scv-item></body></html>'), b = T.pb.import('<div class="comp-wrapper"></div><scv-item><p data-scv-id="c">wrapped</p></scv-item>'), d = T.pb.import('<html data-scv-runtime="1.5.0"><body><scv-item><p data-scv-id="w">wip</p></scv-item></body></html>'), c = T.pb.import('<html data-scv-runtime="2.0.0"><body><scv-item><p data-scv-id="n">new</p></scv-item></body></html>'); return [a.length + b.length + d.length, c.length, T.pb.children.length === n + 1, T.shadow('.tip').textContent]; })()`);
+    return [r[0] === 0 && r[1] === 1 && r[2] && r[3] === 'older file, open it directly', r];
   });
   await run('ctrl+d duplicates selection one cell off, wires fresh', async () => {
     await js(`(() => { const [n, out] = [T.pb.querySelector('scv-logic[data-type=twice]'), T.nodes().find(x => x.dataset.type === 'accumulator' && x.getAttribute('data-scv-receives') !== 'clash')]; T.pb.select([n, out]); T.pb.shadowRoot.querySelector('.layer').focus(); })()`);

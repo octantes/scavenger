@@ -2180,7 +2180,7 @@ const studio = pb => {
         if (tgt) { if (tgt !== from) mod(ev) ? wire(tgt, from) : wire(from, tgt, sp, anchorIn(path, 'in')); return endTemp(); }
         const p = toCanvas(ev.clientX, ev.clientY), rev = mod(ev);
         showTemp(from, ev, sp);
-        menu(nodeItems((type) => { const n = spawn(type, p.x - 16, p.y - 16); rev ? wire(n, from) : wire(from, n, sp); }), ev.clientX, ev.clientY, endTemp);
+        offerMenu(nodeItems((type) => { const n = spawn(type, p.x - 16, p.y - 16); rev ? wire(n, from) : wire(from, n, sp); }), 'wire', ev, endTemp, { from, reverse: rev });
       },
       cancel: () => endTemp(),
     };
@@ -2275,6 +2275,13 @@ const studio = pb => {
   });
 
   const closeMenu = () => { if (!st.menu) return; const m = st.menu; st.menu = null; m.remove(); m._onClose?.(); };
+  const menuClass = id => id === 'mode' ? 'mode' : String(id || '').startsWith('save:') ? 'save' : '';
+  const offerMenu = (items, kind, ev, onClose, pending) => { // host shapes it or takes it over - items read back after dispatch, never the array we held
+    const p = toCanvas(ev.clientX, ev.clientY);
+    const d = { items, kind, x: p.x, y: p.y, target: itemOf(ev.composedPath()[0]) || null, from: pending?.from, reverse: pending?.reverse }; // from and reverse are the pending wire if there is one - a host taking the menu over needs both to finish it
+    if (pb.dispatchEvent(new CustomEvent('scv-menu', { detail: d, cancelable: true, bubbles: false }))) menu(d.items, ev.clientX, ev.clientY, onClose);
+    else { pending?.cancel?.(); onClose?.(); } // suppressed still needs the cleanup - a dropped wire's line or an armed chain would hang otherwise
+  };
   const menu = (items, x, y, onClose) => {
     closeMenu();
     const m = document.createElement('div'), r = rectOf();
@@ -2282,8 +2289,11 @@ const studio = pb => {
     items.forEach(it => {
       const b = document.createElement('button');
       b.textContent = it.label;
-      if (it.cls) b.className = it.cls;
-      b.addEventListener('click', () => { it.fn(); closeMenu(); }); // closing always runs its onClose
+      const cls = menuClass(it.id); if (cls) b.className = cls; // colour follows the id, so a host item carries none
+      b.addEventListener('click', () => { // a throwing item must not leave the menu stuck open
+        try { it.fn(); } catch (e) { console.warn('[scav] menu item ' + (it.id || '?') + ' failed', e); }
+        closeMenu(); // closing always runs its onClose
+      });
       m.append(b);
     });
     root.append(m); st.menu = m;
@@ -2291,7 +2301,7 @@ const studio = pb => {
     m.style.left = Math.max(r.left, Math.min(x, r.right - b.width)) - r.left + 'px'; m.style.top = Math.max(r.top, Math.min(y, r.bottom - b.height)) - r.top + 'px';
   };
   pb.menu = () => st.menu && [...st.menu.querySelectorAll('button')].map(b => b.firstChild.textContent);
-  const nodeItems = fn => [...kit.nodeTypes(pb).values()].sort((a, b) => (+a.key || 99) - (+b.key || 99)).map(d => ({ label: '[node] - ' + d.name, fn: () => { setMode('edit'); fn(d.name); } }));
+  const nodeItems = fn => [...kit.nodeTypes(pb).values()].sort((a, b) => (+a.key || 99) - (+b.key || 99)).map(d => ({ id: 'node:' + d.name, label: '[node] - ' + d.name, key: d.key, fn: () => { setMode('edit'); fn(d.name); } }));
   pb.addEventListener('contextmenu', e => {
     const path = ownPath(e); if (!path) return;
     e.preventDefault();
@@ -2299,11 +2309,11 @@ const studio = pb => {
     if (node && pb.editing) { const b = [attrsOf(node)]; node.cycleMode(); recordAttrs([node], b, 'mode'); return closeMenu(); }
     const p = toCanvas(e.clientX, e.clientY);
     if (st.chain && st.last) st.lock = mod(e);
-    const items = [{ label: pb.editing ? '[mode] - use' : '[mode] - edit', cls: 'mode', fn: () => setMode(pb.editing ? 'use' : 'edit') }];
+    const items = [{ id: 'mode', label: pb.editing ? '[mode] - use' : '[mode] - edit', fn: () => setMode(pb.editing ? 'use' : 'edit') }];
     items.push(...nodeItems(type => { const last = st.chain ? st.last : null, rev = st.lock; const n = spawn(type, p.x - 16, p.y - 16); if (last) rev ? wire(n, last) : wire(last, n); disarm(); }));
-    for (const tag of kit.compsOf(pb)) items.push({ label: '[comp] - ' + tag.replace(/^scv-/, ''), fn: () => { setMode('edit'); const it = document.createElement('scv-item'); it.style.left = p.x + 'px'; it.style.top = p.y + 'px'; const c = document.createElement(tag); c.dataset.scvId = 'comp_' + uid(9); it.append(c); pb.append(it); record(() => pb.append(it), () => it.remove(), 'spawn'); } });
-    items.push({ label: '[save] - quine (keeps editing)', cls: 'save', fn: () => pb.export('quine') }, { label: '[save] - canvas (infinite, no editing)', cls: 'save', fn: () => pb.export('canvas') }, { label: '[save] - publish (document, no editing)', cls: 'save', fn: () => pb.export('publish') });
-    menu(items, e.clientX, e.clientY, () => { st.lock = null; });
+    for (const tag of kit.compsOf(pb)) items.push({ id: 'comp:' + tag, label: '[comp] - ' + tag.replace(/^scv-/, ''), fn: () => { setMode('edit'); const it = document.createElement('scv-item'); it.style.left = p.x + 'px'; it.style.top = p.y + 'px'; const c = document.createElement(tag); c.dataset.scvId = 'comp_' + uid(9); it.append(c); pb.append(it); record(() => pb.append(it), () => it.remove(), 'spawn'); } });
+    items.push({ id: 'save:quine', label: '[save] - quine (keeps editing)', fn: () => pb.export('quine') }, { id: 'save:canvas', label: '[save] - canvas (infinite, no editing)', fn: () => pb.export('canvas') }, { id: 'save:publish', label: '[save] - publish (document, no editing)', fn: () => pb.export('publish') });
+    offerMenu(items, 'canvas', e, () => { st.lock = null; }, st.chain && st.last ? { from: st.last, reverse: st.lock, cancel: disarm } : null); // an armed chain is a pending wire too - same two values the node items above wire with
   });
 
   pb.addEventListener('pointermove', e => {

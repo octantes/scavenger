@@ -437,6 +437,204 @@ try {
     await key('Escape'); const closed = await js(`!T.pb.shadowRoot.querySelector('.menu')`);
     return [r[0] === '[mode] - use' && r.includes('[node] - clock') && r.includes('[node] - quest') && r.slice(-3).join() === '[save] - quine (keeps editing),[save] - canvas (infinite, no editing),[save] - publish (document, no editing)' && closed, { r, closed }];
   });
+  // scv-menu - a host shapes the menu or takes it over
+
+  await run('host listener adds an item: it shows, runs and closes the menu', async () => {
+    await js(`(() => { window.__ran = 0; window.__off = new AbortController();
+      T.pb.addEventListener('scv-menu', e => e.detail.items.push(
+        { id: 'host:mine', label: '[host] - mine', fn: () => { window.__ran++; } },
+        { id: 'host:dressed', label: '[save] - mine', fn() {} }), { signal: window.__off.signal }); })()`);
+    await click(900, 600, 0, 'right');
+    const shown = await js(`T.pb.menu()`);
+    await js(`[...T.pb.shadowRoot.querySelectorAll('.menu button')].find(b => b.textContent === '[host] - mine').click()`);
+    const after = await js(`[window.__ran, !T.pb.shadowRoot.querySelector('.menu')]`);
+    return [shown.at(-2) === '[host] - mine' && after[0] === 1 && after[1], { shown: shown.slice(-2), ran: after[0], closed: after[1] }];
+  });
+
+  await run('host item carries no class, built-ins keep their colours', async () => {
+    await click(900, 600, 0, 'right');
+    const r = await js(`(() => { const b = [...T.pb.shadowRoot.querySelectorAll('.menu button')], by = t => b.find(x => x.textContent.startsWith(t));
+      return [by('[mode]').className, by('[save] - quine').className, by('[node]').className, by('[host]').className, by('[save] - mine').className]; })()`);
+    await key('Escape');
+    return [r && r[0] === 'mode' && r[1] === 'save' && r[2] === '' && r[3] === '' && r[4] === '', r]; // [4]: a host item wearing a built-in label stays unstyled - the class comes from the id
+  });
+
+  await run('items removed by id are gone', async () => {
+    await js(`(() => { window.__off.abort(); window.__off = new AbortController();
+      T.pb.addEventListener('scv-menu', e => { for (let i = e.detail.items.length - 1; i >= 0; i--) if (e.detail.items[i].id.startsWith('save:')) e.detail.items.splice(i, 1); }, { signal: window.__off.signal }); })()`);
+    await click(900, 600, 0, 'right');
+    const r = await js(`T.pb.menu()`);
+    await key('Escape');
+    return [r.length > 0 && !r.some(l => l.startsWith('[save]')), { left: r.length, saves: r.filter(l => l.startsWith('[save]')) }];
+  });
+
+  await run('preventDefault shows no menu and still blocks the browser one', async () => {
+    await js(`(() => { window.__off.abort(); window.__off = new AbortController(); window.__dflt = null;
+      T.pb.addEventListener('scv-menu', e => e.preventDefault(), { signal: window.__off.signal });
+      T.pb.addEventListener('contextmenu', e => { window.__dflt = e.defaultPrevented; }, { signal: window.__off.signal }); })()`);
+    await click(900, 600, 0, 'right');
+    const r = await js(`[!T.pb.shadowRoot.querySelector('.menu'), window.__dflt]`);
+    return [r && r[0] === true && r[1] === true, { noMenu: r && r[0], browserBlocked: r && r[1] }];
+  });
+
+  await run('wire kind fires on the wire-drop menu, with node items and the drop point', async () => {
+    await js(`(() => { window.__off.abort(); window.__off = new AbortController(); window.__seen = [];
+      T.pb.addEventListener('scv-menu', e => window.__seen.push({ kind: e.detail.kind, x: Math.round(e.detail.x), y: Math.round(e.detail.y), target: e.detail.target?.localName ?? null, ids: e.detail.items.map(i => i.id).slice(0, 2) }), { signal: window.__off.signal }); })()`);
+    await press(216, 216); await moveTo(216, 216, 820, 560); await mouse('mouseReleased', 820, 560); await frames();
+    const r = await js(`window.__seen`);
+    await key('Escape');
+    return [r.length === 1 && r[0].kind === 'wire' && r[0].target === null && r[0].ids.every(i => i.startsWith('node:')) && r[0].x > 0, r];
+  });
+
+  await run('canvas kind carries the item under the pointer, a node opens no menu', async () => {
+    await js(`(() => { window.__seen = []; T.node('gate', 700, 300); })()`); // its own node - a right click cycles the mode, which would edit a shared one
+    await frames();
+    await click(716, 316, 0, 'right');
+    const onNode = await js(`[window.__seen.length, !T.pb.shadowRoot.querySelector('.menu')]`);
+    await js(`T.nodes().at(-1).remove()`);
+    await click(900, 600, 0, 'right');
+    const empty = await js(`window.__seen.at(-1)`);
+    await key('Escape');
+    return [onNode[0] === 0 && onNode[1] === true && empty.kind === 'canvas' && empty.target === null, { onNode, empty }];
+  });
+
+  await run('a host suppressing the wire menu finishes the wire from detail.from', async () => {
+    await js(`(() => { window.__off.abort(); window.__off = new AbortController(); window.__drop = null; window.__spawned = null;
+      T.pb.addEventListener('scv-menu', e => { if (e.detail.kind !== 'wire') return; // a host with its own spawn list takes the drop over
+        e.preventDefault();
+        const n = window.__spawned = T.node('gate', Math.round(e.detail.x), Math.round(e.detail.y));
+        T.pb.wire(e.detail.from, n);
+        window.__drop = { own: e.detail.from === window.__src, reverse: e.detail.reverse, fwd: !!n.getAttribute('data-scv-receives') && n.getAttribute('data-scv-receives') === e.detail.from.getAttribute('data-scv-emits') };
+      }, { signal: window.__off.signal });
+      window.__src = T.node('clock', 860, 540); window.__cables = T.pb.shadowRoot.querySelectorAll('.cable').length; })()`);
+    await frames();
+    await press(876, 556); await moveTo(876, 556, 1040, 700); await mouse('mouseReleased', 1040, 700); await frames();
+    const r = await js(`(() => { const d = window.__drop, noMenu = !T.pb.shadowRoot.querySelector('.menu');
+      const drawn = T.pb.shadowRoot.querySelectorAll('.cable').length - window.__cables;
+      const hanging = [...T.pb.shadowRoot.querySelectorAll('.temp')].filter(p => p.style.display !== 'none').length;
+      [window.__src, window.__spawned].forEach(n => n?.remove()); return { d, noMenu, drawn, hanging }; })()`);
+    return [r.d && r.d.own === true && r.d.reverse === false && r.d.fwd === true && r.noMenu === true && r.drawn === 1 && r.hanging === 0, r];
+  });
+
+  await run('ctrl at the drop sets reverse and the host wires the other way round', async () => {
+    await js(`(() => { window.__off.abort(); window.__off = new AbortController(); window.__drop = null; window.__spawned = null;
+      T.pb.addEventListener('scv-menu', e => { if (e.detail.kind !== 'wire') return;
+        e.preventDefault();
+        const n = window.__spawned = T.node('gate', Math.round(e.detail.x), Math.round(e.detail.y));
+        e.detail.reverse ? T.pb.wire(n, e.detail.from) : T.pb.wire(e.detail.from, n); // without reverse a host wires every reversed drop backwards
+        window.__drop = { reverse: e.detail.reverse, back: !!n.getAttribute('data-scv-emits') && window.__src.getAttribute('data-scv-receives') === n.getAttribute('data-scv-emits'), fwd: !!n.getAttribute('data-scv-receives') };
+      }, { signal: window.__off.signal });
+      window.__src = T.node('clock', 860, 540); })()`);
+    await frames();
+    await press(876, 556); await moveTo(876, 556, 1040, 700, CTRL); await mouse('mouseReleased', 1040, 700, CTRL); await frames();
+    const r = await js(`(() => { const d = window.__drop; [window.__src, window.__spawned].forEach(n => n?.remove()); return d; })()`);
+    return [r && r.reverse === true && r.back === true && r.fwd === false, r];
+  });
+
+  await run('a host that suppresses the wire menu and wires nothing leaves no dashed line', async () => {
+    await js(`(() => { window.__off.abort(); window.__off = new AbortController();
+      T.pb.addEventListener('scv-menu', e => { if (e.detail.kind === 'wire') e.preventDefault(); }, { signal: window.__off.signal });
+      window.__src = T.node('clock', 860, 540); })()`);
+    await frames();
+    await press(876, 556); await moveTo(876, 556, 1040, 700); await mouse('mouseReleased', 1040, 700); await frames();
+    const r = await js(`(() => { const hanging = [...T.pb.shadowRoot.querySelectorAll('.temp')].filter(p => p.style.display !== 'none').length;
+      window.__src.remove(); return hanging; })()`); // only the suppressed branch's cleanup clears it - wire() never ran
+    return [r === 0, { hanging: r }];
+  });
+
+  await run('an armed chain is a pending wire on the canvas menu too, suppressing it ends the chain', async () => {
+    await js(`(() => { window.__off.abort(); window.__off = new AbortController(); window.__drop = []; window.__before = T.nodes();
+      T.pb.addEventListener('scv-menu', e => { if (!e.detail.from) return; // no pending wire - the built-in menu is what a host wants here
+        e.preventDefault();
+        const f = e.detail.from, n = T.node('gate', Math.round(e.detail.x), Math.round(e.detail.y));
+        e.detail.reverse ? T.pb.wire(n, f) : T.pb.wire(f, n);
+        window.__drop.push({ kind: e.detail.kind, armed: f === window.__armed, reverse: e.detail.reverse,
+          wired: e.detail.reverse ? !!n.getAttribute('data-scv-emits') && f.getAttribute('data-scv-receives') === n.getAttribute('data-scv-emits')
+                                  : !!n.getAttribute('data-scv-receives') && n.getAttribute('data-scv-receives') === f.getAttribute('data-scv-emits') });
+      }, { signal: window.__off.signal }); })()`);
+    const armAndDrop = async (x, y, mod, dx, dy) => { // each drop spawns a node at the drop point, so no two reuse one
+      await hover(x, y); await key('2'); await key(' '); // space arms a chain from the node just spawned
+      await js(`window.__armed = T.nodes().find(n => n.states.has('chained')) || null`);
+      await click(dx, dy, mod, 'right'); await frames();
+      await hover(x - 40, y + 40); // a live chain redraws its line on the next move
+      return js(`[window.__drop.at(-1), T.nodes().some(n => n.states.has('chained')), [...T.pb.shadowRoot.querySelectorAll('.temp')].filter(p => p.style.display !== 'none').length]`);
+    };
+    const fwd = await armAndDrop(1000, 300, 0, 820, 560);
+    const rev = await armAndDrop(1000, 420, CTRL, 940, 560);
+    await click(880, 680, 0, 'right'); // nothing armed - from is undefined, so the host stands aside
+    const plain = await js(`[window.__drop.length, (T.pb.menu() || []).length]`);
+    await key('Escape');
+    await js(`(() => { T.nodes().filter(n => !window.__before.includes(n)).forEach(n => n.remove()); return 1; })()`);
+    const good = r => r[0] && r[0].kind === 'canvas' && r[0].armed === true && r[0].wired === true && r[1] === false && r[2] === 0;
+    return [good(fwd) && fwd[0].reverse === false && good(rev) && rev[0].reverse === true && plain[0] === 2 && plain[1] > 3, { fwd, rev, plain }];
+  });
+
+  await run('a reassigned items array is honoured - the studio reads it back after dispatch', async () => {
+    await js(`(() => { window.__off.abort(); window.__off = new AbortController();
+      T.pb.addEventListener('scv-menu', e => { e.detail.items = [{ id: 'host:only', label: '[host] - only', fn() {} }]; }, { signal: window.__off.signal }); })()`);
+    await click(900, 600, 0, 'right');
+    const r = await js(`T.pb.menu()`);
+    await key('Escape');
+    return [r && r.join() === '[host] - only', r]; // mutate-in-place is the contract; this is the defence behind it
+  });
+
+  await run('two listeners compose in registration order', async () => {
+    await js(`(() => { window.__off.abort(); window.__off = new AbortController(); const sig = window.__off.signal;
+      T.pb.addEventListener('scv-menu', e => e.detail.items.push({ id: 'host:a', label: '[host] - a', fn() {} }), { signal: sig });
+      T.pb.addEventListener('scv-menu', e => e.detail.items.push({ id: 'host:b', label: '[host] - b', fn() {} }), { signal: sig }); })()`);
+    await click(900, 600, 0, 'right');
+    const r = await js(`T.pb.menu().slice(-2)`);
+    await key('Escape');
+    return [r.join() === '[host] - a,[host] - b', r];
+  });
+
+  await run('a throwing item is logged and the menu still closes', async () => {
+    await js(`(() => { window.__off.abort(); window.__off = new AbortController();
+      T.pb.addEventListener('scv-menu', e => e.detail.items.push({ id: 'host:boom', label: '[host] - boom', fn: () => { throw new Error('boom'); } }), { signal: window.__off.signal }); })()`);
+    await click(900, 600, 0, 'right');
+    await js(`[...T.pb.shadowRoot.querySelectorAll('.menu button')].find(b => b.textContent === '[host] - boom').click()`);
+    const closed = await js(`!T.pb.shadowRoot.querySelector('.menu')`);
+    return [closed === true, { closed }];
+  });
+
+  await run('a throwing listener leaves the built-in menu working', async () => {
+    await js(`(() => { window.__off.abort(); window.__off = new AbortController(); const sig = window.__off.signal;
+      T.pb.addEventListener('scv-menu', () => { throw new Error('listener boom'); }, { signal: sig });
+      T.pb.addEventListener('scv-menu', e => e.detail.items.push({ id: 'host:after', label: '[host] - after', fn() {} }), { signal: sig }); })()`);
+    await click(900, 600, 0, 'right');
+    const r = await js(`T.pb.menu()`);
+    await key('Escape');
+    const seen = uncaught.filter(u => /listener boom/.test(u)).length; // the browser reports it and carries on - that is the point
+    uncaught.length = 0;
+    return [r && r.length > 3 && r.at(-1) === '[host] - after' && seen === 1, { n: r && r.length, last: r && r.at(-1), reported: seen }];
+  });
+
+  await run('every built-in item has a stable id, unchanged across opens', async () => {
+    await js(`(() => { window.__off.abort(); window.__off = new AbortController(); window.__ids = [];
+      T.pb.addEventListener('scv-menu', e => window.__ids.push(e.detail.items.map(i => i.id).join()), { signal: window.__off.signal }); })()`);
+    await click(900, 600, 0, 'right'); await key('Escape');
+    await click(880, 580, 0, 'right'); await key('Escape');
+    const r = await js(`window.__ids`);
+    const first = (r[0] || '').split(',');
+    return [r[0] === r[1] && first[0] === 'mode' && first.filter(i => i.startsWith('node:')).length >= 10 && first.slice(-3).join() === 'save:quine,save:canvas,save:publish' && first.every(Boolean),
+      { same: r[0] === r[1], head: first.slice(0, 3), tail: first.slice(-3) }];
+  });
+
+  await run('a nested patchbay menu never reaches its parent listener', async () => {
+    await js(`(() => { window.__off.abort(); window.__off = new AbortController(); window.__outer = 0;
+      T.pb.addEventListener('scv-menu', () => { window.__outer++; }, { signal: window.__off.signal });
+      const it = document.createElement('scv-item'); it.style.left = '600px'; it.style.top = '420px';
+      const inner = document.createElement('scv-patchbay'); inner.id = 'inner'; inner.style.cssText = 'width:220px;height:140px';
+      it.append(inner); T.pb.append(it); return 1; })()`);
+    await frames(); await frames();
+    const r = await js(`(() => { const inner = document.getElementById('inner'); inner.setMode?.('edit');
+      const b = inner.getBoundingClientRect();
+      inner.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, composed: true, cancelable: true, clientX: b.left + 110, clientY: b.top + 70 }));
+      return [window.__outer, !!inner.shadowRoot.querySelector('.menu'), !!T.pb.shadowRoot.querySelector('.menu')]; })()`);
+    await js(`window.__off.abort(); document.getElementById('inner').closest('scv-item').remove()`);
+    return [r && r[0] === 0 && r[1] === true && r[2] === false, { outerFired: r && r[0], innerOpened: r && r[1], outerOpened: r && r[2] }];
+  });
+
   await run('space chains last spawned into clicked node', async () => {
     await hover(700, 500); await key('2');
     await key(' '); await click(216, 216);

@@ -22,9 +22,10 @@ for (const k of Object.keys(safeEnv)) if (/^(https?|all|no)_proxy$/i.test(k)) de
 
 const findings = [];
 const write = line => { try { appendFileSync(OUT, line + '\n'); } catch {} };
+const layoutOf = out => (String(out).match(/^random: (layout .*)$/m)?.[1] || '').trim(); // what the tier measured - forced layout, and the heap it finished on
 
-let current = null, stopping = false;
-const kill = child => { try { process.kill(-child.pid, 'SIGKILL'); } catch { try { child.kill('SIGKILL'); } catch {} } }; // own group - the tier's chrome goes too
+let current = null, pending = null, stopping = false;
+const kill = child => { try { process.kill(-child.pid, 'SIGKILL'); } catch { try { child.kill('SIGKILL'); } catch {} } }; // own group - but chrome puts itself in a session of its own, so only sweep reaps that
 
 const runSeed = seed => new Promise(res => {
   const started = Date.now();
@@ -39,19 +40,27 @@ const runSeed = seed => new Promise(res => {
   child.on('exit', code => { clearTimeout(timer); res({ seed, verdict: hung ? 'HUNG' : code ? 'FAIL' : 'pass', secs: Math.round((Date.now() - started) / 1000), out }); });
 });
 
+let summarised = false;
 const summary = () => {
-  sweep(); // last word on browsers, however this run ends
+  if (summarised) return; // the signal and the loop both reach here on the way out
+  summarised = true;
+  const swept = sweep(); // last word on browsers, however this run ends
+  if (swept) write(`swept ${swept} leftover browser process(es) on the way out`);
   const line = `\n${findings.length} finding(s) over ${done} seed(s) in ${Math.round((Date.now() - t0) / 60000)} min`;
+  write(line); // the log ends with the same tally the terminal shows
   console.log(line);
   for (const f of findings) console.log(`  ${f.verdict}  --seed=${f.seed}`);
   console.log(findings.length ? `\nfull output: ${OUT}` : `\nnothing found - log: ${OUT}`);
 };
 
-for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143]]) process.on(sig, () => {
+for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143]]) process.on(sig, async () => {
+  if (stopping) return; // a second ctrl-c must not race the first one out the door
   stopping = true;
   if (current) kill(current);
   write(`\nstopped on ${sig}`);
-  summary(); sweep(); process.exit(findings.length ? 1 : code);
+  await Promise.race([pending ?? Promise.resolve(), new Promise(r => setTimeout(r, 5000))]); // wait for the seed to really be gone: a just-killed pid still answers, so sweeping now would call its browser owned and leave it running
+  summary();
+  process.exit(findings.length ? 1 : code);
 });
 
 const t0 = Date.now(), until = t0 + HOURS * 3600000;
@@ -62,9 +71,15 @@ write(`fuzzer started ${new Date().toISOString()} - rounds=${ROUNDS} ops=${OPS} 
 
 while (!stopping && done < SEEDS && Date.now() < until) {
   const seed = Math.floor(Math.random() * 1e9);
-  const r = await runSeed(seed);
-  current = null; done++;
-  sweep(); // a killed tier leaves its browser behind
+  pending = runSeed(seed);
+  const r = await pending;
+  pending = null; current = null;
+  const swept = sweep(); // a killed tier leaves its browser behind - normally 0, a number that climbs is a leak saying so
+  if (stopping) { write(`${new Date().toISOString().slice(11, 19)}  interrupted  seed=${seed}  ${r.secs}s  swept=${swept}`); break; } // killed on the way out, not a finding
+  done++;
+  const lay = layoutOf(r.out);
+  write(`${new Date().toISOString().slice(11, 19)}  ${r.verdict.padEnd(12)} seed=${seed}  ${r.secs}s  swept=${swept}${lay ? `  ${lay}` : ''}`); // every seed, pass or not - a clean night still says what it covered, and what not to roll again
+  if (swept) console.log(`\n  swept ${swept} leftover browser process(es) after seed ${seed}`);
   if (r.verdict === 'pass') { process.stdout.write(`\r${done} seeds, ${findings.length} finding(s) - last ${r.secs}s   `); continue; }
   findings.push(r);
   console.log(`\n✗ ${r.verdict} --seed=${seed} after ${r.secs}s`);
@@ -72,4 +87,4 @@ while (!stopping && done < SEEDS && Date.now() < until) {
 }
 
 summary();
-process.exit(findings.length ? 1 : 0);
+process.exit(findings.length ? 1 : stopping ? 130 : 0); // ctrl-c keeps its own code even when the loop gets out first

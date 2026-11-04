@@ -10,7 +10,9 @@ import { dirname, join } from 'path';
 const arg = (k, d) => { const m = process.argv.find(a => a.startsWith(`--${k}=`)); return m ? +m.split('=')[1] : d; };
 const SEED = arg('seed', Date.now() % 1e9), ROUNDS = arg('rounds', 4), OPS = arg('ops', 36); // ops stay under 50-step undo cap
 let fails = 0;
-const ok = (c, m) => { if (!c) { fails++; console.log('  ✗', m); } return c; };
+const logs = []; // every line the page printed, newest last - a failure prints the tail, so whatever the page said first is visible
+const tail = (n = 8) => { if (logs.length) console.log(`    page said: ${logs.slice(-n).join(' | ')}`); };
+const ok = (c, m) => { if (!c) { fails++; console.log('  ✗', m); tail(); } return c; };
 const here = dirname(fileURLToPath(import.meta.url));
 
 const rng = (s => () => { s |= 0; s = s + 0x6d2b79f5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; })(SEED); // mulberry32
@@ -31,18 +33,38 @@ const base = `http://127.0.0.1:${srv.address().port}`;
 const { pageWsUrl, cleanup } = await launchChrome();
 const { ws, send, waitEvent } = await connect(pageWsUrl);
 const errors = [];
+const note = line => { logs.push(String(line).replace(/\s+/g, ' ').slice(0, 160)); if (logs.length > 200) logs.shift(); }; // kept short and bounded - this runs all night
 ws.addEventListener('message', e => {
   const m = JSON.parse(e.data);
-  if (m.method === 'Runtime.exceptionThrown') errors.push(m.params.exceptionDetails?.exception?.description || m.params.exceptionDetails?.text);
-  if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') errors.push(m.params.args.map(a => a.value ?? a.description).join(' '));
+  if (m.method === 'Runtime.exceptionThrown') { const d = m.params.exceptionDetails?.exception?.description || m.params.exceptionDetails?.text; errors.push(d); note('threw: ' + d); }
+  if (m.method === 'Runtime.consoleAPICalled') {
+    const text = m.params.args.map(a => a.value ?? a.description ?? a.type).join(' ');
+    note(m.params.type + ': ' + text); // every type, not only errors - a warning before a failure is usually what explains it
+    if (m.params.type === 'error') errors.push(text);
+  }
 });
-await send('Page.enable'); await send('Runtime.enable');
+await send('Page.enable'); await send('Runtime.enable'); await send('Performance.enable');
 const js = async e => {
   const r = await send('Runtime.evaluate', { expression: e, returnByValue: true, awaitPromise: true });
   if (r?.result?.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text);
   return r?.result?.result?.value;
 };
-const nav = async url => { await send('Page.navigate', { url }); await waitEvent('Page.loadEventFired'); await js(`(${helpers})()`); };
+
+// forced layout - a step that thrashes recounts them in their hundreds, and nothing else in this tier would notice
+const layout = { steps: 0, count: 0, restyles: 0, ms: 0, worst: null }, storm = { sends: 0, count: 0 };
+let mark = null; // counters restart on navigation, so a reading is only ever compared with one from the same page
+const metric = async () => { const { metrics } = (await send('Performance.getMetrics')).result; const m = {}; for (const e of metrics) m[e.name] = e.value; return m; };
+const since = async what => { // whatever just ran owns the layouts since the last reading
+  const now = await metric();
+  if (mark && now.LayoutCount >= mark.LayoutCount) {
+    const n = now.LayoutCount - mark.LayoutCount, ms = (now.LayoutDuration - mark.LayoutDuration) * 1000;
+    layout.steps++; layout.count += n; layout.ms += ms; layout.restyles += now.RecalcStyleCount - mark.RecalcStyleCount;
+    if (!layout.worst || n > layout.worst.n) layout.worst = { what, n, ms: +ms.toFixed(1) };
+  }
+  mark = now;
+};
+
+const nav = async url => { await send('Page.navigate', { url }); await waitEvent('Page.loadEventFired'); await js(`(${helpers})()`); mark = await metric(); };
 const done = () => { try { ws.close(); } catch {} cleanup(); srv.close(); };
 
 // fixtures - harvest in kernel shape, authored component, plain html
@@ -141,6 +163,7 @@ try {
       where = `round ${round}, op ${i} (${kind})`;
       log.push(await js(`F.op(${JSON.stringify(kind)}, ${int(1e6)}, ${int(1e6)}, ${int(1e6)})`));
       await js(`F.frame()`);
+      await since(kind); // before the checks below - they read geometry themselves and would be billed to the op
       const bad = await js(`F.cables()`);
       const trail = `(seed ${SEED}, round ${round}, step ${i}: ${log.slice(-4).join(' | ')})`;
       ok(!bad, `cables match wiring attributes ${JSON.stringify(bad)} ${trail}`);
@@ -166,10 +189,16 @@ try {
     const chans = await js(`F.channels()`);
     errors.length = 0;
     await js(`pb.setMode('use')`);
+    await js(`(() => { const w = console.warn; window.__stops = 0; console.warn = (...a) => { if (/cascade stopped/.test(String(a[0]))) window.__stops++; return w.apply(console, a); }; })()`); // the router stops a cascade once, however many branches hit the wall
+    const beforeStorm = await metric(); // routing is measured whole - one send is too small to read, a storm is not
     for (let i = 0; i < 120 && chans.length; i++) { const v = pick(STORM), ch = pick(chans);
       where = `round ${round}, routing storm ${i}: ${ch} <- ${v}`; // a cascade that never returns is named by the value that started it
-      await js(`pb.routeSend(${JSON.stringify(ch)}, ${v === 'pulse' ? 'kit.pulse()' : JSON.stringify(v)})`); }
+      const stops = await js(`(() => { window.__stops = 0; pb.routeSend(${JSON.stringify(ch)}, ${v === 'pulse' ? 'kit.pulse()' : JSON.stringify(v)}); return window.__stops; })()`);
+      ok(stops <= 1, `a stopped cascade warns once, not once per branch - ${stops} warnings from ${ch} <- ${v} (seed ${SEED}, round ${round}, storm ${i})`); }
     await js(`F.frame()`);
+    const afterStorm = await metric();
+    if (chans.length && afterStorm.LayoutCount >= beforeStorm.LayoutCount) { storm.count += afterStorm.LayoutCount - beforeStorm.LayoutCount; storm.sends += 120; }
+    mark = afterStorm;
     ok(!errors.length, `routing storm throws nothing - ${errors.slice(0, 2).join(' | ')} (seed ${SEED}, round ${round})`);
     where = `round ${round}, save/reopen/save after storm`;
     const after = await saveReopenSave(`s${round}`);
@@ -179,9 +208,14 @@ try {
   fails++;
   console.log(`  ✗ random tier threw at ${where} (seed ${SEED}): ${e.message}`);
   if (trail.length) console.log(`    last ops: ${trail.join(' | ')}`);
+  tail(20);
   if (/timeout/i.test(e.message)) console.log(`    a timeout here means the page stopped answering - the step above is what blocked it`);
 }
 
+if (layout.steps) console.log(`random: layout ${layout.count} forced in ${layout.steps} steps (${layout.ms.toFixed(0)}ms)`
+  + `, worst ${layout.worst.what} ${layout.worst.n} (${layout.worst.ms}ms)`
+  + `, storm ${storm.count} in ${storm.sends} sends, restyles ${layout.restyles}`
+  + (mark ? `, heap ${(mark.JSHeapUsedSize / 1e6).toFixed(1)}MB, nodes ${mark.Nodes}, listeners ${mark.JSEventListeners}` : '')); // logged, never asserted - there is no honest threshold until we know the normal shape of it
 done();
 console.log(fails ? `random: FAIL (${fails}) - rerun with --seed=${SEED}` : 'random: PASS');
 process.exit(fails ? 1 : 0);

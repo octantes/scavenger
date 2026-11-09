@@ -176,6 +176,34 @@ try {
   ok(nt && !nt.placed && nt.saved, `import with redefine registers node type without placing one, save keeps it (${JSON.stringify(nt && { p: nt.placed, s: nt.saved })})`);
   ok(nt?.clock === 'clock' && nt?.unknown === null, `nodeType knows built-ins, unknown is null (${JSON.stringify(nt && { c: nt.clock, u: nt.unknown })})`);
 
+  // events hosts listen for - names and detail fields frozen like the methods
+  const events = await js(`(async () => {
+    const pb = document.querySelector('scv-patchbay'), frame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))), quiet = console.warn, got = {};
+    pb.addEventListener('scv-menu', e => { got.menu = { keys: Object.keys(e.detail).sort().join(), cancelable: e.cancelable, items: Array.isArray(e.detail.items) && e.detail.items.every(i => i.id && i.label && typeof i.fn === 'function') };
+      e.detail.items.push({ id: 'host:surf', label: '[host] - surf', fn() {} }); }, { once: true });
+    const b = pb.getBoundingClientRect();
+    pb.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, composed: true, cancelable: true, clientX: b.left + 40, clientY: b.top + 40 }));
+    got.menu.shown = (pb.menu() || []).includes('[host] - surf');
+    pb.addEventListener('scv-menu', e => e.preventDefault(), { once: true });
+    pb.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, composed: true, cancelable: true, clientX: b.left + 40, clientY: b.top + 40 }));
+    got.menu.refused = !pb.menu();
+    const out = document.createElement('output'), it = document.createElement('scv-item'); out.setAttribute('data-scv-receives', 'ev'); it.append(out); pb.append(it);
+    document.addEventListener('scv-receive', e => { got.receive = [e.detail, e.channel]; }, { once: true }); // bubbles to the document
+    pb.setMode('use'); pb.routeSend('ev', 'v');
+    const node = (em, re) => { const n = document.createElement('scv-logic'); n.dataset.type = 'mutator'; n.setAttribute('value', 'v'); n.setAttribute('data-scv-emits', em); n.setAttribute('data-scv-receives', re); pb.append(n); return n; };
+    const x = node('lx', 'ly'), y = node('ly', 'lx'), over = [];
+    pb.addEventListener('scv-overload', e => over.push({ keys: Object.keys(e.detail).sort().join(), node: e.detail.node === x || e.detail.node === y, reason: e.detail.reason }));
+    console.warn = () => {}; try { pb.routeSend('lx', 1); } finally { console.warn = quiet; }
+    x.removeAttribute('data-scv-emits'); await frame();
+    got.overload = over; pb.setMode('edit'); [x, y, it].forEach(n => n.remove());
+    return got;
+  })()`);
+  ok(events?.menu?.keys === 'from,items,kind,port,reverse,target,wire,x,y' && events.menu.cancelable && events.menu.items, `scv-menu carries items, kind, x, y, target and the pending wire's from, reverse, port, wire (${JSON.stringify(events?.menu)})`);
+  ok(events?.menu?.shown && events.menu.refused, `scv-menu: a pushed item shows, preventDefault opens nothing (${JSON.stringify(events?.menu)})`);
+  ok(JSON.stringify(events?.receive) === '["v","ev"]', `scv-receive bubbles to the document with the value and its channel (${JSON.stringify(events?.receive)})`);
+  ok(JSON.stringify(events?.overload) === JSON.stringify([{ keys: 'channel,node,reason', node: true, reason: 'infinite loop' }, { keys: 'channel,node,reason', node: true, reason: null }]),
+    `scv-overload names node, channel and reason when it stops, the same node with no reason once its wiring is fixed (${JSON.stringify(events?.overload)})`);
+
   // each script runs standalone in foreign document - runtime routes alone, canvas and studio add their methods
   for (const [path, has, lacks] of [['/runtime', RUNTIME, [...CANVAS, ...STUDIO]], ['/canvas', [...RUNTIME, ...CANVAS], STUDIO], ['/studio', [...RUNTIME, ...CANVAS, ...STUDIO], []]]) {
     uncaught.length = 0;

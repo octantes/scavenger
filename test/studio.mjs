@@ -632,6 +632,43 @@ try {
     return [good(fwd) && fwd[0].reverse === false && good(rev) && rev[0].reverse === true && plain[0] === 2 && plain[1] > 3, { fwd, rev, plain }];
   });
 
+  await run('a dropped wire tells the host its port, and detail.wire finishes it there, either way round', async () => {
+    const drop = async (mod, x1, y1) => {
+      const at = await js(`(async () => { window.__off.abort(); window.__off = new AbortController(); window.__drop = null;
+        T.kit.defineNode(T.pb, { name: 'st-port', inputs: [{ name: 'i1' }, { name: 'i2' }], outputs: [{ name: 'o1' }, { name: 'o2' }] });
+        const src = window.__src = T.node('st-port', 860, 540); await T.frame();
+        T.pb.addEventListener('scv-menu', e => { if (e.detail.kind !== 'wire') return;
+          e.preventDefault();
+          const n = window.__spawned = T.node('accumulator', Math.round(e.detail.x), Math.round(e.detail.y));
+          window.__drop = { port: e.detail.port, ch: e.detail.wire(n) }; // the host only says where - the studio finishes the wire it started
+        }, { signal: window.__off.signal });
+        const r = src.shadowRoot.querySelector('.port[data-port="o2"]').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
+      await press(at[0], at[1]); await moveTo(at[0], at[1], x1, y1, mod); await mouse('mouseReleased', x1, y1, mod); await frames(); // reverse is read at the drop - ctrl at the press moves the node
+      return js(`(() => { const d = window.__drop, r = { ...d, src: [window.__src.getAttribute('data-scv-emits'), window.__src.getAttribute('data-scv-receives')], n: [window.__spawned?.getAttribute('data-scv-emits'), window.__spawned?.getAttribute('data-scv-receives')],
+        hanging: [...T.pb.shadowRoot.querySelectorAll('.temp')].filter(p => p.style.display !== 'none').length };
+        [window.__src, window.__spawned].forEach(n => n?.remove()); return r; })()`);
+    };
+    const fwd = await drop(0, 1040, 700), rev = await drop(CTRL, 1040, 700);
+    const ok1 = fwd.port === 'o2' && fwd.src[0] === fwd.ch + '@o2' && fwd.n[1] === fwd.ch && fwd.hanging === 0;
+    const ok2 = rev.port === 'i1' && rev.src[1] === rev.ch + '@i1' && rev.n[0] === rev.ch && rev.hanging === 0;
+    return [ok1 && ok2, { fwd, rev }];
+  });
+
+  await run('an armed chain finished by detail.wire wires like a built-in item and ends the chain', async () => {
+    await js(`(() => { window.__off.abort(); window.__off = new AbortController(); window.__drop = null; window.__before = T.nodes();
+      T.pb.addEventListener('scv-menu', e => { if (!e.detail.from) return;
+        const f = e.detail.from; // a host item, not a takeover - built-in menu still opens
+        e.detail.items.unshift({ id: 'host:gate', label: '[host] - gate', fn: () => { const n = T.node('gate', Math.round(e.detail.x), Math.round(e.detail.y)); window.__drop = { port: e.detail.port, ch: e.detail.wire(n), wired: n.getAttribute('data-scv-receives') === f.getAttribute('data-scv-emits') }; } });
+      }, { signal: window.__off.signal }); })()`);
+    await hover(1000, 300); await key('2'); await key(' ');
+    await click(820, 560, 0, 'right');
+    await js(`[...T.pb.shadowRoot.querySelectorAll('.menu button')].find(b => b.textContent === '[host] - gate').click()`);
+    await hover(960, 340);
+    const r = await js(`(() => { const r = { ...window.__drop, chained: T.nodes().some(n => n.states.has('chained')), hanging: [...T.pb.shadowRoot.querySelectorAll('.temp')].filter(p => p.style.display !== 'none').length };
+      T.nodes().filter(n => !window.__before.includes(n)).forEach(n => n.remove()); window.__off.abort(); return r; })()`);
+    return [r.port === '' && !!r.ch && r.wired === true && r.chained === false && r.hanging === 0, r];
+  });
+
   await run('a reassigned items array is honoured - the studio reads it back after dispatch', async () => {
     await js(`(() => { window.__off.abort(); window.__off = new AbortController();
       T.pb.addEventListener('scv-menu', e => { e.detail.items = [{ id: 'host:only', label: '[host] - only', fn() {} }]; }, { signal: window.__off.signal }); })()`);

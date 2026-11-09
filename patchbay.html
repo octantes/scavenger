@@ -2263,7 +2263,7 @@ const studio = pb => {
         if (tgt) { if (tgt !== from) mod(ev) ? wire(tgt, from) : wire(from, tgt, sp, anchorIn(path, 'in')); return endTemp(); }
         const p = toCanvas(ev.clientX, ev.clientY), rev = mod(ev);
         showTemp(from, ev, sp);
-        offerMenu(nodeItems((type) => { const n = spawn(type, p.x - 16, p.y - 16); rev ? wire(n, from) : wire(from, n, sp); }), 'wire', ev, endTemp, { from, reverse: rev });
+        offerMenu(nodeItems((type) => { const n = spawn(type, p.x - 16, p.y - 16); rev ? wire(n, from) : wire(from, n, sp); }), 'wire', ev, endTemp, { from, reverse: rev, port: rev ? portFor(from, 'in') : sp ?? portFor(from, 'out') });
       },
       cancel: () => endTemp(),
     };
@@ -2361,9 +2361,10 @@ const studio = pb => {
   const menuClass = id => id === 'mode' ? 'mode' : String(id || '').startsWith('save:') ? 'save' : '';
   const offerMenu = (items, kind, ev, onClose, pending) => { // host shapes it or takes it over - items read back after dispatch, never the array we held
     const p = toCanvas(ev.clientX, ev.clientY);
-    const d = { items, kind, x: p.x, y: p.y, target: itemOf(ev.composedPath()[0]) || null, from: pending?.from, reverse: pending?.reverse }; // from and reverse are the pending wire if there is one - a host taking the menu over needs both to finish it
+    const finish = pending && (n => { const ch = pending.reverse ? wire(n, pending.from, undefined, pending.port) : wire(pending.from, n, pending.port); pending.cancel?.(); return ch; }); // as a built-in item would - direction, port, chain ended
+    const d = { items, kind, x: p.x, y: p.y, target: itemOf(ev.composedPath()[0]) || null, from: pending?.from, reverse: pending?.reverse, port: pending?.port, wire: finish || undefined }; // pending wire if there is one - port is from's end of it
     if (pb.dispatchEvent(new CustomEvent('scv-menu', { detail: d, cancelable: true, bubbles: false }))) menu(d.items, ev.clientX, ev.clientY, onClose);
-    else { pending?.cancel?.(); onClose?.(); } // suppressed still needs the cleanup - a dropped wire's line or an armed chain would hang otherwise
+    else { closeMenu(); pending?.cancel?.(); onClose?.(); } // suppressed closes the open menu and cleans up - a dropped line or armed chain would hang
   };
   const menu = (items, x, y, onClose) => {
     closeMenu();
@@ -2396,7 +2397,7 @@ const studio = pb => {
     items.push(...nodeItems(type => { const last = st.chain ? st.last : null, rev = st.lock; const n = spawn(type, p.x - 16, p.y - 16); if (last) rev ? wire(n, last) : wire(last, n); disarm(); }));
     for (const tag of kit.compsOf(pb)) items.push({ id: 'comp:' + tag, label: '[comp] - ' + tag.replace(/^scv-/, ''), fn: () => { setMode('edit'); const it = document.createElement('scv-item'); it.style.left = p.x + 'px'; it.style.top = p.y + 'px'; const c = document.createElement(tag); c.dataset.scvId = 'comp_' + uid(9); it.append(c); pb.append(it); record(() => pb.append(it), () => it.remove(), 'spawn'); } });
     items.push({ id: 'save:quine', label: '[save] - quine (keeps editing)', fn: () => pb.export('quine') }, { id: 'save:canvas', label: '[save] - canvas (infinite, no editing)', fn: () => pb.export('canvas') }, { id: 'save:publish', label: '[save] - publish (document, no editing)', fn: () => pb.export('publish') });
-    offerMenu(items, 'canvas', e, () => { st.lock = null; }, st.chain && st.last ? { from: st.last, reverse: st.lock, cancel: disarm } : null); // an armed chain is a pending wire too - same two values the node items above wire with
+    offerMenu(items, 'canvas', e, () => { st.lock = null; }, st.chain && st.last ? { from: st.last, reverse: st.lock, port: portFor(st.last, st.lock ? 'in' : 'out'), cancel: disarm } : null); // an armed chain is a pending wire too - same two values the node items above wire with
   });
 
   pb.addEventListener('pointermove', e => {

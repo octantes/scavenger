@@ -713,6 +713,41 @@ try {
       { said: said.slice(0, 1), blamed: blamed.length, ms: Date.now() - t0 }];
   });
 
+  await run('a node in two loops stays red after one is cut, clears when both are, and says so per node', async () => {
+    const pb = T.pb(), quiet = console.warn, seen = [];
+    const a = T.node(pb, 'mutator', { value: 'v', 'data-scv-emits': 'a1 a2', 'data-scv-receives': 'b1' }), b = T.node(pb, 'mutator', { value: 'v', 'data-scv-emits': 'b1', 'data-scv-receives': 'a1 a2' });
+    pb.addEventListener('scv-overload', e => seen.push([e.detail.node === a || e.detail.node === b, e.detail.channel, e.detail.reason]));
+    console.warn = () => {}; try { pb.routeSend('a1', 1); } finally { console.warn = quiet; }
+    const red = () => [a, b].filter(n => n.states.has('stalled')).length, first = red();
+    a.setAttribute('data-scv-emits', 'a2'); await T.sleep(0); // one of the two ways round gone - a2 still closes it
+    const one = red();
+    a.setAttribute('data-scv-emits', ''); await T.sleep(0);
+    return [first === 1 && one === 1 && red() === 0 && JSON.stringify(seen.at(-1)) === '[true,null,null]', { first, one, last: red(), seen }];
+  });
+
+  await run('wiring that leaves the loop alone leaves its red alone', async () => {
+    const pb = T.pb(), quiet = console.warn;
+    const a = T.node(pb, 'mutator', { value: 'v', 'data-scv-emits': 'x', 'data-scv-receives': 'y' }), b = T.node(pb, 'mutator', { value: 'v', 'data-scv-emits': 'y', 'data-scv-receives': 'x' });
+    console.warn = () => {}; try { pb.routeSend('x', 1); } finally { console.warn = quiet; }
+    T.node(pb, 'gate', { 'data-scv-receives': 'elsewhere' }); T.sink(pb, 'x'); await T.sleep(0); // new wiring, a new listener on the loop - neither breaks it
+    return [[a, b].filter(n => n.states.has('stalled')).length === 1, [a, b].map(n => n.states.has('stalled'))];
+  });
+
+  await run('a cascade cut back under the budget clears its red, one still over it stays red', async () => {
+    const pb = T.pb(), quiet = console.warn, split = [];
+    for (let i = 0; i < 16; i++) { // same doubling diamonds as above - 16 rejoins send far past 20k
+      split.push(T.node(pb, 'mutator', { value: 'v', 'data-scv-receives': 's' + i, 'data-scv-emits': 'a' + i }));
+      T.node(pb, 'mutator', { value: 'v', 'data-scv-receives': 's' + i, 'data-scv-emits': 'b' + i });
+      T.node(pb, 'mutator', { value: 'v', 'data-scv-receives': 'a' + i + ' b' + i, 'data-scv-emits': 's' + (i + 1) });
+    }
+    console.warn = () => {}; try { pb.routeSend('s0', 1); } finally { console.warn = quiet; }
+    const red = () => [...pb.querySelectorAll('scv-logic')].filter(n => n.states.has('stalled')).length, first = red();
+    split[0].removeAttribute('data-scv-emits'); await T.sleep(0); // one side of the first diamond gone - half of it is still past 20k
+    const half = red();
+    split.slice(1, 4).forEach(n => n.removeAttribute('data-scv-emits')); await T.sleep(0); // four diamonds single now - what is left stays under it
+    return [first === 1 && half === 1 && red() === 0, { first, half, last: red() }];
+  });
+
   // component api
 
   await run('shared: one instance, released one frame after last owner leaves', async () => {

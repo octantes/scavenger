@@ -249,14 +249,14 @@ const createRouter = (root, {
   onRoute     = () => {},
   onRefuse    = () => {},
 } = {}) => {
-  const LOOP_MAX = 20, BUDGET = 20000; // a channel may re-enter itself 20 times; one cascade delivers 20k values whatever its shape
+  const LOOP_MAX = 20, BUDGET = 20000; // a cascade comes back round 20 times, any channels; delivers 20k values, any shape
   const _active = new Map(); // channel > times on the stack right now - a channel already in flight means a loop, a long chain never is
-  const _blamed = new Set(); // nodes this router marked - cleared at the next cascade, so a quest's own error is never touched
+  const _blamed = new Map(); // node > { reason, from } this router marked - it clears only these, never a quest's error
   let _sent = 0, _loops = 0, _stopped = false, _from = null, _badFrom = null, _current = null, _cache = null; // _current: whose emission we are inside, so a stop can name it
 
   const invalidate = () => { _cache = null; };
   const _stale = recs => recs.some(r => r.type === 'attributes' || [...r.addedNodes, ...r.removedNodes].some(_wiredDeep)); // only wiring moving in or out rewires - text writes and unwired re-renders don't
-  const _observer = new MutationObserver(recs => { if (_stale(recs)) invalidate(); });
+  const _observer = new MutationObserver(recs => { if (!_stale(recs)) return; invalidate(); if (_blamed.size) _recheck(); });
   const _observed = new WeakSet();
   const _observe = r => {
     if (_observed.has(r)) return;
@@ -282,6 +282,44 @@ const createRouter = (root, {
     };
     walk(root);
     return cache;
+  };
+
+  // red stays while wiring could stop it again - read from attributes, nothing runs
+
+  const _outOf = (n, ch) => { // where a receiver may pass a value on - node any output, component anything inside
+    const out = new Set(), logic = n.localName === 'scv-logic';
+    if (logic || channels(n, ATTR_RECEIVES).includes(ch)) channels(n, ATTR_EMITS).forEach(c => out.add(c));
+    if (!logic) out.delete(ch); // element passes through, never back out incoming channel
+    if (!logic && n.shadowRoot) n.shadowRoot.querySelectorAll(`[${ATTR_EMITS}]`).forEach(e => { if (_own(e)) channels(e, ATTR_EMITS).forEach(c => out.add(c)); });
+    return out;
+  };
+  const _flow = starts => { // what sending into these could reach: channels, a loop, values delivered (capped)
+    const cache = _cache ??= _rebuild(), mark = new Map(), sum = new Map(), reach = new Set();
+    let loop = false;
+    const go = ch => {
+      if (mark.get(ch) === 1) { loop = true; return 0; }
+      if (mark.has(ch)) return sum.get(ch);
+      mark.set(ch, 1); reach.add(ch);
+      let n = 0;
+      for (const r of cache.get(ch) || []) { n++; for (const c of _outOf(r, ch)) n = Math.min(BUDGET, n + go(c)); }
+      mark.set(ch, 2); sum.set(ch, n);
+      return n;
+    };
+    let count = 0;
+    for (const c of starts) count = Math.min(BUDGET, count + go(c));
+    return { reach, loop, count, cache };
+  };
+  const _recheck = () => { // wiring moved under a stopped node - red only while it could still stop there
+    for (const [n, why] of _blamed) {
+      let keep = n.isConnected && _own(n);
+      if (keep && why.reason === 'infinite loop') keep = _flow(channels(n, ATTR_EMITS)).loop; // own output still comes back round
+      else if (keep) { const f = _flow([why.from]); keep = f.count >= BUDGET && [...f.reach].some(c => f.cache.get(c)?.includes(n)); } // cascade still overflows, still through it
+      if (keep) continue;
+      _blamed.delete(n);
+      try { n.unstall?.(); } catch {}
+      try { root.dispatchEvent?.(new CustomEvent('scv-overload', { detail: { node: n, channel: null, reason: null }, bubbles: false })); } catch {} // node, no reason - this one is clear
+    }
+    if (!_blamed.size) _badFrom = null;
   };
 
   const _applyVerb = (node, verb, arg, value) => {
@@ -375,7 +413,7 @@ const createRouter = (root, {
     if (_stopped) return; // once per cascade - unwinding hits the same wall on every branch, and eleven red nodes say less than one
     _stopped = true; _badFrom = _from;
     const n = _current;
-    if (n) { try { n.stall?.(reason); _blamed.add(n); } catch (e) { debug('stall failed', e, true); } }
+    if (n) { try { n.stall?.(reason); _blamed.set(n, { reason, from: _from }); } catch (e) { debug('stall failed', e, true); } }
     console.warn(`[scav] ${reason} on ${channel} - cascade stopped`);
     try { root.dispatchEvent?.(new CustomEvent('scv-overload', { detail: { node: n || null, channel, reason }, bubbles: false })); } catch {}
   };
@@ -391,7 +429,7 @@ const createRouter = (root, {
     if (outer) { // only re-sending the channel that caused it clears it - an unrelated clock tick must not wipe the warning a second later
       _sent = _loops = 0; _stopped = false;
       if (channel === _badFrom) {
-        _badFrom = null; _blamed.forEach(n => { try { n.unstall?.(); } catch {} }); _blamed.clear();
+        _badFrom = null; _blamed.forEach((_, n) => { try { n.unstall?.(); } catch {} }); _blamed.clear();
         try { root.dispatchEvent?.(new CustomEvent('scv-overload', { detail: { node: null, channel, reason: null }, bubbles: false })); } catch {} // same event, nothing to blame - whoever paints cables repaints
       }
     }
@@ -2053,8 +2091,9 @@ const studio = pb => {
   });
   const paintKey = {};
   const hot = new Set(); // emitters the router stopped - it clears their error state on the next clean cascade, and these follow
-  pb.addEventListener('scv-overload', e => { // blamed or cleared, the cables follow
-    if (e.detail?.node) hot.add(e.detail.node);
+  pb.addEventListener('scv-overload', e => { // blamed, one cleared, or all cleared - the cables follow
+    const { node, reason } = e.detail || {};
+    if (node) reason ? hot.add(node) : hot.delete(node);
     else { hot.clear(); root.querySelectorAll('.cable.hot').forEach(p => p.classList.remove('hot')); } // straight off the paths - tint only visits cables that still exist
     draw();
   });

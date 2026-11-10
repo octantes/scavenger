@@ -256,6 +256,30 @@ try {
     return [r.stopped.blamed === 1 && r.stopped.hot > 0 && r.stopped.float === 'infinite loop' && r.after.blamed === 0 && r.after.hot === 0, r];
   });
 
+  await run('clicking the wire that closed a loop clears that red, another loop stays red', async () => {
+    const r = await js(`(async () => {
+      const pair = (x, y, a, b) => [T.node('mutator', x, y, { value: 'v', 'data-scv-emits': a, 'data-scv-receives': b }), T.node('mutator', x + 120, y + 60, { value: 'v', 'data-scv-emits': b, 'data-scv-receives': a })];
+      const red = () => window.__made.filter(n => n.states.has('stalled')).length, hot = () => T.pb.shadowRoot.querySelectorAll('.cable.hot').length;
+      window.__red = red; window.__hot = hot;
+      for (const [x, y] of [[700, 120], [300, 560], [800, 560], [100, 120], [500, 250]]) { // earlier tests leave items about - find where a click lands on the cable
+        const one = pair(x, y, 'l1', 'l2'), two = pair(x, y + 140, 'm1', 'm2'); window.__made = [...one, ...two];
+        await T.frame(); T.pb.setMode('use');
+        const warn = console.warn; console.warn = () => {};
+        try { T.pb.routeSend('l1', 1); T.pb.routeSend('m1', 1); } finally { console.warn = warn; }
+        T.pb.setMode('edit'); await T.frame(); await T.frame();
+        for (const p of [...T.pb.shadowRoot.querySelectorAll('.cable')].filter(p => one.includes(p._cable?.src))) for (let t = 0.05; t < 1; t += 0.05) { // a point the hit test gives to this pair's cable
+          const m = p.getPointAtLength(p.getTotalLength() * t), q = new DOMPoint(m.x, m.y).matrixTransform(p.getScreenCTM());
+          if (one.includes(T.pb.shadowRoot.elementFromPoint(q.x, q.y)?._cable?.src)) return { before: [red(), hot()], at: [q.x, q.y] };
+        }
+        window.__made.forEach(n => n.remove()); await T.frame();
+      }
+      return null; })()`);
+    if (!r) return [false, 'no clear spot for the cable'];
+    await click(r.at[0], r.at[1]); await frames();
+    const after = await js(`(() => { const a = [window.__red(), window.__hot(), !window.__made[0].getAttribute('data-scv-receives') || !window.__made[1].getAttribute('data-scv-receives')]; window.__made.forEach(n => n.remove()); return a; })()`); // [2]: whichever of the pair's two cables the click hit
+    return [r.before[0] === 2 && r.before[1] === 2 && after[0] === 1 && after[1] === 1 && after[2] === true, { before: r.before, after }]; // one red ring and its one cable left - that loop still closed
+  });
+
   await run('corner diamond scales item, alt in whole cells, undo', async () => {
     await click(130, 420);
     const c = await js(`(() => { const r = T.shadow('.corner[data-c="se"]').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);

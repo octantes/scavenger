@@ -280,6 +280,19 @@ try {
     return [r.before[0] === 2 && r.before[1] === 2 && after[0] === 1 && after[1] === 1 && after[2] === true, { before: r.before, after }]; // one red ring and its one cable left - that loop still closed
   });
 
+  await run('a host sending past the per-task limit is stopped without wiping another node\'s red', async () => {
+    const r = await js(`(async () => {
+      const a = T.node('mutator', 1500, 900, { value: 'v', 'data-scv-emits': 'k1', 'data-scv-receives': 'k2' }), b = T.node('mutator', 1620, 960, { value: 'v', 'data-scv-emits': 'k2', 'data-scv-receives': 'k1' });
+      await T.frame(); T.pb.setMode('use'); const quiet = console.warn, said = []; console.warn = m => said.push(String(m));
+      try { T.pb.routeSend('k1', 1); await T.frame(); await T.frame();
+        const hot = () => T.pb.shadowRoot.querySelectorAll('.cable.hot').length, before = hot();
+        for (let i = 0; i < 10001; i++) T.pb.routeSend('nowhere', i); // a host's own loop - one task, no node to blame
+        await T.frame(); await T.frame();
+        return { before, after: hot(), said: said.filter(m => /too many values on nowhere/.test(m)).length };
+      } finally { console.warn = quiet; T.pb.setMode('edit'); a.remove(); b.remove(); } })()`);
+    return [r.before === 1 && r.after === 1 && r.said === 1, r];
+  });
+
   await run('corner diamond scales item, alt in whole cells, undo', async () => {
     await click(130, 420);
     const c = await js(`(() => { const r = T.shadow('.corner[data-c="se"]').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);

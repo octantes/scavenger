@@ -708,6 +708,19 @@ try {
     return [d.log.length === 1 && d.log[0] === 0, d.log];
   });
 
+  await run('a feedback loop through awaits is stopped and blamed, one through a timer runs on', async () => {
+    const pb = T.pb(), quiet = console.warn, said = []; window.__laps = 0; window.__ticks = 0;
+    T.kit.addNodeSource(pb, "defineNode({ name: 'await-echo', async onReceive(v, ctx) { await null; if (++window.__laps < 30000) ctx.emit(v); } })"); // capped itself - a missing guard fails, never hangs
+    T.kit.addNodeSource(pb, "defineNode({ name: 'timer-echo', async onReceive(v, ctx) { await new Promise(r => setTimeout(r, 0)); if (++window.__ticks < 40) ctx.emit(v); } })");
+    const a = T.node(pb, 'await-echo', { 'data-scv-emits': 'qa', 'data-scv-receives': 'qb' }), b = T.node(pb, 'await-echo', { 'data-scv-emits': 'qb', 'data-scv-receives': 'qa' });
+    const c = T.node(pb, 'timer-echo', { 'data-scv-emits': 'ta', 'data-scv-receives': 'tb' }), d = T.node(pb, 'timer-echo', { 'data-scv-emits': 'tb', 'data-scv-receives': 'ta' });
+    console.warn = (...m) => said.push(String(m[0]));
+    try { pb.routeSend('qa', 1); pb.routeSend('ta', 1); await T.sleep(400); } finally { console.warn = quiet; }
+    const stalled = [a, b, c, d].map(n => n.states.has('stalled'));
+    return [window.__laps < 30000 && stalled.filter(Boolean).length === 1 && (stalled[0] || stalled[1]) && window.__ticks === 40 && said.filter(m => /infinite loop/.test(m)).length === 1,
+      { laps: window.__laps, ticks: window.__ticks, stalled, said: said.slice(0, 2) }]; // oscillator through a timer is a clock, not a fault
+  });
+
   await run('a long chain runs its whole length - depth is not what is capped', async () => {
     const pb = T.pb(); let prev = T.node(pb, 'mutator', { value: 'v + 1', 'data-scv-emits': 'h0' });
     const first = prev;

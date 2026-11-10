@@ -249,10 +249,10 @@ const createRouter = (root, {
   onRoute     = () => {},
   onRefuse    = () => {},
 } = {}) => {
-  const LOOP_MAX = 20, BUDGET = 20000; // a cascade comes back round 20 times, any channels; delivers 20k values, any shape
+  const LOOP_MAX = 20, BUDGET = 20000, BURST = 10000; // a cascade comes back round 20 times, any channels; delivers 20k values, any shape; a task starts 10k
   const _active = new Map(); // channel > times on the stack right now - a channel already in flight means a loop, a long chain never is
   const _blamed = new Map(); // node > { reason, from } this router marked - it clears only these, never a quest's error
-  let _sent = 0, _loops = 0, _stopped = false, _from = null, _badFrom = null, _current = null, _cache = null; // _current: whose emission we are inside, so a stop can name it
+  let _burst = 0, _burstT = 0, _sent = 0, _loops = 0, _stopped = false, _from = null, _badFrom = null, _current = null, _cache = null; // _current: whose emission we are inside, so a stop can name it
 
   const invalidate = () => { _cache = null; };
   const _stale = recs => recs.some(r => r.type === 'attributes' || [...r.addedNodes, ...r.removedNodes].some(_wiredDeep)); // only wiring moving in or out rewires - text writes and unwired re-renders don't
@@ -422,7 +422,7 @@ const createRouter = (root, {
     if (_stale(_observer.takeRecords())) invalidate(); // wiring changed this turn counts now
     return (_cache ??= _rebuild()).get(ch);
   };
-  const routeSend = (channel, value) => {
+  const routeSend = (channel, value, from = null) => { // from: node emitting outside any cascade - blamed if its laps run away
     const held = _active.get(channel) || 0, reentry = held > 0; // already running means we came back round to it
     const outer = _active.size === 0;
     if (outer) _from = channel; // what the whole cascade started from
@@ -432,6 +432,8 @@ const createRouter = (root, {
         _badFrom = null; _blamed.forEach((_, n) => { try { n.unstall?.(); } catch {} }); _blamed.clear();
         try { root.dispatchEvent?.(new CustomEvent('scv-overload', { detail: { node: null, channel, reason: null }, bubbles: false })); } catch {} // same event, nothing to blame - whoever paints cables repaints
       }
+      _burstT ||= setTimeout(() => { _burst = _burstT = 0; }); // next task - a loop through awaits never gets there, a timer loop does
+      if (++_burst > BURST) { const was = _current; _current = from; try { return _stop(from ? 'infinite loop' : 'too many values', channel); } finally { _current = was; } } // each await lap is a fresh cascade - this is what sees it; no node means a host sending
     }
     else {
       if (reentry && _loops >= LOOP_MAX) return _stop('infinite loop', channel); // feedback, and it has gone round enough
@@ -1403,7 +1405,7 @@ class ScvLogic extends HTMLElement {
   emit(v, port = '') { // named port reaches its own wires, bare emit unported ones
     const r = routerOf(this); if (!r) return;
     v = _pulseOf(v);
-    splitWords(this.getAttribute(ATTR_EMITS)).forEach(t => { if (portOf(t) === port) r.routeSend(chOf(t), v); });
+    splitWords(this.getAttribute(ATTR_EMITS)).forEach(t => { if (portOf(t) === port) r.routeSend(chOf(t), v, this); });
   }
   showFloat(v) {
     if (this._stallText && v !== this._stallText) return; // a stopped node keeps saying why - the values still unwinding past it do not get to overwrite that
@@ -2097,7 +2099,7 @@ const studio = pb => {
   pb.addEventListener('scv-overload', e => { // blamed, one cleared, or all cleared - the cables follow
     const { node, reason } = e.detail || {};
     if (node) reason ? hot.add(node) : hot.delete(node);
-    else { hot.clear(); root.querySelectorAll('.cable.hot').forEach(p => p.classList.remove('hot')); } // straight off the paths - tint only visits cables that still exist
+    else if (!reason) { hot.clear(); root.querySelectorAll('.cable.hot').forEach(p => p.classList.remove('hot')); } // straight off the paths - tint only visits cables that still exist
     draw();
   });
   const tint = () => {

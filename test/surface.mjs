@@ -191,6 +191,9 @@ try {
     pb.addEventListener('scv-menu', e => e.preventDefault(), { once: true });
     pb.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, composed: true, cancelable: true, clientX: b.left + 40, clientY: b.top + 40 }));
     got.menu.refused = !pb.menu();
+    const gate = document.createElement('scv-logic'); gate.dataset.type = 'gate'; pb.append(gate); pb.setMode('edit'); await frame();
+    pb.addEventListener('scv-menu', e => { got.node = [e.detail.kind, e.detail.target === gate, e.detail.items.map(i => i.id).join()]; e.preventDefault(); }, { once: true });
+    const g = gate.getBoundingClientRect(); gate.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, composed: true, cancelable: true, clientX: g.left + 16, clientY: g.top + 16 })); gate.remove();
     const out = document.createElement('output'), it = document.createElement('scv-item'); out.setAttribute('data-scv-receives', 'ev'); it.append(out); pb.append(it);
     document.addEventListener('scv-receive', e => { got.receive = [e.detail, e.channel]; }, { once: true }); // bubbles to the document
     pb.setMode('use'); pb.routeSend('ev', 'v');
@@ -204,6 +207,7 @@ try {
   })()`);
   ok(events?.menu?.keys === 'from,items,kind,port,reverse,target,wire,x,y' && events.menu.cancelable && events.menu.items, `scv-menu carries items, kind, x, y, target and the pending wire's from, reverse, port, wire (${JSON.stringify(events?.menu)})`);
   ok(events?.menu?.shown && events.menu.refused, `scv-menu: a pushed item shows, preventDefault opens nothing (${JSON.stringify(events?.menu)})`);
+  ok(JSON.stringify(events?.node) === '["node",true,"cycle"]', `scv-menu on a node: kind node, the node as target, its mode cycle as the one item (${JSON.stringify(events?.node)})`);
   ok(JSON.stringify(events?.receive) === '["v","ev"]', `scv-receive bubbles to the document with the value and its channel (${JSON.stringify(events?.receive)})`);
   ok(JSON.stringify(events?.overload) === JSON.stringify([{ keys: 'channel,node,reason', node: true, reason: 'infinite loop' }, { keys: 'channel,node,reason', node: true, reason: null }]),
     `scv-overload names node, channel and reason when it stops, the same node with no reason once its wiring is fixed (${JSON.stringify(events?.overload)})`);

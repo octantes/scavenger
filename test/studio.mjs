@@ -549,16 +549,44 @@ try {
     return [r.length === 1 && r[0].kind === 'wire' && r[0].target === null && r[0].ids.every(i => i.startsWith('node:')) && r[0].x > 0, r];
   });
 
-  await run('canvas kind carries the item under the pointer, a node opens no menu', async () => {
-    await js(`(() => { window.__seen = []; T.node('gate', 700, 300); })()`); // its own node - a right click cycles the mode, which would edit a shared one
+  await run('a node sends node kind with itself as target - left alone, its mode cycles with no menu', async () => {
+    await js(`(() => { window.__seen = []; window.__gate = T.node('gate', 700, 300); })()`); // its own node - a right click cycles the mode, which would edit a shared one
     await frames();
     await click(716, 316, 0, 'right');
-    const onNode = await js(`[window.__seen.length, !T.pb.shadowRoot.querySelector('.menu')]`);
-    await js(`T.nodes().at(-1).remove()`);
+    const onNode = await js(`[window.__seen.at(-1)?.kind, window.__seen.at(-1)?.target, !T.pb.shadowRoot.querySelector('.menu'), window.__gate.getAttribute('mode')]`);
+    await js(`window.__gate.remove()`);
     await click(900, 600, 0, 'right');
     const empty = await js(`window.__seen.at(-1)`);
     await key('Escape');
-    return [onNode[0] === 0 && onNode[1] === true && empty.kind === 'canvas' && empty.target === null, { onNode, empty }];
+    return [onNode[0] === 'node' && onNode[1] === 'scv-logic' && onNode[2] === true && onNode[3] === 'once' && empty.kind === 'canvas' && empty.target === null, { onNode, empty }];
+  });
+
+  await run('a host dresses a node menu: its items join the cycle, which still works; taking the cycle out leaves only the host', async () => {
+    const at = await js(`(async () => { window.__off.abort(); window.__off = new AbortController(); window.__inspect = 0; window.__gate = T.node('gate', 700, 300);
+      T.pb.addEventListener('scv-menu', e => { if (e.detail.kind !== 'node') return;
+        if (window.__solo) e.detail.items.splice(0, e.detail.items.length);
+        e.detail.items.push({ id: 'host:inspect', label: '[host] - inspect', fn: () => { window.__inspect = e.detail.target === window.__gate ? 1 : -1; } });
+      }, { signal: window.__off.signal }); await T.frame(); return 1; })()`);
+    await click(716, 316, 0, 'right');
+    const shown = await js(`T.pb.menu()`);
+    await js(`[...T.pb.shadowRoot.querySelectorAll('.menu button')].find(b => b.textContent === '[mode] - next').click()`);
+    const cycled = await js(`[window.__gate.getAttribute('mode'), !T.pb.shadowRoot.querySelector('.menu')]`);
+    await js(`window.__solo = true`);
+    await click(716, 316, 0, 'right');
+    const solo = await js(`T.pb.menu()`);
+    await js(`[...T.pb.shadowRoot.querySelectorAll('.menu button')].find(b => b.textContent === '[host] - inspect').click()`);
+    const r = await js(`(() => { const r = [window.__inspect, window.__gate.getAttribute('mode')]; window.__gate.remove(); window.__solo = false; window.__off.abort(); return r; })()`);
+    return [JSON.stringify(shown) === JSON.stringify(['[mode] - next', '[host] - inspect']) && cycled[0] === 'once' && cycled[1] && JSON.stringify(solo) === JSON.stringify(['[host] - inspect']) && r[0] === 1 && r[1] === 'once',
+      { shown, cycled, solo, inspect: r }];
+  });
+
+  await run('preventDefault on a node menu neither cycles nor opens', async () => {
+    await js(`(() => { window.__off = new AbortController(); window.__gate = T.node('gate', 700, 300);
+      T.pb.addEventListener('scv-menu', e => { if (e.detail.kind === 'node') e.preventDefault(); }, { signal: window.__off.signal }); return 1; })()`);
+    await frames();
+    await click(716, 316, 0, 'right');
+    const r = await js(`(() => { const r = [window.__gate.getAttribute('mode'), !T.pb.shadowRoot.querySelector('.menu')]; window.__gate.remove(); window.__off.abort(); return r; })()`);
+    return [r[0] === null && r[1] === true, r];
   });
 
   await run('a host suppressing the wire menu finishes the wire from detail.from', async () => {

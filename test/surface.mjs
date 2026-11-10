@@ -420,6 +420,27 @@ try {
   ok(!/rgb\(9, 9, 9\)/.test(ov) && ovr?.themed && tokens?.[1] && tokens[1] !== 'rgb(9, 9, 9)', `host sheet styling scv-patchbay never written into export (${tokens})`);
   ok(tokens?.[0] === 'rgb(7, 7, 7)', `inline override on element travels with save (${tokens})`);
 
+  // an unmounted patchbay is let go - nothing on the page holds it, whatever it carried
+  await nav(base + '/mount/src');
+  await js(`(async () => {
+    for (let i = 0; i < 100 && !document.querySelector('scv-patchbay')?.save; i++) await new Promise(r => setTimeout(r, 20)); // studio up
+    window.__gone = []; window.__polls = 0;
+    for (let i = 0; i < 4; i++) {
+      const pb = document.createElement('scv-patchbay'); pb.style.cssText = 'width:200px;height:100px'; document.body.append(pb);
+      pb.import('<template data-scv-comp="gc-comp"><b>c</b><script>host.dataset.ran = 1;<\\/script></template><script type="scv/node" data-scv-node>defineNode({ name: "gc-node" })<\\/script>', { at: { x: 10, y: 10 } });
+      const n = document.createElement('scv-logic'); n.dataset.type = 'clock'; n.setAttribute('value', '500'); pb.append(n);
+      const it = document.createElement('scv-item'); it.innerHTML = '<div data-scv-id="x">x</div>'; pb.append(it);
+      await pb.follow({ getFile: async () => { window.__polls++; return { lastModified: 1, text: async () => '' }; } }, ''); // live reload polling a file
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      window.__gone.push(new WeakRef(pb)); pb.remove();
+    }
+    await new Promise(r => setTimeout(r, 1300)); window.__pollsAfter = window.__polls; return 1; })()`); // a poll tick sees it gone
+  await new Promise(r => setTimeout(r, 2200));
+  for (let i = 0; i < 3; i++) { await send('HeapProfiler.collectGarbage'); await new Promise(r => setTimeout(r, 200)); }
+  const gc = await js(`[window.__gone.filter(r => r.deref()).length, window.__polls - window.__pollsAfter]`);
+  ok(gc?.[0] === 0, `unmounted patchbays are collected - component, node type, clock, items and live reload included (${gc?.[0]} of 4 still held)`);
+  ok(gc?.[1] === 0, `live reload stops polling once its patchbay is gone (${gc?.[1]} polls after)`);
+
   // runtime-only host takes in harvest by hand: def read as data, element defined, its code never runs
   await nav(base + '/runtime');
   const def = "window.__ran = 1;\nif(!customElements.get('scv-surf1')){\ncustomElements.define('scv-surf1', class extends HTMLElement {\nconstructor() {\nsuper();\nif (this.shadowRoot) return;\nthis.attachShadow({mode: 'open'}).innerHTML = `<p onclick=\"window.__ran = 2\">surf</p><script>window.__ran = 3<\/script>`;\n}\n});\n}\n";

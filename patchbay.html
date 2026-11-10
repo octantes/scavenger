@@ -741,15 +741,17 @@ class ScvComponent extends HTMLElement { // script runs after slots restored
   _stop() { if (!this._live) return; this._live = false; this._scope.release(); }
 }
 
+const _holders = c => [...c.held].map(r => r.deref()).filter(Boolean); // templates holding a def - weak, an unmounted patchbay is let go
+const _hold = (c, tpl) => { for (const r of c.held) if (!r.deref()) c.held.delete(r); if (!_holders(c).includes(tpl)) c.held.add(new WeakRef(tpl)); };
 const defineComponent = tpl => { // placed instances rebuild on new def
   const tag = compTag(tpl.getAttribute('data-scv-comp') || '');
   if (!/^scv-[a-z0-9-]+$/.test(tag) || ['scv-item', 'scv-logic', 'scv-patchbay'].includes(tag)) { console.warn('[scav] component name ' + tag + ' refused'); return null; }
   if (customElements.get(tag) && !_comps.has(tag)) { console.warn('[scav] ' + tag + ' already defined by harvest'); return null; }
   const known = _comps.has(tag);
-  if (known && _comps.get(tag).tpl.outerHTML === tpl.outerHTML) return _comps.get(tag).held.add(tpl), tag; // same def from a paste - placed instances keep running
+  if (known && _comps.get(tag).tpl.outerHTML === tpl.outerHTML) return _hold(_comps.get(tag), tpl), tag; // same def from a paste - placed instances keep running
   if (compConflict(patchbayOf(tpl), tpl)) { console.warn('[scav] ' + tag + ' already on page as another version'); return null; }
   const { frag, code } = _compParts(tpl);
-  const c = { tpl, frag, run: _compileComp(tag, code), icon: tpl.getAttribute('data-scv-icon') || '', color: tpl.getAttribute('data-scv-color') || '', held: new Set([tpl]) };
+  const c = { tpl: tpl.cloneNode(true), frag, run: _compileComp(tag, code), icon: tpl.getAttribute('data-scv-icon') || '', color: tpl.getAttribute('data-scv-color') || '', held: new Set([new WeakRef(tpl)]) }; // own copy - the one in a patchbay would keep it alive
   _comps.set(tag, c);
   if (!known) customElements.define(tag, class extends ScvComponent {});
   else document.querySelectorAll(tag).forEach(el => {
@@ -1468,10 +1470,10 @@ const defineNode = (pb, def) => { // in code only - not saved
   return def.name;
 };
 const _tagOf = t => compTag(t.getAttribute('data-scv-comp') || '');
-const compsOf = pb => [...pb.children].filter(c => c.localName === 'template' && _comps.get(_tagOf(c))?.held.has(c)).map(_tagOf); // tags this patchbay holds
+const compsOf = pb => [...pb.children].filter(c => c.localName === 'template' && _comps.has(_tagOf(c)) && _holders(_comps.get(_tagOf(c))).includes(c)).map(_tagOf); // tags this patchbay holds
 const compConflict = (pb, tpl) => { // one element per tag on page - another patchbay keeps its version
   const c = _comps.get(_tagOf(tpl));
-  return !!c && c.tpl.outerHTML !== tpl.outerHTML && [...c.held].some(t => t !== tpl && t.isConnected && patchbayOf(t) !== pb);
+  return !!c && c.tpl.outerHTML !== tpl.outerHTML && _holders(c).some(t => t !== tpl && t.isConnected && patchbayOf(t) !== pb);
 };
 const addComponent = (pb, tpl) => { // > tag, null when refused
   if (compConflict(pb, tpl)) return null;
@@ -1671,6 +1673,9 @@ const CANVAS_CSS = `
 .layer { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 `;
 let _sheet = null;
+let _rects = new WeakMap(); // patchbay > client rect - page listeners hold none, an unmounted one is collected
+addEventListener('resize', () => { _rects = new WeakMap(); });
+addEventListener('scroll', () => { _rects = new WeakMap(); }, { capture: true, passive: true });
 
 PB.use((pb, kit) => {
   const root = pb.shadowRoot;
@@ -1690,10 +1695,7 @@ PB.use((pb, kit) => {
     grid.style.setProperty('--grid-y', view.y + 'px');
   };
   pb.setView = (x, y, zoom = view.zoom) => { view.x = x; view.y = y; view.zoom = Math.max(0.1, Math.min(5, zoom)); apply(); };
-  let rect = null; // read once per resize or scroll - never per pointer move
-  pb.rect = () => rect ??= pb.getBoundingClientRect();
-  addEventListener('resize', () => { rect = null; });
-  addEventListener('scroll', () => { rect = null; }, { capture: true, passive: true });
+  pb.rect = () => { let r = _rects.get(pb); if (!r) _rects.set(pb, r = pb.getBoundingClientRect()); return r; }; // read once per resize or scroll - never per pointer move
   pb.setZoom = (zoom, cx, cy) => { // keeps client point fixed
     const z = Math.max(0.1, Math.min(5, zoom)), r = pb.rect();
     const px = cx - r.left, py = cy - r.top, k = z / view.zoom;
@@ -2613,6 +2615,7 @@ const studio = pb => {
   const followed = new Map(); // dropped source > last seen - session only, reload drops it
   let followT = 0;
   const poll = async () => { // editor saves update canvas - metadata read once a second
+    if (!pb.isConnected) followed.clear(); // patchbay unmounted - stop, and let it go
     for (const [h, seen] of followed) {
       try {
         const f = await h.getFile();

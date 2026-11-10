@@ -1282,6 +1282,7 @@ class ScvLogic extends HTMLElement {
   _stop() {
     if (!this._live) return;
     this._live = false;
+    if (this._pend) { this._pend.gone = true; this._pend.ac?.abort(); this._pend = null; } // its late failure must not land on next run
     this._call('teardown', () => this._def.teardown?.(this._ctx));
     this._scope.release();
   }
@@ -1352,8 +1353,8 @@ class ScvLogic extends HTMLElement {
       get y() { return px(el, 'top'); },
       setPosition(x, y) { el.style.left = x + 'px'; el.style.top = y + 'px'; },
       live: () => el._live && el._ctx === ctx,
-      emit: (v, port) => el.emit(v, port),
-      output: (v, port) => { el.showFloat(v); el.emit(v, port); },
+      emit: (v, port) => { if (ctx.live()) el.emit(v, port); }, // torn-down run says nothing - late promise, leftover timer
+      output: (v, port) => { if (ctx.live()) { el.showFloat(v); el.emit(v, port); } },
       showFloat: v => el.showFloat(v),
       flashError: (where, err) => el.flashError(where, err),
       shared: (k, create, release) => el._scope.shared(k, create, release),

@@ -572,6 +572,25 @@ try {
     return [pending === 'busy' && failed === 'error' && s() === 'idle', [pending, failed, s()]];
   });
 
+  await run('async hook from a torn-down node never emits or errors - redefined, or deleted and put back', async () => {
+    const pb = T.pb(), slow = "defineNode({ name: 'slow-echo', async onReceive(v, ctx) { await new Promise(r => setTimeout(r, 60)); ctx.emit('old:' + v); } })";
+    T.kit.addNodeSource(pb, slow);
+    const n = T.node(pb, 'slow-echo', { 'data-scv-emits': 'se' }), d = T.sink(pb, 'se');
+    n.receive(1, 'x');
+    T.kit.addNodeSource(pb, "defineNode({ name: 'slow-echo', onReceive(v, ctx) { ctx.emit('new:' + v); } })"); // new version lands mid-call
+    await T.sleep(120);
+    T.kit.addNodeSource(pb, slow); await T.sleep(0);
+    n.receive(2, 'x'); n.remove(); await T.sleep(20); pb.append(n); // deleted, torn down, put back before the old call ends
+    await T.sleep(120);
+    T.kit.addNodeSource(pb, "defineNode({ name: 'slow-fail', async onReceive() { await new Promise(r => setTimeout(r, 60)); throw new Error('late'); } })");
+    const f = T.node(pb, 'slow-fail'), quiet = console.warn; console.warn = () => {};
+    try { f.receive(3, 'x'); f.remove(); await T.sleep(20); pb.append(f); await T.sleep(120); } finally { console.warn = quiet; }
+    T.kit.addNodeSource(pb, "defineNode({ name: 'slow-timer', onReceive(v, ctx) { setTimeout(() => ctx.emit('timer:' + v), 60); } })"); // a timer the old run left - no call to cancel
+    const t = T.node(pb, 'slow-timer', { 'data-scv-emits': 'se' });
+    t.receive(4, 'x'); t.remove(); await T.sleep(20); pb.append(t); await T.sleep(120);
+    return [d.log.length === 0 && !f.states.has('error'), { emitted: d.log, error: f.states.has('error') }];
+  });
+
   await run('async hook: abort is no error, teardown aborts callSignal', async () => {
     const pb = T.pb(), sigs = [];
     T.kit.defineNode(pb, { name: 'as-abort', onReceive(v, ctx) { sigs.push(ctx.callSignal); return new Promise((_, rej) => ctx.callSignal.addEventListener('abort', () => rej(new DOMException('gone', 'AbortError')))); } });

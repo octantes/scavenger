@@ -35,6 +35,9 @@ const THEME_CSS = inner('scv-runtime-css');
 const HAND = ['<link rel="stylesheet" href="/pieces/extra.css">', '<script src="/pieces/extra.js"></script>', '<style>.hand { color: rgb(1, 2, 3) }</style>'];
 const DROPPED = '<base href="https://example.test/">'; // would repoint every relative url in the saved file
 const pbWith = inject => pbFile.replace('<title>patchbay</title>\n', '<title>patchbay</title>\n' + inject + '\n');
+const AFTER = ['<style>scv-patchbay { --input: rgb(1, 2, 3) }</style>', '<script>window.__after = typeof customElements.get(\'scv-patchbay\')</script>']; // override after theme, script that needs runtime
+const OWN = '<style id="scv-fonts-zz">.zz{}</style><style id="scv-sys-styles">.yy{}</style>'; // what scav puts in head itself
+const pbAround = () => pbWith(OWN).replace('</style>\n<script id="scv-runtime">', '</style>\n' + AFTER[0] + '\n<script id="scv-runtime">').replace('})()</script>\n</head>', '})()</script>\n' + AFTER[1] + '\n</head>');
 const KEPT = '<scv-patchbay><scv-item><div data-scv-id="keep">intact</div></scv-item></scv-patchbay>'; // content the file keeps when the runtime refuses to start
 const FLOOR = { // each api the runtime needs, taken away before it reads for it
   getHTML: 'delete Element.prototype.getHTML;',
@@ -79,6 +82,7 @@ const srv = createServer((req, res) => {
   const path = req.url.split('?')[0];
   if (path === '/pb') return res.end(pbFile);
   if (path === '/pb/head') return res.end(pbWith(HAND.join('\n') + '\n' + DROPPED));
+  if (path === '/pb/head-around') return res.end(pbAround());
   if (path === '/pb/linked-theme') return res.end(linkedTheme);
   if (path.startsWith('/floor/')) { const s = FLOOR[path.slice(7)]; return s ? res.end(pbWith(`<script>${s}</script>`).replace('<scv-patchbay></scv-patchbay>', KEPT)) : void (res.statusCode = 404, res.end()); }
   if (path.startsWith('/floor-bare/')) { // patchbay file with no theme block - the message styles itself from inline token values
@@ -362,6 +366,16 @@ try {
   await opened('head-trip', trip1, false); // untouched - a routed value would change what it holds
   const trip2 = (await saveKinds(['quine']))?.quine;
   ok(trip1 && trip1 === trip2, `hand-added head survives save → reopen → save byte-identical (${trip1.length} vs ${trip2?.length})`);
+
+  // head keeps its order - style after theme still overrides, script after runtime still finds it, scav's own never copied
+  await nav(base + '/pb/head-around');
+  const around = (await saveKinds(['quine']))?.quine || '', aHead = around.slice(0, around.indexOf('</head>'));
+  const pos = h => aHead.indexOf(h), theme = pos('<style id="scv-runtime-css">'), runtime = pos('<script id="scv-runtime">');
+  ok(theme > 0 && pos(AFTER[0]) > theme && pos(AFTER[0]) < runtime && pos(AFTER[1]) > runtime && !aHead.includes('scv-fonts-zz') && !aHead.includes('scv-sys-styles'),
+    `head saved in page order, scav's own head styles left out (theme ${theme}, override ${pos(AFTER[0])}, runtime ${runtime}, script ${pos(AFTER[1])})`);
+  await opened('head-around', around, false);
+  const aRun = await js(`[getComputedStyle(document.querySelector('scv-patchbay')).getPropertyValue('--input').trim(), window.__after]`);
+  ok(aRun?.[0] === 'rgb(1, 2, 3)' && aRun[1] === 'function', `after a save the override still wins and the script still runs after the runtime (${JSON.stringify(aRun)})`);
 
   // theme carried by a link: inlined once, that link dropped, the rest of the head kept
   await nav(base + '/pb/linked-theme');

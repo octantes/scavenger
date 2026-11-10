@@ -1084,6 +1084,33 @@ try {
     return [r.join() === '1,v2,5,1,0,true', r];
   });
 
+  await run('ctrl+o picks a file like a drop - imported, followed, the browser kept out', async () => {
+    await js(`(() => { window.__text = "<script type=\\"scv/node\\" data-scv-node>defineNode({ name: 'picknode', icon: 'P1' })<\\/script>"; window.__at = 1; window.__dflt = null;
+      const handle = { getFile: async () => new File([window.__text], 'p.html', { type: 'text/html', lastModified: window.__at }), isSameEntry: async o => o === handle };
+      window.showOpenFilePicker = async () => [handle]; // what the browser's own picker hands back
+      window.addEventListener('keydown', e => { if (e.key === 'o') window.__dflt = e.defaultPrevented; }, { once: true });
+      T.pb.shadowRoot.querySelector('.layer').focus(); return 1; })()`);
+    await hover(500, 300); await key('o', CTRL); await js(`new Promise(r => setTimeout(r, 100))`);
+    const placed = await js(`[window.__dflt, T.pb.querySelector('scv-logic[data-type=picknode]')?.shadowRoot.querySelector('.dot').textContent]`);
+    await js(`(() => { window.__text = window.__text.replace('P1', 'P2'); window.__at = 2; return 1; })()`); // the file saved in an editor
+    await js(`new Promise(r => setTimeout(r, 1300))`);
+    const followed = await js(`(() => { const n = T.pb.querySelector('scv-logic[data-type=picknode]'), r = n?.shadowRoot.querySelector('.dot').textContent; n?.remove(); delete window.showOpenFilePicker; return r; })()`);
+    return [placed[0] === true && placed[1] === 'P1' && followed === 'P2', { prevented: placed[0], placed: placed[1], followed }];
+  });
+
+  await run('ctrl+o without a file picker falls back to a file input, which imports', async () => {
+    const r = await js(`(async () => {
+      const real = HTMLInputElement.prototype.click; window.__input = null;
+      HTMLInputElement.prototype.click = function () { if (this.type === 'file') window.__input = this; else real.call(this); };
+      try { T.pb.shadowRoot.querySelector('.layer').focus(); T.pb.shadowRoot.querySelector('.layer').dispatchEvent(new KeyboardEvent('keydown', { key: 'o', ctrlKey: true, bubbles: true, composed: true, cancelable: true })); }
+      finally { HTMLInputElement.prototype.click = real; }
+      const input = window.__input; if (!input) return ['no input'];
+      const dt = new DataTransfer(); dt.items.add(new File(["<script type=\\"scv/node\\" data-scv-node>defineNode({ name: 'inputnode', icon: 'I' })<\\/script>"], 'i.html', { type: 'text/html' }));
+      input.files = dt.files; input.dispatchEvent(new Event('change')); await new Promise(r => setTimeout(r, 100));
+      const n = T.pb.querySelector('scv-logic[data-type=inputnode]'), got = [input.type, input.multiple, !!n]; n?.remove(); return got; })()`);
+    return [r.join() === 'file,true,true', r];
+  });
+
   // shortcuts, chrome and canvas details
 
   await fresh();

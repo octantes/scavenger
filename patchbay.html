@@ -2450,6 +2450,7 @@ const studio = pb => {
     if (m && (k === 'y' || k === 'Y')) { e.preventDefault(); return pb.redo(); }
     if (m && (k === 's' || k === 'S')) { e.preventDefault(); return pb.export('quine'); }
     if (m && (k === 'p' || k === 'P')) { e.preventDefault(); return pb.export('publish'); }
+    if (m && (k === 'o' || k === 'O')) { e.preventDefault(); return void openFiles(); } // left out of the key list on purpose
     if (!pb.editing) return;
     if (m && (k === 'a' || k === 'A')) { e.preventDefault(); return select(units()); }
     if (m && (k === 'd' || k === 'D')) { e.preventDefault(); return void duplicate(); } // browser bookmark shortcut otherwise
@@ -2640,19 +2641,32 @@ const studio = pb => {
     followT ||= setInterval(poll, 1000);
   };
   pb.follow = follow;
-  pb.addEventListener('drop', async e => {
-    if (!ownPath(e)) return;
-    e.preventDefault();
-    const item = [...(e.dataTransfer?.items || [])].find(i => i.kind === 'file'), handle = item?.getAsFileSystemHandle?.(); // only answers inside the event
-    const file = e.dataTransfer?.files?.[0], at = toCanvas(e.clientX, e.clientY);
-    if (!file) return;
+  const takeFile = async (file, handle, at) => { // drop and ctrl+o share it
     if (file.type.startsWith('image/')) return void imageItem(file, at);
     const text = await file.text();
     if (!/<scv-|data-scv-/i.test(text)) return;
     importText(text, { at });
-    const h = await handle?.catch(() => null);
+    const h = await Promise.resolve(handle).catch(() => null); // drop hands a promise, picker the handle
     if (h && /data-scv-comp|data-scv-node/.test(text) && !/<scv-patchbay|<scv-item/.test(text)) follow(h, text); // sources only, never quines
+  };
+  pb.addEventListener('drop', async e => {
+    if (!ownPath(e)) return;
+    e.preventDefault();
+    const item = [...(e.dataTransfer?.items || [])].find(i => i.kind === 'file'), handle = item?.getAsFileSystemHandle?.(); // only answers inside the event
+    const file = e.dataTransfer?.files?.[0];
+    if (file) takeFile(file, handle, toCanvas(e.clientX, e.clientY));
   });
+  const openFiles = async () => { // a drop with no file manager - picked handles follow like dropped ones, a plain input where no picker
+    const at = toCanvas(st.pointer.x, st.pointer.y), each = (f, h, i) => takeFile(f, h, { x: at.x + i * GRID, y: at.y + i * GRID });
+    if (window.showOpenFilePicker) {
+      let hs; try { hs = await showOpenFilePicker({ multiple: true }); } catch { return; } // dismissed
+      for (const [i, h] of hs.entries()) await each(await h.getFile(), h, i);
+      return;
+    }
+    const input = Object.assign(document.createElement('input'), { type: 'file', multiple: true });
+    input.addEventListener('change', async () => { for (const [i, f] of [...input.files].entries()) await each(f, null, i); });
+    input.click();
+  };
   const duplicate = async () => { const sel = movable(selection()); if (sel.length) importText(await (await clip(sel, pb)).text(), { offset: GRID }); };
   pb.duplicate = duplicate;
   enrich();

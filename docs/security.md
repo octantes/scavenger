@@ -1,10 +1,14 @@
 # Security model
 
-The quest server is **read-public, write-owner-only**, by construction ([the quest server contract](contract.md#quest-server) explains the boundary). A write that isn't a direct loopback connection - or an explicit `--trust-ip` - is refused, and a proxy hop carries `X-Forwarded-For`. Because this is enforced **server-side** at the socket level, a hosted or hand-edited patchbay can never write; only a process on the host machine can.
+The quest server **refuses reads from other websites and writes from anyone but the owner** - except a page that hides its origin. The [quest server contract](contract.md#quest-server) goes into more detail about how to work with this boundary. A write that isn't a direct loopback connection - or an explicit `--trust-ip` - is refused, and a proxy hop carries `X-Forwarded-For`. Because this is enforced **server-side** at the socket level, a hosted or hand-edited patchbay can never write; only a process on the host machine can.
+
+A request carrying an `Origin` gets nothing, unless that origin is localhost, matches the host it was sent to, or was named with `--allow-origin <origin>`. That boundary covers browser extensions too.
+
+`file://`, `curl` and Node always read. In browsers without Local Network Access, any page can still read, register and delete quests by sending `Origin: null` - the same origin a `file://` patchbay sends, which is why it can't be refused without breaking the zero-config connection. With `--trust-ip` the server also listens beyond loopback, so any machine that can reach its port reads too.
 
 ## SSRF & DNS Rebinding
 
-When the server fetches a quest URL, it pins the fetch, so a hostile resolver **can't rebind it into your internal network** - and the loopback write-gate above means only the owner can even point a quest somewhere.
+When the server fetches a quest URL, it pins the fetch, so a hostile resolver **can't rebind it into your internal network**. That matters because the owner isn't the only one who can register a quest: in browsers without Local Network Access, a page hiding its origin can too.
 
 - The **IP Denylist** catches any host that resolves to a private, link-local, or router address, so a quest can't be pointed at your internal network behind a public-looking domain. Reserved blocks (`0.0.0.0/8`, CGNAT, `100.64/10`, NAT64, TEST-NETs) aren't on the deny-list - harmless since only the owner can register a URL.
 - **JSON pinning** pins the fetch to the one validated address: instead of checking an IP once and letting the request re-resolve on its own, `pinnedGet` sets a custom `lookup` that dials that exact address - resolver is consulted once.
@@ -34,7 +38,7 @@ Antivirus / EDR keys on the *pattern*, not the intent, so touching Cookies + Loc
 
 Profile modes exist because *headless* chromium needs to impersonate your session. The `quest live-emit` kernel.js tool sidesteps all of it, running inside your **real logged-in tab.** Snipe an element, and the tool watches it with a `MutationObserver` and `POST`s each text change to the quest server - so your actual browser is the scraper, removing the auth problem.
 
-The one thing it needs is authorization. A page from another origin can still fire a `POST` at `127.0.0.1` - browsers don't stop the request, only the server can - so the server refuses any cross-origin write that doesn't carry proof of intent: the per-run `scv-token` header (printed in the chromium settings menu and the startup log). You paste the token into the kernel once, along with the channel name and API URL, and a *live badge* pins to each watched element.
+The one thing it needs is authorization. A page from another origin can still fire a `POST` at `127.0.0.1` - browsers don't stop the request, only the server can - so the server refuses any write from another website that doesn't carry proof of intent: the per-run `scv-token` header (printed in the chromium settings menu and the startup log). A page that hides its origin is the [one exception](#security-model). You paste the token into the kernel once, along with the channel name and API URL, and a *live badge* pins to each watched element.
 
 Watchers persist while the page stays loaded - a full reload kills the kernel with them, and a server restart mints a new per-run token, so watchers stop themselves. The quest arrives on the patchbay as a normal topic - wire it into any node, like any other scraped quest.
 
@@ -42,8 +46,12 @@ Watchers persist while the page stays loaded - a full reload kills the kernel wi
 
 A **harvest is kept, not connected**: scripts are stripped and every network path (fetch, beacon, websocket) is removed, so the copy works forever and phones nothing. The one exception is a visible `<iframe>` - kept because it holds content you chose to carry. Embeds without visual content are fully purged, so a fully sealed patchbay never contains embeds you can see.
 
+Pasted harvests run nothing: they're rebuilt from their markup, and scripts are dropped on the way in, along with inline handlers, `javascript:` links, `srcdoc` and inline-document frames (`data:`, `blob:`) and `<meta>` / `<base>`. A frame keeps its `src` only for a real remote page, the same rule the kernel applies at harvest. Nodes, authored components and wiring verbs are code - a mutator's expression runs, node and component files run like opening them, and `prop:` / `method:` verbs act on whatever data reaches them.
+
+Mutators, authored components and custom nodes run through `new Function`, so a page whose CSP forbids `unsafe-eval` can still show harvested components and route values without them running.
+
 ## Deploying a patchbay with live data
 
-Host the published HTML on any host. To give it live quests, run `quests.mjs` behind a reverse proxy on the same origin and **proxy `GET /quests` only - never proxy `POST`/`DELETE`.** That keeps the write surface loopback-only while letting visitors read. For a fully static option, use `--output feed.json` and serve the file.
+Host the published HTML on any host. To give it live quests, run `quests.mjs` behind a reverse proxy on the same origin and **proxy only the `GET` reads (`/quests`, `/component`, `/asset`, `/unfurl`) - never proxy `POST`/`DELETE`.** That keeps the write surface loopback-only while letting visitors read. For a fully static option, use `--output feed.json` and serve the file.
 
-A published patchbay bakes no server address - it reads from whatever origin serves it, which is why the proxy above needs no configuration. To point one somewhere else, open it with `?quest-api=<url>`, the same override the patchbay takes. That is a cross-origin read, which the quest host already allows; the same-origin proxy stays the path of least resistance.
+A published patchbay bakes no server address - it reads from whatever origin serves it, which is why the proxy above needs no configuration. To point one somewhere else, open it with `?quest-api=<url>`, the same override the patchbay takes. That is a cross-origin read, so start the quest host with `--allow-origin <publish origin>`; the same-origin proxy stays the path of least resistance.

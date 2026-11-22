@@ -863,7 +863,7 @@ class QuestEngine {
         } catch { return send(502, { error: 'asset fetch failed' }); }
       }
 
-      if (req.method === 'GET' && req.url.startsWith('/component/')) { // serve harvested component file (public read)
+      if (req.method === 'GET' && req.url.startsWith('/component/')) { // serve harvested component file - read gate above applies
         const name = decodeURIComponent(req.url.slice('/component/'.length).split(/[#?]/)[0]);
         if (!/^[\w-]+\.html$/.test(name)) return send(400, { error: 'bad component name' }); // bare filename, no path traversal
         try { res.setHeader('Content-Type', 'text/html'); return send(200, await readFile(join(COMPONENT_DIR, name), 'utf8')); }

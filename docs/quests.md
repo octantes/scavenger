@@ -1,6 +1,6 @@
 # quests - reference manual
 
-The **quests server** headlessly scrapes a URL (CSS selector, JSON key or `localStorage` key) on an interval, and exposes each channel's latest value over HTTP. A `quest` node in the patchbay reads that value and emits it onto a wire - once on setup, then on each received `1`, so wire a `clock` node in to set the emit rhythm.
+The **quests server** headlessly scrapes a URL (CSS selector, JSON key or `localStorage` key) on an interval, and exposes each channel's latest value over HTTP. A `quest` node in the patchbay reads that value and emits it onto a wire - once on setup, then on each received pulse, so wire a `clock` node in to set the emit rhythm.
 
 No background pushes: the node pulls the last-known value, and the scraping stays on the server's own schedule. For the one-minute version, see the [quests section](../README.md#harvesting-the-web-through-quests) of the readme; the write-gate, profile modes and live-emit auth are explained in [security](security.md), and the host-facing symbols in the [external contract](contract.md).
 
@@ -41,7 +41,7 @@ When running in a terminal, `quests.mjs` shows a live table of quests you can dr
 | `v` | Table | Filter all / scheduled / manual. |
 | `l` | Table | Value log (then `j`/`k`/`g`/`G` scroll, `g` oldest, `G` tail). |
 | `p` `m` | Table | Toggle pinned / manual. |
-| `e` | Table | List every active error. |
+| `e` | Table | List every active error, then engine-side failures. |
 | `Scroll` | Table or log | Move the selection or scroll the log. |
 
 > The **Chromium menu** sets **parallel scrapes** - each step adds one extra tab, so a slow page no longer stalls the others.
@@ -60,6 +60,7 @@ The CLI in one table - a flag, its alias, and the env var that sets the same thi
 | `--output` `-o` | File path | Mirror every quest result to a static JSON file each tick - for a fully static deploy (serve the file, no server). |
 | `--history` | File path (optional) | Append one `{ channel, value, ts }` line **on every change**. Bare `--history` auto-names `quest-history-YYYY-MM-DD.jsonl` - pass a name to override. |
 | `--trust-ip` | IP (CSV) | Add non-loopback IP(s) to the **write allowlist** and bind `0.0.0.0`. `SCAV_TRUST_IP` sets the same. |
+| `--allow-origin` | Origin (CSV) | Let a publish served from another origin read quests - the only way in for any non-local origin, browser extensions included. `SCAV_ALLOW_ORIGIN` sets the same. |
 | `--run` | Test file path | Run quests-as-tests once, report `✓` or `✗`, exit non-zero on failure. Brings up the engine but not the API/TUI. |
 | `--allow-local` | With `--run` | Relax the scrape SSRF guard so `--run` can target a local dev server. Never affects the running server or the write-gate. |
 | `CHROME_PATH` | - | Browser path, overriding auto-detection. |
@@ -81,7 +82,7 @@ A **quest with an expected value is a test**. The `--run` flag runs a JSON array
 
 Assertions, tried in priority: `expect` (exact), `contains` (substring), `matches` (regex) - else the quest just has to resolve non-empty with no error. Authoring is one click: the kernel's **quest steps** sniper has a `copy as test` button that drops a ready `--run` entry - `line` plus `expect` pre-filled from the element's live text.
 
-> `--run` tests the sites you want - to test scavenger itself, run `node test/all.mjs` for the 20-tier [internal suite](CONTRIBUTING.md#testing).
+> `--run` tests the sites you want - to test scavenger itself, run `node test/all.mjs` for the 21-tier [internal suite](CONTRIBUTING.md#testing).
 
 The engine comes up (egress proxy + headless Chromium), but not the API server or TUI. Target URLs must be public - the SSRF pin blocks loopback - so it verifies a live site still behaves; `--allow-local` aims it at a local dev server instead.
 
@@ -95,7 +96,7 @@ btc, https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT, key:price
 my-session, https://app.example.com/, ls:auth_token
 ```
 
-The node talks HTTP to `window.__QUEST_API__` (default `http://127.0.0.1:9876`) - override with `?quest-api=<url>`, or proxy `/quests` under your own origin; the write boundary is the [external contract](contract.md#quest-server).
+The node talks HTTP to the patchbay's `questApi` (default `http://127.0.0.1:9876`) - override with `?quest-api=<url>`, or proxy `/quests` under your own origin; the write boundary is the [external contract](contract.md#quest-server).
 
 | Field | Optional | What it does |
 |-------|:--------:|--------------|
@@ -136,7 +137,7 @@ The flow is **linear - no loops or conditionals**. A step that never resolves fa
 
 A target starting with `harvest:` lifts a **whole live component** instead of a value. The server navigates (running any pipeline steps), injects the bookmarklet kernel into headless Chromium, and harvests the selector in ref-mode with a stable per-channel `uid` - tags and classes stay identical across polls, so the patchbay applies each new harvest as a **diff-morph in place**, and **wires survive**.
 
-The channel's value is a *ref*, not the component: `component/<channel>.html#<hash>`, written to disk only when the layout actually changes (the hash is the change check and keeps `quests.json` readable), and served read-public at `GET /component/<channel>.html` for the patchbay node to load.
+The channel's value is a *ref*, not the component: `component/<channel>.html#<hash>`, written to disk only when the layout actually changes (the hash is the change check and keeps `quests.json` readable), and served at `GET /component/<channel>.html`, under the same read rule as quests, for the patchbay node to load.
 
 > A component quest is heavier than a value scrape (a full page load and a harvest per poll), so budget its interval accordingly.
 
@@ -144,7 +145,7 @@ The channel's value is a *ref*, not the component: `component/<channel>.html#<ha
 
 A channel is a **named value slot** the server owns. Reads pull, the node holds the last value, and every receiver wired to the name fires when a new value lands. Because the slot lives on the server, it can be subscribed to from multiple patchbays.
 
-The node reads by default; clicking the icon cycles between `input` / `output` / `component` modes - **output** publishes each value received to the server (`POST /quests/emit`, `scv-token` for cross-origin writes); **component** turns a `url, selector` line into a whole live component.
+The node reads by default; right clicking it cycles between `input` / `output` / `component` modes - **output** publishes each value received to the server (`POST /quests/emit`, `scv-token` for cross-origin writes); **component** turns a `url, selector` line into a whole live component.
 
 The kernel's quest live-emit tool feeds a channel the same way, from inside a real logged-in tab. A push replaces the target's whole entry, so an emit-fed channel runs manual until a scrape registration reclaims it.
 

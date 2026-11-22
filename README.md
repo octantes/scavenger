@@ -13,19 +13,18 @@ UI is a function of state, and in s<av> state is a function of DOM
 
 **scavenger is a substrate for portable web tools.** Anything you build with scav becomes portable by definition, exporting into a single, standalone HTML file that works anywhere. No packages, no build step, no framework, no account, and *nothing phoning home* unless you explicitly want it to.
 
-The toolkit has four core primitives, deliberately different in shape because each is the natural form for what it does. **You don't need all of them to build something**, but together they form the complete project:
+The toolkit has three core primitives, deliberately different in shape because each is the natural form for what it does. **You don't need all of them to build something**, but together they form the complete project:
 
 - [patchbay](#quick-start---setting-up-a-patchbay-and-harvesting) is the runtime, where you place components and wire them, exporting the project as-is into HTML
 - [kernel](#quick-start---setting-up-a-patchbay-and-harvesting) is the script that you run on any website to harvest components, lift data and run visual debugging tools
 - [quests](#harvesting-the-web-through-quests) is the bridge to live external state and data, turning CSS selectors into channels for patchbay to consume
-- [compiler](#extending-the-patchbay-through-the-compiler) is the authoring environment, where you create new logic nodes and components that extend patchbay
 
 Harvesting is not scraping HTML or taking a screenshot. It **takes a rendered component from a live page and reconstructs it** as an independent Web Component: resolving the styles the browser actually applied, preserving the cascade, responsive units, variables, pseudo-elements, fonts, assets, form state, and relevant layout behavior.
 
 I tried to write this so five minutes gets you started, but there's a lot to cover. So bear with me - I promise it's worth it:
 
 - Learn the loop with the [quick start](#quick-start---setting-up-a-patchbay-and-harvesting) tutorial and bring in live data by harvesting through the [quests](#harvesting-the-web-through-quests) terminal tool
-- Extend patchbay by building nodes and components with the [compiler](#extending-the-patchbay-through-the-compiler) and set up the [kernel to run anywhere](#running-the-kernel-without-the-bookmarklet)
+- Extend patchbay by building [nodes and components](#extending-the-patchbay) and set up the [kernel to run anywhere](#running-the-kernel-without-the-bookmarklet)
 - Read about [security](#security), the [architecture and principles](#architecture-and-principles) or the [philosophy](#philosophy) behind the browser as malleable substrate
 - For deeper reading, you can find the reference manuals, contract, security and contributing guides [**here**](#full-documentation)
 
@@ -33,7 +32,7 @@ I tried to write this so five minutes gets you started, but there's a lot to cov
 
 I strongly recommend downloading the HTML files and actually going through these steps. You'll get a much better understanding of what scav can do from **five minutes of playing with it** than from anything I can write here.
 
-1. Launch `patchbay.html` in your browser by double-clicking it or through `file://`
+1. Launch `patchbay.html` in your browser (needs a 2024 onward version) by double-clicking it or through `file://`
 2. Use the right-click menu or keybinds to spawn nodes, wire them and toggle between use and edit modes
 
 <p align="center"> <img src="assets/wiring.gif" width="100%"> </p>
@@ -45,15 +44,17 @@ I strongly recommend downloading the HTML files and actually going through these
 <p align="center"> <img src="assets/harvest.gif" width="100%"> </p>
 
 6. Wire nodes, chain multiple components, and play with them - **anything harvested is yours forever**, even offline!
-7. Your project **won't auto-save**, use `Ctrl + S` to keep editor, `Ctrl + P` (publish) removes it but keeps behavior
+7. You have to **export to save**: `Ctrl + S` keeps editor, `Ctrl + P` exports as document and `Ctrl + I` as a canvas
 8. You are all set! Go build something interesting, or keep reading to find out how to bring in live website data
 
 A few things worth knowing:
 
 - If you ever want to give a published export its editing capabilities back, just drop it into a clean patchbay!
-- The `clock` node is your best friend: it emits a `1` pulse, which is read by other nodes as **an act-now instruction**
-- You can open nodes by double-clicking the `+` handle, which shows their input value (`clock` input is `interval`)
-- All nodes do something when you click their icons, **experiment!** Some are mode toggles, others just a trigger
+- The `clock` node is your best friend: it emits a pulse, which is read by other nodes as **an act-now instruction**
+- You can open a node with `Ctrl` + double click or `Enter`, which shows its input value (`clock` input is `interval`)
+- All nodes do something when you click their icons, **experiment!** Left click fires them, right click switches their mode
+
+Files made with 1.0 work on their own, but a 2.0 patchbay won't paste them. To keep compatibility, use the [1.0.0](https://github.com/octantes/scavenger/tree/1.0.0) release.
 
 ## Harvesting the web through quests
 
@@ -64,11 +65,11 @@ Nodes are a way to make them interactive, but you can also **bring in live data 
 1. Open **your terminal** and go to the scavenger directory, then run `node quests.mjs` to open the TUI (`?` for help)
 2. Run the bookmarklet on any site, press `quest selector`, and click any single piece of data (like a text or number)
 3. Your clipboard has a *pointer to the data you sniped* built from its selector - add a quests node to the patchbay
-4. Paste that pointer into the node's input (you can open this and any node by double-clicking the `+` drag handle)
+4. Paste that pointer into the node's input (you can open this and any node with `Ctrl` + double click)
 5. Wait for a moment while the engine scrapes the live data, you'll see the quest appear in the terminal interface
 6. When data is scraped, the node will emit the quest's **last known value** once - wire a clock so it pulls on interval
 7. Now create a node chain to transform the value, or wire it to a harvested component to display it - it will update
-8. You can emit values from the patchbay to quests by using a `quests output` node (press the icon to toggle mode)
+8. You can emit values from the patchbay to quests by using a `quest output` node (right click the icon to switch mode)
 
 ```
 You can skip the snipe and write the line yourself, its shape is: channel-name, url, target
@@ -79,7 +80,7 @@ An API example: btc, https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT,
 
 <p align="center"> <img src="assets/quests.gif" width="100%"> </p>
 
-That's the whole loop, though there is another, more interesting quest type. You can set it up by pressing the icon of a quest node until its label reads `quest component`. Then, you follow the same steps as in the input node, but instead of choosing the selector for a single piece of data, you can select a full component or layout, and paste that line into the node.
+That's the whole loop, though there is another, more interesting quest type. You can set it up by right clicking a quest node until its label reads `quest component`. Then, you follow the same steps as in the input node, but instead of choosing the selector for a single piece of data, you can select a full component or layout, and paste that line into the node.
 
 After the node is set up, the quests engine will use the bookmarklet to harvest the live version of whatever you selected, and create a **new component that also live-updates**. You can **wire anything into it or through it, like you do with your own harvests**, because the updates are applied via *diff-morphing*, which only updates what really changed. The wires survive because the component is not being re-rendered on each poll.
 
@@ -94,35 +95,27 @@ Some other things quests can do:
 - Normal quests replace their value on update, but log mode keeps historic data to **allow visualization and charts**
 - Drive **CI testing** with assertions through the terminal by using --run like the suite that tests scavenger itself does
 
-## Extending the patchbay through the compiler
+## Extending the patchbay
 
-You've harvested UI and brought in live data, but what if you need a *specific logic node for your chains* or want a *custom component that can actually run arbitrary code?*
+Nodes and components are plain `.html` files that can be written anywhere - see [authoring](docs/authoring.md) and start from `examples/template.html`.
 
-The compiler is a standalone editor where you can **author your own nodes and components**, test them, and compile them into `.scv` files, which are, like everything else, plain HTML. This is more advanced and mostly for builders, but you can probably get surprisingly far with an AI if you know what you're asking for.
+1. Write a component as `<template data-scv-comp="name">` holding markup and `<script>` + `<style>` blocks
+2. Or write a node as `<script type="scv/node" data-scv-node> defineNode({ ... }) </script>`
+3. Drop the file on your patchbay to register it and place the first instance
+4. Drop a new version of the same file and every placed instance updates, keeping its data and wiring
 
-1. Launch `compiler.html` in your browser, just like we did with the patchbay (double-clicking or through `file://`)
-2. Choose what to build: a **logic node** (JS processing for your chains) or a **component** (which is HTML + CSS + JS)
-3. Write your code against the contract, which you can read in the help menu (by pressing `?`, `Esc` or the button)
-4. If building a component, use `data-scv-slot="name"` to mark which elements should keep their state on export
-5. Test your creation live in the compiler's **built-in test rig** to ensure data routes correctly and UX is as you want it
-6. Press save to store the code in `localStorage`, and press export to generate a `.scv` file - your portable tool
-7. Drag and drop the `.scv` directly onto your patchbay to register it, and use the menu to spawn instances
-8. If you need to update the tool, drop an updated `.scv` file and all instances will upgrade without losing state
-
-Unlike harvested components (which have their scripts stripped for safety), **authored components keep their script tags** and you should treat files you didn't write like downloaded executables, especially if your patchbays hold personal data. You can explore `examples/` for a curated and growing library of ready-to-use custom tools.
-
-The compiler makes the patchbay extensible, so you can build your own inner systems and even use Web APIs while *keeping the advantages of the model*: portability, state serialization, and so on.
+Unlike harvested components (rebuilt from markup, with their scripts dropped), authored components keep their scripts: treat files you didn't write like programs you run. `examples/` holds a set of ready to use components, nodes and tools (including charts, visual and audio components that showcase what can be done in the patchbay using WebAPIs).
 
 ## Running the kernel without the bookmarklet
 
 The bookmarklet is the browser's `.sh`, an inlined JS script you store to fire easily at any page.
 
-It **can be blocked by some sites** (Google, GitHub, most large web apps) that send a Content-Security-Policy that prevents `javascript:` bookmarklets from running - that's the browser working as designed, not a bug, and no bookmarklet can get around it. But we can still run the tool in two ways, no extension needed:
+It runs on nearly every site, but a strict Content-Security-Policy still blocks parts of it - that's the browser working as designed, not a bug. Where that happens, you can still run the tool in two ways, no extension needed:
 
 - **One-shot:** Open DevTools with `F12` and paste the contents of `kernel.js` in the console, then hit `Enter`
 - **Reusable:** Open DevTools with `F12` and go to `Sources` > `Snippets` > `New Snippet` > paste `kernel.js` > `Save`
 
-Once set up, the snippet will run on any page by right clicking it and pressing `Run`. Console and Snippet execution are user-initiated, so they're exempt from the page's security policy.
+Once set up, the snippet will run on any page by right clicking it and pressing `Run`. Console and Snippet runs are user-initiated, so the page's security policy can't stop them from running.
 
 ---
 
@@ -132,13 +125,13 @@ Once set up, the snippet will run on any page by right clicking it and pressing 
 
 The only exception for the *nothing phoning home* rule is a visible `<iframe>`, which is not purged since it holds content you chose to carry. Embeds without visual content are **fully purged**, so if you want a fully sealed patchbay, don't harvest embeds you can see.
 
-The quest server is **read-public, write-owner only, by construction.** Writes are accepted only from a direct loopback connection with no reverse-proxy hop - the boundary is physical, not a capability - and outbound fetches refuse any host resolving to a private address, making it DNS-rebinding-safe.
+The quest server **refuses reads from other websites and writes from anyone but the owner** - with one exception, [a page that hides its origin](docs/security.md). Writes only come from a direct loopback connection, so the boundary is physical, not a capability - and outbound fetches refuse any host resolving to a private address, making it DNS-rebinding-safe.
 
 The complete model is detailed in **[security](docs/security.md)**
 
 ## Architecture and Principles
 
-scavenger is **feature-frozen** except for bug-fixes. New capabilities land as new external files and tools, never as changes to the core toolkit. The main laws that keep the architecture intact are:
+scavenger is **feature-frozen** except for bugfixes and portability fixes. New capabilities land as new external files and tools, never as changes to the core toolkit. The main laws that keep the architecture intact are:
 
 - **Zero dependencies, build-step or framework.** Each file is native JS and only needs a browser (or node for quests)
 - Patchbay's **runtime has a one-way relationship with studio** and never references editing so publish can remove it
@@ -176,10 +169,10 @@ The long argument lives in a companion essay - *Artesanías del Runtime* - on th
 | [Kernel](docs/kernel.md) | The full tool suite the bookmarklet drops onto any live page |
 | [Patchbay](docs/patchbay.md) | Editing gestures, wiring rules, action verbs and logic nodes |
 | [Quests](docs/quests.md) | Scraping, the TUI, quests-as-tests, steps and live components |
-| [Compiler](docs/compiler.md) | Authoring custom logic nodes and components with the rig |
+| [Authoring](docs/authoring.md) | Writing custom logic nodes and components as plain `.html` files |
 | [Security](docs/security.md) | The write-gate, SSRF pinning, profile modes and live-emit |
-| [Contract](docs/contract.md) | The stable embed/extend boundary - what's frozen after 1.0 |
-| [Contributing](docs/CONTRIBUTING.md) | Working on scavenger - the 20-tier testing suite, the laws |
+| [Contract](docs/contract.md) | The stable embed/extend boundary - what's frozen from 2.0 |
+| [Contributing](docs/CONTRIBUTING.md) | Working on scavenger - the 21-tier testing suite, the laws |
 | [Examples](examples) | A curated library of ready-made nodes, components and tools |
 
 ## License & Credits

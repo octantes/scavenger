@@ -2273,7 +2273,7 @@ const studio = pb => {
       cancel: () => endTemp(),
     };
   };
-  const lassoGesture = (e, add) => {
+  const lassoGesture = (e, how) => { // how: 'add' with shift, 'cut' with alt, else replaces
     const r0 = rectOf(), s = { x: e.clientX, y: e.clientY };
     let on = false;
     return {
@@ -2284,9 +2284,11 @@ const studio = pb => {
       },
       end(ev) {
         lasso.hidden = true;
-        if (!on) return add || select([]);
+        if (!on) return how || select([]);
         const a = toCanvas(Math.min(s.x, ev.clientX), Math.min(s.y, ev.clientY)), b = toCanvas(Math.max(s.x, ev.clientX), Math.max(s.y, ev.clientY));
-        select(units().filter(u => { const k = boxOf(u); return !(k.x + k.w < a.x || k.x > b.x || k.y + k.h < a.y || k.y > b.y); }), add);
+        const hit = units().filter(u => { const k = boxOf(u); return !(k.x + k.w < a.x || k.x > b.x || k.y + k.h < a.y || k.y > b.y); });
+        if (how !== 'cut') return select(hit, how === 'add');
+        hit.forEach(u => u.states.delete('selected')); paint();
       },
       cancel() { lasso.hidden = true; },
     };
@@ -2355,7 +2357,7 @@ const studio = pb => {
     if (edge) return begin(cropGesture(e, item, edge));
     if (node) return begin(wireGesture(e, node, () => { const b = [attrsOf(node)]; node.trigger(); recordAttrs([node], b, 'click'); }, anchorIn(path, 'out')));
     if (item) return begin(wireGesture(e, sourceAt(path, item), () => e.shiftKey ? toggle(item) : select([item])));
-    begin(lassoGesture(e, e.shiftKey));
+    begin(lassoGesture(e, e.shiftKey ? 'add' : e.altKey ? 'cut' : null));
   });
   pb.addEventListener('dblclick', e => { // ctrl-double-click opens node input
     const node = ownPath(e)?.find(n => n.localName === 'scv-logic');

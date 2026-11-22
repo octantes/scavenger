@@ -348,6 +348,14 @@ try {
     await click(900, 700); const b = await js(`T.pb.selection().length`);
     return [a.join() === 'p1' && b === 0, [a, b]];
   });
+  await run('alt lasso takes what it touches out of the selection, keeps the rest', async () => {
+    await js(`T.pb.select(T.pb.querySelectorAll('scv-item, scv-logic').length ? [...T.pb.children].filter(u => u.localName === 'scv-item' || u.localName === 'scv-logic') : [])`);
+    const before = await js(`T.pb.selection().length`);
+    await press(80, 380, ALT); await moveTo(80, 380, 250, 470, ALT); await mouse('mouseReleased', 250, 470, ALT); await frames();
+    const after = await js(`T.pb.selection().map(u => u.firstElementChild?.dataset.scvId || u.dataset.type)`);
+    await click(900, 700);
+    return [before > 1 && after.length === before - 1 && !after.includes('p1'), { before, after }];
+  });
 
   // cables
 

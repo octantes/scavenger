@@ -753,7 +753,7 @@ const defineComponent = tpl => { // placed instances rebuild on new def
   if (known && _comps.get(tag).tpl.outerHTML === tpl.outerHTML) return _hold(_comps.get(tag), tpl), tag; // same def from a paste - placed instances keep running
   if (compConflict(patchbayOf(tpl), tpl)) { console.warn('[scav] ' + tag + ' already on page as another version'); return null; }
   const { frag, code } = _compParts(tpl);
-  const c = { tpl: tpl.cloneNode(true), frag, run: _compileComp(tag, code), icon: tpl.getAttribute('data-scv-icon') || '', color: tpl.getAttribute('data-scv-color') || '', held: new Set([new WeakRef(tpl)]) }; // own copy - the one in a patchbay would keep it alive
+  const c = { tpl: tpl.cloneNode(true), frag, run: _compileComp(tag, code), held: new Set([new WeakRef(tpl)]) }; // own copy - the one in a patchbay would keep it alive
   _comps.set(tag, c);
   if (!known) customElements.define(tag, class extends ScvComponent {});
   else document.querySelectorAll(tag).forEach(el => {

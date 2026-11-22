@@ -13,28 +13,6 @@ UI is a function of state, and in s<av> state is a function of DOM
 
 **scavenger is a substrate for portable web tools.** Anything you build with scav becomes portable by definition, exporting into a single, standalone HTML file that works anywhere. No packages, no build step, no framework, no account, and *nothing phoning home* unless you explicitly want it to.
 
-The toolkit has three core primitives, deliberately different in shape because each is the natural form for what it does. **You don't need all of them to build something**, but together they form the complete project:
-
-[kernel](docs/kernel.md)
-
-The script that you run on any website to harvest components, lift data and run visual debugging tools.
-
-<p align="center"> <img src="assets/harvest.gif" width="100%"> </p>
-
-Harvesting is not scraping HTML or taking a screenshot. It **takes a rendered component from a live page and reconstructs it** as an independent Web Component: resolving the styles the browser actually applied, preserving the cascade, responsive units, variables, pseudo-elements, fonts, assets, form state, and relevant layout behavior.
-
-[patchbay](docs/patchbay.md)
-
-The runtime, where you place components and wire them, exporting the project as-is into HTML.
-
-<p align="center"> <img src="assets/wiring.gif" width="100%"> </p>
-
-[quests](docs/quests.md)
-
-The bridge to live external state and data, turning CSS selectors into channels for patchbay to consume.
-
-<p align="center"> <img src="assets/quests.gif" width="100%"> </p>
-
 I tried to write the tutorial so five minutes gets you started, but there's a lot to cover. So bear with me - I promise it's worth it:
 
 - Learn the loop with its [quick start](docs/tutorial.md) and bring in live data by harvesting through the [quests](docs/tutorial.md#harvesting-the-web-through-quests) terminal tool
@@ -42,7 +20,21 @@ I tried to write the tutorial so five minutes gets you started, but there's a lo
 - Read about the [philosophy](#philosophy) behind the browser as malleable substrate, the [architecture and principles](#architecture-and-principles) or [security](#security)
 - For deeper reading, you can find the reference manuals, contract, security and contributing guides [**here**](#full-documentation)
 
----
+The toolkit has three core primitives, deliberately different in shape because each is the natural form for what it does. **You don't need all of them to build something**, but together they form the complete project:
+
+[kernel](docs/kernel.md) - The script that you run on any website to harvest components, lift data and run visual debugging tools.
+
+<p align="center"> <img src="assets/harvest.gif" width="100%"> </p>
+
+Harvesting is not scraping HTML or taking a screenshot. It **takes a rendered component from a live page and reconstructs it** as an independent Web Component: resolving the styles the browser actually applied, preserving the cascade, responsive units, variables, pseudo-elements, fonts, assets, form state, and relevant layout behavior.
+
+[patchbay](docs/patchbay.md) - The runtime, where you place components and wire them, exporting the project as-is into HTML.
+
+<p align="center"> <img src="assets/wiring.gif" width="100%"> </p>
+
+[quests](docs/quests.md) - The bridge to live external state and data, turning CSS selectors into channels for patchbay to consume.
+
+<p align="center"> <img src="assets/quests.gif" width="100%"> </p>
 
 ## Philosophy
 

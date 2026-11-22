@@ -96,7 +96,7 @@ btc, https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT, key:price
 my-session, https://app.example.com/, ls:auth_token
 ```
 
-The node talks HTTP to the patchbay's `questApi` (default `http://127.0.0.1:9876`) - override with `?quest-api=<url>`, or proxy `/quests` under your own origin; the write boundary is the [external contract](contract.md#quest-server).
+The node talks HTTP to the patchbay's `questApi` (default `http://127.0.0.1:9876`) - override with `?quest-api=<url>`, or proxy `/quests` under your own origin; the write boundary is in [security](security.md).
 
 | Field | Optional | What it does |
 |-------|:--------:|--------------|

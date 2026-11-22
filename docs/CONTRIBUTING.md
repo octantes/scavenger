@@ -5,16 +5,16 @@ This project is **feature-frozen**: new capabilities land as new files, never as
 > The kernel toolkit might expand, but the core architecture will remain untouched
 
 - **Zero dependencies, forever** - no npm, no buildstep, no framework. Every file ships alone and boots on its own.
-- **State is a function of the document** - all persistent state serializes into the DOM (attributes, frozen values), and runtime JS is working memory rebuilt at boot and folded back at save. Never introduce a hidden state model.
-- **No CSS in JS** - appearance lives in stylesheets or `<style>` tags, while JS carries only geometry (left, top, w, h) and state (display). The only exceptions, by design, are measurement probes and generated artifacts.
+- **State is a function of the document** - all persistent state serializes into the DOM, and runtime JS is working memory rebuilt at boot and folded back at save. Never introduce a hidden state model.
+- **No CSS in JS** - appearance lives in stylesheets or `<style>` tags, while JS carries only geometry and state. The only exceptions, by design, are measurement probes and generated artifacts.
 - In `patchbay.html`, the **blocks only ever point one way**: the runtime references nothing above it, the canvas references only the runtime, and the studio drives both only while authoring.
-- **The kernel is a microkernel** - A tiny privileged core (event bus, process registry, register/start/stop lifecycle) with every tool as a userland process on top. Stopping a process runs its teardown and unsubscribes its bus handlers, so a tool leaves nothing behind - adding one is a single register() call.
-- **The [suite](#testing) is the build** - `node test/all.mjs` gates every merge, reading stable values only (class flags, CSS vars, computed geometry), never mid-transition opacity or width, and rebuilding the bookmarklet.
-- **No silent catch** - a swallowed failure logs one short line: `console.debug` in the browser files (shown at devtools' Verbose level), and the TUI's `e` view in quests (stderr when headless).
+- **The kernel is a microkernel** - A tiny privileged core with every tool as a userland process on top. Stopping a process runs its teardown and unsubscribes its bus handlers, so a tool leaves nothing behind - adding one is a single register() call.
+- **The [suite](#testing) is the build** - `node test/all.mjs` gates every merge, reading stable values only, never mid-transition opacity or width, and rebuilding the bookmarklet.
+- **No silent catch** - a swallowed failure logs one short line: `console.debug` in the browser files (at devtools' Verbose level), and the TUI's `e` view in quests (stderr when headless).
 
 ## Testing
 
-The `node test/all.mjs` suite is a zero-dependency internal harness - **21 tiers, each a separate process, aggregated to one exit code.** The browser tiers drive real headless Chromium via `test/_cdp.mjs`. This script finds a browser the same way the server does, so a Chromium-family browser must be installed. The suite shares no state with your `quests.json`.
+The `node test/all.mjs` suite is a zero-dependency internal harness - **21 tiers, each a separate process, aggregated to one exit code.** The browser tiers drive real headless Chromium via `test/_cdp.mjs`. This script finds a browser the same way the server does, so a Chromium-family browser must be installed.
 
 The `build` tier compares `bookmarklet.js` against a fresh compile of `kernel.js` and rebuilds it in place if it has drifted - so running the suite after editing the kernel keeps the artifact in sync automatically. Every behavior change must land with its own assertion tier.
 
@@ -60,13 +60,6 @@ node test/fuzzer.mjs    # the random tier over fresh seeds, for as long as you l
 `bench` builds a large patchbay from real harvests (40 components with images, 10 instances each, full-page harvests, pasted images, 200 nodes) and records the renderer's peak memory during save and publish, plus forced layouts during a group drag and a fast clock chain. `--save` writes the numbers to `test/bench-baseline.json`, the baseline later changes are measured against.
 
 `fuzzer` runs `random` on a new seed at a time with a wall-clock cap on each, so a seed that hangs the browser is killed, written down and stepped over instead of stopping the run. It prints every finding as a `--seed=` you can replay through `node test/random.mjs --seed=<n>`, and writes the full output to a file in your temp directory. `--hours=`, `--seeds=`, `--rounds=`, `--ops=`, `--timeout=` and `--out=` all have sane defaults.
-
-## Design system
-
-- The patchbay `:root` is the **source of truth** for every design token, and the kernel's `theme` object and quests' `PAL` carry the same names and hues. The `tokens` tier fails on any drift.
-- The **two main color currents** are `--output` (pink) for output / emit / travel, and `--input` (teal) for input / hover / touch. One always means signal leaving, the other signal arriving. Node colors follow the **[taxonomy](patchbay.md#logic-nodes)**.
-- The **wordmark** `s<av> { slot }` titles windows and modes; favicons for bookmarking are inline data-URI SVGs.
-- Every UI copy text should be lowercase and ambient (for example: "no quests logged - press a").
 
 ## Workflow
 

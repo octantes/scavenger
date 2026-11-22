@@ -75,7 +75,7 @@ Every connection is a **named channel** carrying **one payload**. When a value i
 
 When one channel feeds several receivers, each fires in **the order the router walks the tree** - don't build graphs that depend on which of two wired receivers fires first: if order matters, implement it through the chain instead of fanning one channel to both.
 
-If a target receives values on a channel and carries its own `data-scv-action` verb, both fire per value - the receive first, the element's own verb after, so the verb takes effect last. This order is deterministic to prevent races and delivery is synchronous. Chains are not truncated: a value travels the whole chain, and only feedback stops it (with a visual warning) - a cascade that comes back round goes round 20 times and then stops. No single cascade delivers more than 20,000 values, and a loop through async nodes is stopped as well.
+If a target receives values on a channel and carries its own `data-scv-action` verb, both fire per value - the receive first, the element's own verb after, so the verb takes effect last. This order is deterministic to prevent races and delivery is synchronous. Chains are not truncated: a value travels the whole chain, and only feedback stops it (with a visual warning) - a cascade that comes back round goes round 20 times and then stops. No single cascade delivers more than 20,000 values, and no task starts more than 10,000 cascades, which stops a loop through async nodes. Delivery is recursive, so the browser's stack caps a single chain.
 
 ## Logic nodes
 

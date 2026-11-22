@@ -24,7 +24,7 @@ The events it raises:
 
 ```js
 scv-menu       // cancelable, does not bubble - detail { items, kind, x, y, target, from, reverse, port, wire }
-scv-overload   // does not bubble - detail { node, channel, reason } - the router stopped a cascade, or cleared a mark (reason null)
+scv-overload   // does not bubble - detail { node, channel, reason } - the router stopped a cascade, or cleared a mark
 scv-receive    // bubbles out of shadow roots - detail is the value, event.channel the channel
 ```
 
@@ -42,11 +42,11 @@ kit.defineHarvest(h)       // defines the element from that markup
 kit.defang(root)           // strips scripts, handlers and javascript: links from a tree
 ```
 
-- The ids `scv-runtime-css` (the theme, a `<style>`), `scv-runtime`, `scv-canvas` and `scv-studio` stay: each runs on its own in a page that isn't a patchbay file, in any order
-- The runtime alone routes, the canvas adds pan and zoom, the studio editing - a patchbay starts itself when it connects, there is no boot call to make
-- Each script block is one self-contained function - `(function scvRuntime() { ... })()`, likewise `scvCanvas`, `scvStudio` - which lets a save write it back whole
+- The ids `scv-runtime-css` (the theme, a `<style>`), `scv-runtime`, `scv-canvas` and `scv-studio` stay: each runs on its own, in any order
+- The runtime routes, the canvas adds pan and zoom, the studio editing - a patchbay starts itself, there is no boot call to make
+- Each script block is one self-contained function - `(function scvRuntime() { ... })()`, which lets a save write it back whole
 - The theme's token rule carries `--scv-theme: <version>`, which is how a save finds it wherever the page loaded it
-- Also frozen: wiring attributes, `window.routeSend` in a patchbay file, bridge messages and the `$kernel` controls below
+- Also frozen: wiring attributes, `window.routeSend` in a patchbay file, bridge messages and the [`$kernel` controls](kernel.md#console-and-launch)
 - Everything else in `kit` is internal and can change without notice
 
 ## Right-click menu
@@ -55,36 +55,28 @@ The right-click menu, on the `<scv-patchbay>` element, is the `scv-menu` event. 
 
 | Field | Meaning |
 |-------|---------|
-| `items` | The menu, as `{ id, label, key?, fn }` - `key` is a node's spawn number; ids are `mode`, `node:<type>`, `comp:<tag>`, `save:quine`, `save:canvas`, `save:publish` and `cycle` |
+| `items` | The menu, as `{ id, label, key?, fn }` |
 | `kind` | `'canvas'` for a right click, `'wire'` for a wire dropped on empty canvas, `'node'` for a right click on a node |
 | `x` / `y` | Where it opened, in canvas coordinates |
 | `target` | The item or node under the pointer, or `null` |
 | `from` / `reverse` / `port` | The wire waiting to be finished, if any - its start, whether `Ctrl` reversed it, and the port it leaves by |
 | `wire(node)` | Finishes that wire into `node`, exactly as a built-in item would |
 
-A node's menu holds only `cycle`: left untouched it runs at once and no menu opens. A suppressed menu still cancels a waiting wire, so nothing is left half-drawn.
+In `items`, `key` is a node's spawn number and ids are `mode`, `node:<type>`, `comp:<tag>`, `save:quine`, `save:canvas`, `save:publish` and `cycle`. A node's menu holds only `cycle`: left untouched it runs at once and no menu opens. A suppressed menu still cancels a waiting wire, so nothing is left half-drawn.
 
 ## Wire surface
 
-Wiring attributes are part of the contract - **don't rename them** - routing, harvested components, and authored components and nodes are all built against them.
+The [wiring attributes](patchbay.md#wiring) and [`data-scv-port`](authoring.md#components) are part of the contract - **don't rename them** - routing, harvested components, and authored components and nodes are all built against them.
 
-- The `data-scv-emits` / `data-scv-receives` / `data-scv-action` attributes are the public surface of a wire
-- `data-scv-action` takes `<verb>[:<arg>][:<channel>]` - `prop` / `method` / `event` are core extension verbs
-- `data-scv-port` marks an element as the visual anchor cables should connect to, checked in light and shadow DOM
-- A wiring token may carry a port: `data-scv-receives="ch_a@digest"`, `data-scv-emits="ch_c@verdict"`. Routing matches the channel before `@`, and the port only tells a node which input or output it is. `@` is therefore never part of a channel name, and a quest name with one is refused
-- The [rest of the action node verbs](patchbay.md#wiring) - like `toggle`, `delete` or `increment` - are predefined conveniences
+A wiring token may carry a port: `data-scv-receives="ch_a@digest"`, `data-scv-emits="ch_c@verdict"`. Routing matches the channel before `@`, and the port only tells a node which input or output it is. `@` is therefore never part of a channel name, and a quest name with one is refused.
 
 ## Programmatic routing
 
-The only injection point on a **published** document is `routeSend`, a method of the `<scv-patchbay>` element - several patchbays on one page each route their own channels.
-
-```js
-pb.routeSend(channel, value)
-```
+The only injection point on a **published** document is `pb.routeSend(channel, value)`, a method of the `<scv-patchbay>` element - several patchbays on one page each route their own channels.
 
 A standalone file also keeps `window.routeSend`, pointing at its one patchbay, so a same-origin parent can still call `iframe.contentWindow.routeSend(...)` - a frame from another origin takes [messages](#embedding) instead.
 
-Inject a value into a channel: every receiver and action wired to `<channel>` fires with the **same semantics as the router firing from a user gesture**, and delivery is synchronous. One call runs the entire cascade and returns when it completes. A chain runs its whole length - only feedback stops: a cascade that comes back round goes round 20 times, one cascade delivers at most 20,000 values, and one task starts at most 10,000 cascades, which is what catches a loop through async nodes. Delivery is a recursive call, so the browser's own stack is the ceiling on a single chain.
+Every receiver and action wired to the channel fires with the **same semantics as the router firing from a user gesture**, and delivery is synchronous. One call runs the entire cascade and returns when it completes - only [feedback](patchbay.md#wiring) stops it.
 
 When the router stops a cascade, the node responsible shows the reason above it, its outgoing cables turn red, and the console warns once with the channel. A `scv-overload` event fires on the patchbay, with `node: null` when there is no node to blame. The mark stays until that same channel is sent again and gets through cleanly, or until the wiring changes so it can no longer happen.
 
@@ -133,23 +125,9 @@ Drop the index so the next emit rebuilds it from the live DOM. Call it after a m
 
 ## Routing observation
 
-Every value delivered to an element raises a `scv-receive` event that bubbles out of shadow roots - `detail` is the value and `event.channel` the channel it arrived on - so a host can catch it on the document or an iframe's `contentDocument`.
+Every value delivered to an element raises `scv-receive`, so a host can catch it on the document or an iframe's `contentDocument`. An `undefined` value arrives as `null` (an event's `detail` can't hold `undefined`), and only `routeSend` can send one.
 
-An `undefined` value arrives as `null` (an event's `detail` can't hold `undefined`) and a mutator returning `undefined` sends nothing (only `routeSend` can send one). Strings, numbers and booleans are also written into a form control's value or an element's text; objects and pulses arrive by the event only.
-
-An element that is a component, or holds controls, components or wired elements, gets the event only too (so a value never wipes them). Logic nodes take values directly and raise no event - to watch a node's output, wire a receiver to it.
-
-## Quest Server
-
-The editor defaults to `http://127.0.0.1:9876` (the local quest server, so authoring needs no config) - the default lives in the editor, so a quine has it and a canvas or publish doesn't: those fall back to the page's own origin, for **hosting behind a proxy** of its reads. Either can be overridden with `?quest-api=<url>` - a quest server on another origin only answers if it was launched with `--allow-origin`.
-
-```js
-pb.questApi  // base URL for this patchbay's quest server - read per call so a host can retarget traffic at any time
-```
-
-Registering a scrape job, emitting a value, or deleting a channel are all **server writes** - a patchbay's nodes can make them - but quests only honors a write that arrives on a **direct loopback connection** (or an explicit `--trust-ip`) with no proxy hop (`X-Forwarded-For` absent).
-
-A hosted artifact, or any non-local client (hand-edited or not), is refused server-side: only the owner on the host machine can write. The boundary is physical - the connection, not a capability the client lacks.
+Strings, numbers and booleans also [land in the element](authoring.md#components); objects and pulses arrive by the event only. Logic nodes take values directly and raise no event - to watch a node's output, wire a receiver to it.
 
 ## DOM Contracts
 
@@ -181,29 +159,6 @@ The three kinds are the same file with fewer scripts: a **quine** keeps runtime,
 - `extent="W H"` on the patchbay is the page size a publish scrolls to, written at every save
 - Remote images are copied into the file when their server allows cross-origin reads (CORS); the rest stay links and need the network
 - What a browser extension injected into the head can't be told apart from your own, so it is kept too
-
-## Kernel Controls
-
-The `window.$kernel` object drives a **running kernel session** on the page it was dropped on - a host page or automation script can pilot the palette the same way a user would, so it's part of the contract and frozen from 2.0 like the rest.
-
-```js
-window.scvLaunch                        // set before injecting the bookmarklet: { search: 'blur', run: true }
-                                        // opens the palette pre-filtered, optionally running the top match immediately
-
-window.scvLaunch = { headless: true }   // boot with no palette, dot or viewer
-
-$kernel.run(id)                         // dispatch a tool by id, exactly like a palette Enter, no UI shown
-$kernel.summon()                        // restore the palette from its minimized dot
-$kernel.minimize()                      // collapse the palette to its dot
-$kernel.harvest(target, { quiet })      // element or selector > the component's html, as the harvest tool makes it
-```
-
-`scvLaunch` is read once, at boot, before the bookmarklet renders anything - set it on `window` prior to injection (e.g. from an automation script driving the page) to skip the manual search-and-enter step. `$kernel.run` takes a tool id, plus a mode for cycle tools (`'xray top'`) - an unknown id returns `unknown command: <id>`. `summon`/`minimize` mirror clicking the dot or pressing `Esc`, and are safe to call regardless of the palette's current state.
-
-A kernel booted in headless draws nothing while `$kernel.run` and `$kernel.harvest` still answer, and a oneshot tool's result comes back from `run` instead of opening the viewer. `summon()` or `minimize()` ends headless, and so does running a tool that needs the screen (wiring, eyedropper, quest steps).
-
-- `$kernel.harvest` resolves to the same html the harvest tool copies
-- `{ quiet: true }` keeps its status off the page
 
 ## Reserved for host overlays
 

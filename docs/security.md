@@ -1,6 +1,6 @@
 # Security model
 
-The quest server **refuses reads from other websites and writes from anyone but the owner** - except a page that hides its origin. The [quest server contract](contract.md#quest-server) goes into more detail about how to work with this boundary. A write that isn't a direct loopback connection - or an explicit `--trust-ip` - is refused, and a proxy hop carries `X-Forwarded-For`. Because this is enforced **server-side** at the socket level, a hosted or hand-edited patchbay can never write; only a process on the host machine can.
+The quest server **refuses reads from other websites and writes from anyone but the owner** - except a page that hides its origin. A write that isn't a direct loopback connection - or an explicit `--trust-ip` - is refused, and a proxy hop carries `X-Forwarded-For`. Because this is enforced **server-side** at the socket level, a hosted or hand-edited patchbay can never write; only a process on the host machine can.
 
 A request carrying an `Origin` gets nothing, unless that origin is localhost, matches the host it was sent to, or was named with `--allow-origin <origin>`. That boundary covers browser extensions too.
 
@@ -54,4 +54,4 @@ Mutators, authored components and custom nodes run through `new Function`, so a 
 
 Host the published HTML on any host. To give it live quests, run `quests.mjs` behind a reverse proxy on the same origin and **proxy only the `GET` reads (`/quests`, `/component`, `/asset`, `/unfurl`) - never proxy `POST`/`DELETE`.** That keeps the write surface loopback-only while letting visitors read. For a fully static option, use `--output feed.json` and serve the file.
 
-A published patchbay bakes no server address - it reads from whatever origin serves it, which is why the proxy above needs no configuration. To point one somewhere else, open it with `?quest-api=<url>`, the same override the patchbay takes. That is a cross-origin read, so start the quest host with `--allow-origin <publish origin>`; the same-origin proxy stays the path of least resistance.
+A publish or canvas bakes no server address - it reads from whatever origin serves it, which is why the proxy above needs no configuration. To point one somewhere else, open it with `?quest-api=<url>`, the same override the patchbay takes, or set `pb.questApi`. That is a cross-origin read, so start the quest host with `--allow-origin <publish origin>`; the same-origin proxy stays the path of least resistance.

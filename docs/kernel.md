@@ -67,6 +67,8 @@ The palette's `console` opens a tiny REPL that evaluates JS, or runs `:`-command
 - `:push <selector>` - download a component as `.html`
 - `clear` wipes the log
 
-The kernel boots from `window.scvLaunch`, which you can set before dropping the bookmarklet with: `{ search: 'blur', run: true }` to open the palette already filtered and run the command, or `{ headless: true }` to draw nothing. Programmatically, `$kernel.run('xray top')` dispatches exactly like a palette `Enter` without UI (an unknown id returns `unknown command: <id>`), and `$kernel.summon()` / `$kernel.minimize()` move between palette, viewer, and dot. `$kernel.harvest(target, { quiet })` resolves an element or selector to the html the harvest tool copies, and `quiet` keeps its status off the page.
+The kernel boots from `window.scvLaunch`, which you can set before dropping the bookmarklet with: `{ search: 'blur', run: true }` to open the palette already filtered and run the command, or `{ headless: true }` to draw nothing.
+
+Programmatically, `$kernel.run('xray top')` dispatches exactly like a palette `Enter` without UI (an unknown id returns `unknown command: <id>`), and `$kernel.summon()` / `$kernel.minimize()` move between palette, viewer, and dot. `$kernel.harvest(target, { quiet })` resolves an element or selector to the html the harvest tool copies, and `quiet` keeps its status off the page.
 
 Headless, `run` and `harvest` still answer, and a oneshot tool's result comes back from `run` instead of opening the viewer. `summon()`, `minimize()` or a tool that needs the screen (wiring, eyedropper, quest steps) ends it.

@@ -1,8 +1,6 @@
 # Authoring - reference manual
 
-Custom **logic nodes** and **UI components** are plain `.html` files you write in any editor. Drop one onto the patchbay to register the type and place an instance, and re-drop an edited file to live-update all instances, keeping data and wiring intact.
-
-Since both can run arbitrary JS, treat any file you find like any program you run. An authored component keeps its script (unlike a harvested one, which is de-fanged).
+Custom **logic nodes** and **UI components** are plain `.html` files you write in any editor. Since both can run arbitrary JS, treat any file you find like any program you run. An authored component keeps its script (unlike a harvested one, which is de-fanged).
 
 - Start from `examples/template.html`, which holds one component and one node.
 - A curated library lives in [examples](../examples), with many helpful components you can drop into the patchbay.
@@ -14,7 +12,7 @@ A file can hold any number of components and nodes. Opening it directly in a bro
 - A component is a `<template data-scv-comp="name">` holding its `<style>`, markup and `<script>`
 - A node is a `<script type="scv/node" data-scv-node>` calling `defineNode({ ... })` - the type is what keeps it from running on its own
 
-Drop the file on a patchbay (or open it with `Ctrl + O`) to register what it holds and place the first instance. Drop it again to update every placed instance, with their slot data kept. On Chromium the dropped file is followed until reloading the patchbay: saving it in any editor updates the canvas within a second.
+Drop the file on a patchbay (or open it with `Ctrl + O`) to register what it holds and place the first instance. Drop it again to update every placed instance, with their slot data and wiring kept. On Chromium the dropped file is followed until reloading the patchbay: saving it in any editor updates the canvas within a second.
 
 A patchbay holds its authored components and node types as children of its `<scv-patchbay>` element, placed or not, and its save carries exactly those. Node types are per patchbay, so two patchbays on one page can run different versions of one node. A component is one element per tag on the page, so another patchbay's different version of it is refused.
 
@@ -45,7 +43,7 @@ defineNode({
 });
 ```
 
-Built-in names (`clock`, `gate` ...) and the reserved `inlet` and `outlet` are refused. Placed nodes of a type are re-pointed when a new version of it is dropped.
+Built-in names (`clock`, `gate` ...) and the reserved `inlet` and `outlet` are refused.
 
 ### Config and Node API
 
@@ -79,22 +77,19 @@ Keys declared alongside the hooks, `ctx` is the live node:
 | `ctx.callSignal` | One call's lifetime (instead of the node's). |
 | `ctx.el` / `ctx.icon` / `ctx.input` | The node's root / icon / input elements. |
 | `ctx.id` / `ctx.type` | Unique ID / registered type name. |
-| `ctx.x` / `ctx.y` | Position on the board (per single coordinate). |
-| `ctx.setPosition(x, y)` | Position on the board (both coordinates). |
+| `ctx.x` / `ctx.y` / `ctx.setPosition(x, y)` | Position on the board, per coordinate or both at once. |
 | `ctx.append(el, x, y)` | Add an element on the board (`init` recreates it, so a save skips it). |
 | `ctx.remove(el)` | Remove an element on the board. |
 
-- Persistent state lives in `ctx.value`, `ctx.last` or attributes.
-- Transient looks go through `ctx.states`, and extra markup into the node's shadow.
-- A class or child added to `ctx.el` itself is saved with the file.
+Extra markup goes into the node's shadow - a class, attribute or child added to `ctx.el` itself is saved with the file.
 
 **Modes** are optional toggleable states you can declare with `modes: [{ id, icon, label, color }]`. The active mode id is `ctx.mode`, and `onMode(id, ctx)` fires when the mode changes. Right click cycles them.
 
 Any hook can be `async`:
 
-- While it runs the node shows a green ring (`busy`); a rejection shows an error above the node and turns the ring red - an `AbortError` doesn't
-- A newer `onReceive` or `onPulse` supersedes a pending one: whatever the older call emits from then on is dropped, and its `ctx.callSignal` aborts
-- Once a node's run ends, nothing from that run gets out: a late result or a leftover timer emits nothing, and a late failure never marks the next run
+- While it runs the node shows a green ring (`busy`); a rejection shows an error above the node and turns the ring red
+- Newer `onReceive` or `onPulse` supersedes: whatever the older call emits from then on is dropped, and its `ctx.callSignal` aborts
+- Once a node's run ends, nothing from that run gets out: late results or timers emit nothing, and a late failure doesn't mark next runs
 - A loop through awaited hooks is stopped like any feedback loop; one through a timer runs on, like a clock
 
 ### Named ports
@@ -165,7 +160,7 @@ This is the reference for the script's scope, the slot markers and the DOM attri
 A few things the scope doesn't say on its own:
 
 - Emit from the element that holds the value - a wire drawn inside a component starts at the control or script emitter under the pointer, so a bare `emit(v)` only reaches wires drawn to the component itself
-- A value wired into a form control lands in its value, into a plain element in its text; a component, or an element holding controls, components or wired elements, gets it as the `scv-receive` event only - listen on `host` and every wire into the component reaches the script
+- A value wired into a component, or an element holding controls, components or wired elements, gets it as the `scv-receive` event only - listen on `host` and every wire into the component reaches the script
 - Pass `{ signal }` to every listener on `host` or the page - script runs again on a re-drop or an undo, and would double them otherwise
 - The script also runs over a saved copy of the component: reuse elements already in `root` instead of adding them again
 - Anything meant to survive a save goes through attributes, text, slots or `asset.put` - a `blob:` url made by hand dies with the page

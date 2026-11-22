@@ -23,7 +23,7 @@ pb.setMode('use' | 'edit')                                        // studio
 The events it raises:
 
 ```js
-scv-menu       // cancelable, does not bubble - detail { items, kind, x, y, target, from, reverse, port, wire }
+scv-menu       // cancelable - detail under the right-click menu below
 scv-overload   // does not bubble - detail { node, channel, reason } - the router stopped a cascade, or cleared a mark
 scv-receive    // bubbles out of shadow roots - detail is the value, event.channel the channel
 ```
@@ -115,13 +115,9 @@ Mounting the patchbay straight into your own page, without a frame, is for hosts
 
 ## Cache and Invalidation
 
-The router indexes which channels map to which elements, so a value doesn't re-scan the DOM on every emit. The index is derived from the DOM, never the source of truth - it rebuilds automatically when `data-scv-*` attributes change, when items are added and removed, and when a component adds or removes a wired element inside its own shadow, but programmatic mutations the observer can't see leave it stale.
+The router indexes which channels map to which elements, so a value doesn't re-scan the DOM on every emit. The index is derived from the DOM, never the source of truth - it rebuilds automatically when `data-scv-*` attributes change, when items are added and removed, and when a component adds or removes a wired element inside its own shadow.
 
-```js
-pb.invalidate()
-```
-
-Drop the index so the next emit rebuilds it from the live DOM. Call it after a mutation the observer can't see, like moving a wired subtree, or re-rendering an element that carries `data-scv-*` through a shadow root that's still unattached.
+A mutation the observer can't see, like moving a wired subtree or re-rendering an element that carries `data-scv-*` through a shadow root that's still unattached, leaves it stale: `pb.invalidate()` drops it so the next emit rebuilds it from the live DOM.
 
 ## Routing observation
 
@@ -142,7 +138,7 @@ These are stable by element and state:
 - state while the router holds a node responsible for a stopped cascade is `:state(stalled)`
 - edit mode is `scv-patchbay:state(edit)`
 
-A nested `<scv-patchbay>` is an item, and its parent moves, scales, copies and saves it as one unit, without ever selecting or wiring into it. Routing never crosses inside it, and node/component types stay separated. Everything travels inside the parent, but the parent never learns them. While the nested patchbay is focused and in edit mode, the pointer and keys are its own. In use mode, the parent treats it as plain content, except `Tab`, which always switches the focused patchbay.
+A nested `<scv-patchbay>` is an item, and its parent moves, scales, copies and saves it as one unit, without ever selecting or wiring into it. Routing never crosses inside it, and node/component types stay separated. Everything travels inside the parent, but the parent never learns them.
 
 ## Saved files
 
@@ -153,7 +149,7 @@ A save writes one HTML file, in this order:
 - the asset table (`<script type="scv/asset">`), each image once
 - harvest definitions, then the canvas and studio scripts the export kind keeps
 
-The three kinds are the same file with fewer scripts: a **quine** keeps runtime, canvas and studio (editing), a **canvas** keeps runtime and canvas (infinite pan and zoom, no editing), a **publish** keeps the runtime only (a plain document). Deleting the script elements by hand gives the same files.
+The three kinds are the same file with fewer scripts: a **quine** keeps runtime, canvas and studio (editing), a **canvas** keeps runtime and canvas (infinite pan and zoom, no editing), a **publish** keeps the runtime only (a plain document).
 
 - The theme and the three scripts are written by the runtime from its own copy, never copied out of the page
 - `extent="W H"` on the patchbay is the page size a publish scrolls to, written at every save

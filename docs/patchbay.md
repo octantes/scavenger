@@ -1,6 +1,6 @@
 # patchbay - reference manual
 
-This is the **complete reference manual** for the patchbay, covering the editing gestures, keybinds, wiring rules and logic-node behaviors. To embed or extend it, see the **[external contract](contract.md).** If you are just looking for a quick introduction to the project, start with the **[intro guide](../README.md#quick-start---setting-up-a-patchbay-and-harvesting).**
+This is the **complete reference manual** for the patchbay. To embed or extend it, see the **[external contract](contract.md).** If you are just looking for a quick introduction to the project, start with the **[intro guide](tutorial.md).**
 
 The patchbay has two modes, which you can toggle using `Tab`:
 
@@ -49,9 +49,9 @@ The canvas pans by transform, so find-in-page (`Ctrl + F`) won't scroll an off-s
 
 Copy, paste, drop and duplicate share one path, so a copy pasted into another patchbay arrives complete (wires inside the copy keep connecting, channel names already used on the canvas are renamed to prevent cross-wiring). A pasted link becomes a styled card the quest server can upgrade with metadata, and a pasted or dropped image is stored only once in the file.
 
-Dropping a component or node file registers its type and places an instance, dropping a new version of the same node/component updates every instance in place, keeping its data and wiring. Each patchbay keeps its own node types, so two patchbays embedded in one page can run different versions of one node. A type loaded into a patchbay stays in its file whether or not an instance is placed, so the right-click menu still offers it after reopening.
+Dropping a component or node file registers its type and places an instance, and dropping a new version updates every instance in place - [authoring](authoring.md#files) has the rest.
 
-- A host can shape or replace the menu: listen for `scv-menu` on the patchbay, edit `detail.items`, or `preventDefault()` and draw your own
+A patchbay can sit inside another as an item. While the nested one is focused and in edit mode, the pointer and keys are its own; in use mode the parent treats it as plain content, except `Tab`, which always switches the focused patchbay.
 
 ## Wiring
 
@@ -81,15 +81,7 @@ If a target receives values on a channel and carries its own `data-scv-action` v
 
 Since nodes are **preserved but not visible on publish**, you can safely implement any logic through them. This is not the case for the components (even authored ones), which will remain visible on export.
 
-You can spawn nodes by pressing a number; you can also automatically trigger a wire from the last placed node by pressing `Space`, and holding `Ctrl` will reverse the direction (so you can easily chain something into the newest node). Clicking on a target node confirms the visually previewed connection.
-
 - Chaining `1 Space 2 Space 3` builds a three-node pipeline in five keystrokes: a number pressed while a wire is armed spawns its node already connected
-
-The node colors signify what each node does to a signal:
-
-- Red and Green are only used by Clock and Quests, since both are the starting point of a chain, often coupled together
-- Pink is used by any node that re-emits its held state on every received value, while Teal nodes transform a value in flight
-- Grey is used by Sample, which holds a value until a pulse asks for it, and Action, which fires verbs
 
 Every node follows three rules:
 

@@ -2444,7 +2444,8 @@ const studio = pb => {
     if (node && (k === 'Escape' || k === 'Enter')) { node.expand(false); layer.focus({ preventScroll: true }); draw(); return; } // node already committed or dropped draft
     if (k === 'Escape') { g && finish(null, 'cancel'); closeMenu(); disarm(); select([]); st.hover = null; st.introOpen = false; chrome(); paint(); return; }
     if (typing) return;
-    if (k === 'Tab') { if (!pb.editing && e.composedPath().some(n => n.localName === 'scv-item')) return; e.preventDefault(); return setMode(pb.editing ? 'use' : 'edit'); } // tab still walks fields in use mode
+    if (k === 'Tab') { if (e.composedPath().find(n => n.localName === 'scv-patchbay') !== pb) return; // focused patchbay alone switches, never one around it
+      if (!pb.editing && e.composedPath().some(n => n.localName === 'scv-item' && own(n))) return; e.preventDefault(); return setMode(pb.editing ? 'use' : 'edit'); } // tab still walks fields in use mode
     if (k === '?') { e.preventDefault(); if (!pb.editing) setMode('edit'); st.introOpen = !st.introOpen; return chrome(); }
     if (m && (k === 'z' || k === 'Z')) { e.preventDefault(); return e.shiftKey ? pb.redo() : pb.undo(); }
     if (m && (k === 'y' || k === 'Y')) { e.preventDefault(); return pb.redo(); }

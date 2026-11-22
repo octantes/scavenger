@@ -761,6 +761,22 @@ try {
       { same: r[0] === r[1], head: first.slice(0, 3), tail: first.slice(-3) }];
   });
 
+  await run('tab switches the focused patchbay only - nested or parent, whatever mode the other is in', async () => {
+    const r = await js(`(async () => {
+      const it = document.createElement('scv-item'); it.style.left = '600px'; it.style.top = '420px';
+      const inner = document.createElement('scv-patchbay'); inner.style.cssText = 'width:220px;height:140px'; it.append(inner); T.pb.append(it);
+      await T.frame(); await T.frame(); inner.setMode('use'); T.pb.setMode('use');
+      const tab = () => inner.shadowRoot.querySelector('.layer').dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, composed: true, cancelable: true }));
+      tab(); const once = [inner.mode, T.pb.mode];
+      tab(); const twice = [inner.mode, T.pb.mode];
+      T.pb.setMode('edit'); tab(); const parentEditing = [inner.mode, T.pb.mode]; // parent in edit must not switch along
+      tab(); const bothEditing = [inner.mode, T.pb.mode]; inner.setMode('edit'); // child leaving edit must not take the parent with it
+      T.pb.shadowRoot.querySelector('.layer').dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, composed: true, cancelable: true }));
+      const onParent = [inner.mode, T.pb.mode];
+      T.pb.setMode('edit'); it.remove(); return { once, twice, parentEditing, bothEditing, onParent }; })()`);
+    return [r.once.join() === 'edit,use' && r.twice.join() === 'use,use' && r.parentEditing.join() === 'edit,edit' && r.bothEditing.join() === 'use,edit' && r.onParent.join() === 'edit,use', r];
+  });
+
   await run('a nested patchbay menu never reaches its parent listener', async () => {
     await js(`(() => { window.__off.abort(); window.__off = new AbortController(); window.__outer = 0;
       T.pb.addEventListener('scv-menu', () => { window.__outer++; }, { signal: window.__off.signal });

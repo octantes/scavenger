@@ -1143,8 +1143,8 @@ try {
     await key('z', CTRL); const undone = await js(`T.nodes().length`);
     await key('Z', CTRL | SHIFT); const redone = await js(`T.nodes().length`);
     await key('z', CTRL); await key('Y', CTRL); const capsY = await js(`T.nodes().length`);
-    await key('S', CTRL); await key('P', CTRL);
-    return [undone === 0 && redone === 1 && capsY === 1 && (await js(`window.__exported?.join()`)) === 'quine,publish', { undone, redone, capsY }];
+    await key('S', CTRL); await key('P', CTRL); await key('i', CTRL);
+    return [undone === 0 && redone === 1 && capsY === 1 && (await js(`window.__exported?.join()`)) === 'quine,publish,canvas', { undone, redone, capsY, exported: await js(`window.__exported?.join()`) }];
   });
   await run('ctrl+a selects nothing in use mode', async () => {
     await key('Tab'); await key('a', CTRL); const use = await js(`T.pb.selection().length`);

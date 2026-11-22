@@ -2453,6 +2453,7 @@ const studio = pb => {
     if (m && (k === 'y' || k === 'Y')) { e.preventDefault(); return pb.redo(); }
     if (m && (k === 's' || k === 'S')) { e.preventDefault(); return pb.export('quine'); }
     if (m && (k === 'p' || k === 'P')) { e.preventDefault(); return pb.export('publish'); }
+    if (m && (k === 'i' || k === 'I')) { e.preventDefault(); return pb.export('canvas'); }
     if (m && (k === 'o' || k === 'O')) { e.preventDefault(); return void openFiles(); } // left out of the key list on purpose
     if (!pb.editing) return;
     if (m && (k === 'a' || k === 'A')) { e.preventDefault(); return select(units()); }

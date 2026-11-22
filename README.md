@@ -13,12 +13,11 @@ UI is a function of state, and in s<av> state is a function of DOM
 
 **scavenger is a substrate for portable web tools.** Anything you build with scav becomes portable by definition, exporting into a single, standalone HTML file that works anywhere. No packages, no build step, no framework, no account, and *nothing phoning home* unless you explicitly want it to.
 
-I tried to write the tutorial so five minutes gets you started, but there's a lot to cover. So bear with me - I promise it's worth it:
+**Start with the [tutorial](docs/tutorial.md)** - it teaches the loop, brings in live data through quests, extends the patchbay with your own nodes and components, and sets up the kernel to run anywhere. I tried to write it so five minutes gets you started, but there's a lot to cover - bear with me, I promise it's worth it.
 
-- Learn the loop with its [quick start](docs/tutorial.md) and bring in live data by harvesting through the [quests](docs/tutorial.md#harvesting-the-web-through-quests) terminal tool
-- Extend patchbay by building [nodes and components](docs/tutorial.md#extending-the-patchbay) and set up the [kernel to run anywhere](docs/tutorial.md#running-the-kernel-without-the-bookmarklet)
-- Read about the [philosophy](#philosophy) behind the browser as malleable substrate, the [architecture and principles](#architecture-and-principles) or [security](#security)
-- For deeper reading, you can find the reference manuals, contract, security and contributing guides [**here**](#full-documentation)
+For deeper reading, you can find the reference manuals, contract, security and contributing guides [**here**](#full-documentation).
+
+## The Three Tools
 
 The toolkit has three core primitives, deliberately different in shape because each is the natural form for what it does. **You don't need all of them to build something**, but together they form the complete project:
 

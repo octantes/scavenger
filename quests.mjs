@@ -12,12 +12,13 @@ import { lookup } from 'dns/promises';
 import { pathToFileURL, fileURLToPath } from 'url';
 import { createHash } from 'crypto';
 
+const BROWSER_UA          = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'; // fallback ua when no de-headlessed chrome ua yet
+
 const SCV_QUESTS_VERSION  = '2.0.0';             // server version - logged at boot and served at get /version
 const QUESTS_FILE         = 'quests.json';       // persisted quests json file name
 const COMPONENT_DIR       = 'component';         // harvest - quests write each component to readable html here
 const ASSET_CACHE_MAX     = 200;                 // proxied component assets kept in memory (evict oldest past this)
 const MAX_ASSET_BYTES     = 6 * 1024 * 1024;     // per-asset cap for /asset proxy
-const BROWSER_UA          = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'; // asset-proxy fallback ua when no de-headlessed chrome ua yet
 const _assetCache         = new Map();           // source url -> { buffer, contentType } - component's remote assets, served from loopback
 const HERE                = dirname(fileURLToPath(import.meta.url));
 let _bookmarklet = null, _bookmarkletMtime = 0;
@@ -37,7 +38,7 @@ const MAX_QUESTS          = 100;                 // hard cap on registered quest
 const CHROME_TIMEOUT      = 15000;               // max ms to wait for chromium devtools websocket connection
 const PAGE_TIMEOUT        = 25000;               // cdp round-trip cap - must exceed SELECTOR_WAIT so in-page poll wins
 const SELECTOR_WAIT       = 12000;               // how long a selector / key may take to appear (spas render post-load)
-let   SCRAPE_DEADLINE     = 60000;               // wall-clock cap on one quest's whole navigate+steps+extract pipeline - each step is individually bounded, but nothing capped the sum, so a many-step quest full of long waits could hold a worker for minutes - configure()-able so tests don't wait out the real default
+let   SCRAPE_DEADLINE     = 60000;               // wall-clock cap on one quest's whole navigate + steps + extract pipeline
 const SCREENSHOT_SETTLE   = 2500;                // pause after load before a screenshot, so spa has painted
 const DEFAULT_INTERVAL    = 30000;               // interval used when a quest omits one
 const MIN_INTERVAL        = 3000;                // scrape-interval floor - due-scheduling clamps anything lower
@@ -542,34 +543,34 @@ function readJsonBody(req, send, maxBytes, onBody) { // stream request body unde
 // ENGINE + TUI (presentation layer over engine, reads state, drives it through methods - coupling is thin)
 
 class QuestEngine {
-  constructor() { // initialize engine state - browser is launched later in init/start
-    this.ws               = null;       // primary cdp websocket connection for headless browser page
-    this.chrome           = null;       // child process of running chromium instance
-    this.msgId            = 0;          // auto-incrementing id for cdp json-rpc messages
-    this.pending          = {};         // map of in-flight cdp requests keyed by msgId
-    this.lastRun          = Object.create(null); // map of channel names to their last scrape timestamp - null proto so `__proto__` channels can't hit Object.prototype
-    this._startTime       = Date.now(); // engine boot timestamp for uptime display
-    this._questStates     = new Map();  // real time volatile state per channel
-    this._questsCache     = [];         // in memory array copy of parsed quests.json entries
-    this._lastTickMs      = 0;          // duration of most recent scrape cycle
-    this._durations       = [];         // ring buffer of recent tick durations to calculate rolling average
-    this._chromeConnected = false;      // true when primary cdp websocket is established and healthy
-    this._engineError     = null;       // engine-down message (notif bar) - cleared on successful connect
-    this._profileMode     = 'temp';     // temp (fresh) | live (lock real profile) | snapshot (copy cookies)
-    this._chromeBin       = null;       // file path to discovered chromium executable
-    this._userDir         = null;       // current --user-data-dir (temp/snapshot/live) - set in init/relaunch
-    this._log             = [];         // scrape history for log view
-    this._componentHash   = new Map();  // channel > last written component hash - unchanged harvest skips disk write
-    this._concurrency     = 1;          // parallel dom scrapes amount (configurable in chromium help menu)
-    this._extraPages      = [];         // extra cdp pages beyond primary (pool)
-    this._debugPort       = null;       // local port number for chromium's remote debugging server
-    this._ua              = null;       // de-headlessed user-agent applied to every page (see _launchChrome)
-    this._notice          = null;       // persistent notif-bar message (survives reconnect that clears _engineError)
-    this._proxy           = null;       // egress proxy server (ssrf-pinned) - started in init
-    this.server           = null;       // http api server
-    this._retryTimer      = null;       // crash-recovery backoff timer
-    this._retryN          = 0;          // crash-recovery attempt count
-    this.onRender         = null;       // set by tui: called after any state change worth repainting
+  constructor() {                                // initialize engine state - browser is launched later in init/start
+    this.ws               = null;                // primary cdp websocket connection for headless browser page
+    this.chrome           = null;                // child process of running chromium instance
+    this.msgId            = 0;                   // auto-incrementing id for cdp json-rpc messages
+    this.pending          = {};                  // map of in-flight cdp requests keyed by msgId
+    this.lastRun          = Object.create(null); // map of channel names to their last scrape timestamp
+    this._startTime       = Date.now();          // engine boot timestamp for uptime display
+    this._questStates     = new Map();           // real time volatile state per channel
+    this._questsCache     = [];                  // in memory array copy of parsed quests.json entries
+    this._lastTickMs      = 0;                   // duration of most recent scrape cycle
+    this._durations       = [];                  // ring buffer of recent tick durations to calculate rolling average
+    this._chromeConnected = false;               // true when primary cdp websocket is established and healthy
+    this._engineError     = null;                // engine-down message (notif bar) - cleared on successful connect
+    this._profileMode     = 'temp';              // temp (fresh) | live (lock real profile) | snapshot (copy cookies)
+    this._chromeBin       = null;                // file path to discovered chromium executable
+    this._userDir         = null;                // current --user-data-dir (temp/snapshot/live) - set in init/relaunch
+    this._log             = [];                  // scrape history for log view
+    this._componentHash   = new Map();           // channel > last written component hash - unchanged harvest skips disk write
+    this._concurrency     = 1;                   // parallel dom scrapes amount (configurable in chromium help menu)
+    this._extraPages      = [];                  // extra cdp pages beyond primary (pool)
+    this._debugPort       = null;                // local port number for chromium's remote debugging server
+    this._ua              = null;                // de-headlessed user-agent applied to every page (see _launchChrome)
+    this._notice          = null;                // persistent notif-bar message (survives reconnect that clears _engineError)
+    this._proxy           = null;                // egress proxy server (ssrf-pinned) - started in init
+    this.server           = null;                // http api server
+    this._retryTimer      = null;                // crash-recovery backoff timer
+    this._retryN          = 0;                   // crash-recovery attempt count
+    this.onRender         = null;                // set by tui: called after any state change worth repainting
   }
 
   async init() { // start engine: egress proxy + api + headless chromium (chrome failure is non-fatal)
@@ -1500,7 +1501,7 @@ class QuestEngine {
 }
 
 class QuestTUI {
-  constructor(engine) { // wire tui to engine + seed view/mode state (tty detected later in start)
+  constructor(engine) {                              // wire tui to engine + seed view/mode state (tty detected later in start)
     this.e               = engine;                   // reference to underlying quest engine instance
     this._tui            = false;                    // set in start(): is stdout an interactive tty?
     this._renderTimer    = null;                     // interval timer driving periodic tui repainting
@@ -2615,12 +2616,12 @@ export { isLocalOrigin, isReadAllowed, isPrivateAddr, isValidQuestUrl, questUrlI
 
 // usage: configure({ output: 'feed.json' }); const e = new QuestEngine(); await e.init(); setInterval(() => e.tick(), 5000);
 export function configure({ // programmatic config to embed engine (same knobs as cli flags/env) - test suite drives this too
-  output,        // equivalent to --output
-  history,       // equivalent to --history (change-log)
-  trustIps,      // equivalent to --trust-ip
-  allowLocal,    // equivalent to --allow-local
-  allowOrigins,  // equivalent to --allow-origin
-  scrapeDeadline // test-only: shrink wall-clock scrape cap so a deadline test doesn't wait out the real 60s
+  output,                   // equivalent to --output
+  history,                  // equivalent to --history (change-log)
+  trustIps,                 // equivalent to --trust-ip
+  allowLocal,               // equivalent to --allow-local
+  allowOrigins,             // equivalent to --allow-origin
+  scrapeDeadline            // test-only: shrink wall-clock scrape cap so a deadline test doesn't wait out the real 60s
 } = {}) {
   if (output         !== undefined) OUTPUT_FILE     = output;
   if (history        !== undefined) HISTORY_FILE    = history;

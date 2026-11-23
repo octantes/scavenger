@@ -37,7 +37,7 @@ const DROPPED = '<base href="https://example.test/">'; // would repoint every re
 const pbWith = inject => pbFile.replace('<title>patchbay</title>\n', '<title>patchbay</title>\n' + inject + '\n');
 const AFTER = ['<style>scv-patchbay { --input: rgb(1, 2, 3) }</style>', '<script>window.__after = typeof customElements.get(\'scv-patchbay\')</script>']; // override after theme, script that needs runtime
 const OWN = '<style id="scv-fonts-zz">.zz{}</style><style id="scv-sys-styles">.yy{}</style>'; // what scav puts in head itself
-const pbAround = () => pbWith(OWN).replace('</style>\n<script id="scv-runtime">', '</style>\n' + AFTER[0] + '\n<script id="scv-runtime">').replace('})()</script>\n</head>', '})()</script>\n' + AFTER[1] + '\n</head>');
+const pbAround = () => pbWith(OWN).replace('</style>\n\n<script id="scv-runtime">', '</style>\n' + AFTER[0] + '\n<script id="scv-runtime">').replace('})()</script>\n</head>', '})()</script>\n' + AFTER[1] + '\n</head>');
 const KEPT = '<scv-patchbay><scv-item><div data-scv-id="keep">intact</div></scv-item></scv-patchbay>'; // content the file keeps when the runtime refuses to start
 const FLOOR = { // each api the runtime needs, taken away before it reads for it
   getHTML: 'delete Element.prototype.getHTML;',

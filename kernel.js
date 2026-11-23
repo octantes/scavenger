@@ -1,6 +1,6 @@
 // scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0
 
-(function () { // bookmarklet microkernel - privileged core with every tool registered as userland process
+(function () {          // bookmarklet microkernel - privileged core with every tool registered as userland process
   if (window.$kernel) { // destroy existing instance on re-execution - makes bookmarklet act as a toggle
     if (window.$kernel.destroy) window.$kernel.destroy();
     return;

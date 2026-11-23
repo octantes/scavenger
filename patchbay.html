@@ -6,10 +6,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>patchbay</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%226%22 fill=%22%23986c98%22/%3E%3C/svg%3E">
+
 <style id="scv-runtime-css">
 :root[data-scv-runtime], scv-patchbay { /* theme enforced by token tests - on element, never themes host page */
-  --scv-theme: 2.0.0; /* marks theme sheet for saves, wherever host loaded it */
 
+  --scv-theme: 2.0.0; /* marks theme sheet for saves, wherever host loaded it */
   --font-mono: 'SF Mono', 'Consolas', 'Menlo', 'DejaVu Sans Mono', monospace;
 
   --output:            #986C98;
@@ -57,9 +58,13 @@ scv-patchbay { all: initial; display: block; position: relative; background: var
 :root[data-scv-runtime] *, scv-patchbay * { box-sizing: border-box; }
 :root[data-scv-runtime], :root[data-scv-runtime] > body { margin: 0; padding: 0; background: var(--background-sunk); color: var(--text-base); font-family: var(--font-mono); font-size: var(--fs-b); }
 </style>
+
 <script id="scv-runtime">(function scvRuntime() {
+
 'use strict';
 if (customElements.get('scv-patchbay')) return; // one definition per page
+
+// RUNTIME ---------------------------------------- FLOOR, WIRING HELPERS, PULSE, FRAME JOBS, SHARED INSTANCES - SERIALIZED INTO EVERY EXPORT
 
 // 2024 floor - below it the file says so instead of failing blank, and its markup stays untouched
 
@@ -88,12 +93,13 @@ if (_missing.length) {
   return; // canvas and studio wait on whenDefined, so neither runs
 }
 
-const ATTR_EMITS = 'data-scv-emits', ATTR_RECEIVES = 'data-scv-receives', ATTR_ACTION = 'data-scv-action';
-const WIRING_SEL = `[${ATTR_EMITS}],[${ATTR_RECEIVES}],[${ATTR_ACTION}]`;
-const COMPOUND_VERBS = ['prop', 'method', 'event'];
-const splitWords = s => (s || '').split(/\s+/).filter(Boolean);
-const uid = (len = 8) => Math.random().toString(36).slice(2, 2 + len);
-const px = (el, prop) => parseFloat(el.style[prop]) || 0;
+const ATTR_EMITS     = 'data-scv-emits', ATTR_RECEIVES = 'data-scv-receives', ATTR_ACTION = 'data-scv-action';
+const WIRING_SEL     = `[${ATTR_EMITS}],[${ATTR_RECEIVES}],[${ATTR_ACTION}]`;
+const COMPOUND_VERBS = ['prop', 'method', 'event']; // parameterized data-scv-action verbs, handled by _applyVerb - everything else is a bare/macro verb, handled by _applyMacroVerb
+
+const splitWords = s => (s || '').split(/\s+/).filter(Boolean); // split space-separated attribute into non-empty tokens
+const uid = (len = 8) => Math.random().toString(36).slice(2, 2 + len); // generate a random id of given length
+const px = (el, prop) => parseFloat(el.style[prop]) || 0; // read a numeric style property from an element
 
 const _debugSeen = new Set();
 const debug = (msg, err, once) => { // swallowed failure, verbose level only
@@ -111,6 +117,7 @@ const collectChannels = (el, emits, recvs) => {
   channels(el, ATTR_RECEIVES).forEach(c => recvs.add(c));
   splitWords(el.getAttribute(ATTR_ACTION)).forEach(t => { const c = channelOf(t); if (c) recvs.add(c); });
 };
+
 const _wiredDeep = n => n.nodeType === 1 && (n.matches(WIRING_SEL) || !!n.querySelector(WIRING_SEL)); // node a cable can attach to, or holding one
 const hostOf = el => el?.getRootNode?.()?.host || null;
 const _up = (el, tag) => { for (let n = el; n; n = n.parentElement || hostOf(n)) if (n.localName === tag) return n; return null; }; // crosses shadow roots
@@ -123,7 +130,7 @@ const pulse = (t = performance.now()) => Object.freeze({ [PULSE]: true, t }); //
 const isPulse = v => v != null && v[PULSE] === true;
 
 const _frameJobs = new Map();
-let _frameRaf = 0;
+let   _frameRaf  = 0;
 const onFrame = (key, fn) => { // last write per key, once per frame
   _frameJobs.set(key, fn);
   if (!_frameRaf) _frameRaf = requestAnimationFrame(() => {
@@ -134,7 +141,7 @@ const onFrame = (key, fn) => { // last write per key, once per frame
 };
 
 const _shared = new Map(); // key > { value, users, release }
-const _lent = new Map(); // key > { kit | value, users } - same-origin host lends what it holds
+const _lent   = new Map(); // key > { kit | value, users } - same-origin host lends what it holds
 const _hostOffer = key => { // own page's scvShared, then parent's runtime, then parent's scvShared
   if (window.scvShared && Object.hasOwn(window.scvShared, key)) return { value: window.scvShared[key], users: 0 };
   try {
@@ -144,6 +151,7 @@ const _hostOffer = key => { // own page's scvShared, then parent's runtime, then
     return p.scvShared && Object.hasOwn(p.scvShared, key) ? { value: p.scvShared[key], users: 0 } : null;
   } catch { return null; } // cross origin
 };
+
 const shared = (key, create, release) => { // one per page, released by last user
   let l = _lent.get(key);
   if (!l && !_shared.has(key) && (l = _hostOffer(key))) _lent.set(key, l);
@@ -153,6 +161,7 @@ const shared = (key, create, release) => { // one per page, released by last use
   s.users++;
   return s.value;
 };
+
 const unshare = key => {
   const l = _lent.get(key);
   if (l) { l.kit?.unshare(key); if (--l.users === 0) _lent.delete(key); return; } // offered value stays host's
@@ -161,6 +170,7 @@ const unshare = key => {
   _shared.delete(key);
   try { s.release?.(s.value); } catch (e) { debug('shared release failed', e); }
 };
+
 const whenGone = (el, fn) => { // disconnect also fires on moves - frame is immediate, timer still fires in a hidden tab
   let ran = false, raf = 0, timer = 0;
   const check = () => { if (ran) return; ran = true; cancelAnimationFrame(raf); clearTimeout(timer); if (!el.isConnected) fn(); };
@@ -168,16 +178,19 @@ const whenGone = (el, fn) => { // disconnect also fires on moves - frame is imme
   timer = setTimeout(check, 0);
 };
 
+// RUNTIME ----------------------------------------------------------------------------------------- ASSET TABLE, ROUTER, CLOCK, QUEST CLIENT
+
 // assets: bytes once in document, blobs live, refs elsewhere
 
 const ASSET_REF = 'scv-asset:';
-const _assets = { byHash: new Map(), decoded: new WeakMap() }; // hash > { blob, url, type }
+const _assets   = { byHash: new Map(), decoded: new WeakMap() }; // hash > { blob, url, type }
 const _hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
 const _fnv = bytes => { // fallback hash where crypto.subtle is missing - two 32-bit fnv-1a lanes
   let a = 0x811c9dc5, b = 0x01000193 ^ bytes.length;
   for (let i = 0; i < bytes.length; i++) { a = Math.imul(a ^ bytes[i], 16777619); b = Math.imul(b ^ bytes[i], 2246822507); }
   return (a >>> 0).toString(16).padStart(8, '0') + (b >>> 0).toString(16).padStart(8, '0') + bytes.length.toString(16);
 };
+
 const _b64ToBytes = b64 => { const s = atob(b64.replace(/\s+/g, '')); const out = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i); return out; };
 const _bytesToB64 = bytes => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); };
 const asset = {
@@ -218,14 +231,16 @@ const asset = {
     return `<script type="scv/asset" data-hash="${hash}" data-type="${a.type.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}">${b64}<\/script>\n`;
   },
 };
+
 const _assetSheet = new CSSStyleSheet(); // adopted by every patchbay shadow - css reads var, never serialized
-const _cssVars = new Set();
+const _cssVars    = new Set();
 const _cssVar = hash => {
   const url = _assets.byHash.get(hash)?.url;
   if (!url || _cssVars.has(hash)) return;
   _cssVars.add(hash);
   _assetSheet.insertRule(`:host { --scv-asset-${hash}: url("${url}"); }`, _assetSheet.cssRules.length);
 };
+
 const REF_SEL = '[data-scv-src],[data-scv-href]';
 const _resolve = el => ['src', 'href'].forEach(a => { const u = asset.url(el.getAttribute('data-scv-' + a)); if (u && el.getAttribute(a) !== u) el.setAttribute(a, u); });
 const resolveRefs = root => { // ref attrs > live urls, through shadows
@@ -239,10 +254,10 @@ const resolveRefs = root => { // ref attrs > live urls, through shadows
 
 // one router per patchbay - values travel channels named in wiring attributes
 
-const PRIMITIVE = new Set(['string', 'number', 'boolean']);
-const FORM_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+const PRIMITIVE  = new Set(['string', 'number', 'boolean']);
+const FORM_TAGS  = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 const NODE_VERBS = new Set(['toggle', 'hide', 'show', 'increment', 'decrement']); // a node acts on these itself
-const _emitters = new WeakSet(); // script emits for these - native listeners skip them
+const _emitters  = new WeakSet(); // script emits for these - native listeners skip them
 
 const createRouter = (root, {
   shouldRoute = () => true,
@@ -250,9 +265,9 @@ const createRouter = (root, {
   onRefuse    = () => {},
 } = {}) => {
   const LOOP_MAX = 20, BUDGET = 20000, BURST = 10000; // a cascade comes back round 20 times, any channels; delivers 20k values, any shape; a task starts 10k
-  const _active = new Map(); // channel > times on the stack right now - a channel already in flight means a loop, a long chain never is
-  const _blamed = new Map(); // node > { reason, from } this router marked - it clears only these, never a quest's error
-  let _burst = 0, _burstT = 0, _sent = 0, _loops = 0, _stopped = false, _from = null, _badFrom = null, _current = null, _cache = null; // _current: whose emission we are inside, so a stop can name it
+  const _active  = new Map(); // channel > times on the stack right now - a channel already in flight means a loop, a long chain never is
+  const _blamed  = new Map(); // node > { reason, from } this router marked - it clears only these, never a quest's error
+  let   _burst   = 0, _burstT = 0, _sent = 0, _loops = 0, _stopped = false, _from = null, _badFrom = null, _current = null, _cache = null; // _current: whose emission we are inside, so a stop can name it
 
   const invalidate = () => { _cache = null; };
   const _stale = recs => recs.some(r => r.type === 'attributes' || [...r.addedNodes, ...r.removedNodes].some(_wiredDeep)); // only wiring moving in or out rewires - text writes and unwired re-renders don't
@@ -322,10 +337,10 @@ const createRouter = (root, {
     if (!_blamed.size) _badFrom = null;
   };
 
-  const _applyVerb = (node, verb, arg, value) => {
+  const _applyVerb = (node, verb, arg, value) => { // executes compound verb (prop/method/event:<arg>) on node
     try {
       if (!arg) return;
-      if (verb === 'prop') {
+      if (verb === 'prop') { // custom css props via setProperty, standard props via brackets mutate html directly
         const v = value !== undefined ? value : '';
         if ((arg === 'src' || arg === 'href') && asset.hashOf(v)) { node.setAttribute('data-scv-' + arg, v); return _resolve(node); } // ref saved, live url beside it
         if (!arg.startsWith('style.')) return node[arg] = v;
@@ -333,21 +348,21 @@ const createRouter = (root, {
         p.startsWith('--') ? node.style.setProperty(p, v) : node.style[p] = v;
       }
       else if (verb === 'method' && typeof node[arg] === 'function') node[arg](value);
-      else if (verb === 'event') node.dispatchEvent(new CustomEvent(arg, { detail: value, bubbles: true, cancelable: true, composed: true }));
+      else if (verb === 'event') node.dispatchEvent(new CustomEvent(arg, { detail: value, bubbles: true, cancelable: true, composed: true })); // must cross shadow boundary - node commonly lives inside a component's shadow root
     } catch (e) { console.warn('[scav] verb ' + verb + ':' + arg + ' failed', e); }
   };
 
-  const _hide = node => {
+  const _hide = node => { // hides node, preserving original display for _show restore
     if (!node.dataset.scvOrigDisplay) node.dataset.scvOrigDisplay = getComputedStyle(node).display;
     node.style.display = 'none';
   };
-  const _show = node => { node.style.display = node.dataset.scvOrigDisplay || 'block'; };
-  const _toggle = node => getComputedStyle(node).display === 'none' ? _show(node) : _hide(node);
+  const _show = node => { node.style.display = node.dataset.scvOrigDisplay || 'block'; }; // restores node display to original value or fallback
+  const _toggle = node => getComputedStyle(node).display === 'none' ? _show(node) : _hide(node); // flips node between hidden and visible, also preserves original display
 
   const _applyMacroVerb = (node, verb) => {
     if (node.localName === 'scv-logic' && NODE_VERBS.has(verb)) return node.act?.(verb);
     switch (verb) {
-      case 'clone': {
+      case 'clone': { // clone whole wired unit to an independent component
         const unit = node.closest('scv-item') || node; // whole item, else in place
         const clone = unit.cloneNode(true);
         const strip = n => [ATTR_EMITS, ATTR_RECEIVES, ATTR_ACTION].forEach(a => n.removeAttribute(a));
@@ -367,7 +382,7 @@ const createRouter = (root, {
         const form = FORM_TAGS.has(node.tagName);
         const v = (Number(form ? node.value : node.textContent) || 0) + (verb === 'increment' ? 1 : -1);
         form ? (node.value = v) : (node.textContent = v);
-        node.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+        node.dispatchEvent(new Event('input', { bubbles: true, composed: true })); // node may live inside a component's shadow root
         return node.dispatchEvent(new CustomEvent('scv-receive', { detail: v, bubbles: true, composed: true }));
       }
     }
@@ -515,7 +530,7 @@ const createRouter = (root, {
 
 const clock = (() => {
   const _nodes = new Set(); // registration order = firing order
-  let _timer = 0, _at = Infinity;
+  let   _timer = 0, _at = Infinity;
   const _slot = (now, ms, off) => Math.ceil((now - off) / ms) * ms + off; // next grid slot at or after now
 
   const _arm = () => {
@@ -580,7 +595,7 @@ const quests = (() => {
   };
 
   const POLL_MS = 2000;
-  const _lists = new Map(); // api > { list, at, inflight }
+  const _lists  = new Map(); // api > { list, at, inflight }
   const _fetchList = (base, maxAge = 0) => { // one /quests read per api, concurrent calls join it
     let s = _lists.get(base); if (!s) _lists.set(base, s = {});
     if (maxAge && s.list && Date.now() - s.at < maxAge) return Promise.resolve(s.list);
@@ -614,7 +629,7 @@ const quests = (() => {
   };
 
   const _watchers = new Set();
-  let _loop = null;
+  let   _loop     = null;
   const _read = (w, maxAge) => { if (w.el.isConnected) w.base = api(w.el); return _fetchList(w.base, maxAge).then(q => _valueIn(q, w.ch)); };
   const _deliver = (w, read) => read.then(v => { if (_watchers.has(w)) { if (w.once) _watchers.delete(w); w.onValue(v); } },
                                           err => { if (_watchers.has(w)) w.onWaiting(waitingMessage(w.base, err)); });
@@ -634,12 +649,14 @@ const quests = (() => {
   };
 
   const registerScrape = (base, { channel, url, target }) => write('POST', base + '/quests', target ? { channel, url, target } : { channel, url }); // server parses target
-  const emitValue = (base, channel, value) => write('POST', base + '/quests/emit', { channel, value }).catch(e => debug('quest emit failed', e, true));
-  const releaseChannel = (base, channel) => write('DELETE', base + '/quests/' + encodeURIComponent(channel)).catch(e => debug('quest release failed', e, true));
+  const emitValue = (base, channel, value) => write('POST', base + '/quests/emit', { channel, value }).catch(e => debug('quest emit failed', e, true)); // fire-and-forget per-value emit swallows its failure
+  const releaseChannel = (base, channel) => write('DELETE', base + '/quests/' + encodeURIComponent(channel)).catch(e => debug('quest release failed', e, true)); // fire-and-forget cleanup swallows its failure
   const fetchComponent = (base, name, hash) => fetch(base + '/component/' + encodeURIComponent(name) + (hash ? '?' + hash : '')).then(r => r.ok ? r.text() : null); // hash busts cache, path never changes
 
   return { api, shortHash, parseInputLine, fetchValue, watchValue, waitingMessage, registerScrape, emitValue, releaseChannel, fetchComponent };
 })();
+
+// RUNTIME -------------------------------------------------------------------------- COMPONENT API, SHADOW MORPH, AUTHORED COMPONENTS, ITEMS
 
 // component api - each function hides one trap native code leaves open
 
@@ -652,10 +669,12 @@ const patch = (el, { text, value, html, class: cls } = {}) => { // unchanged wri
   if (html !== undefined && _patched.get(el) !== String(html)) { el.innerHTML = html; _patched.set(el, String(html)); }
   if (cls !== undefined && el.className !== cls) el.className = cls;
 };
+
 const _emitFrom = (host, v, el = host) => {
   _emitters.add(el);
   el.dispatchEvent(new CustomEvent('scv-emit', { detail: _pulseOf(v), bubbles: true, composed: true }));
 };
+
 const _scope = owner => { // owner's shared, teardown and signal - released together when really gone
   const keys = [], fns = [], ac = new AbortController();
   return {
@@ -681,6 +700,7 @@ const morphAttrs = (a, b) => { // wiring attrs belong to canvas, never to markup
   for (const at of b.attributes) if (!at.name.startsWith('data-scv-') && a.getAttribute(at.name) !== at.value) a.setAttribute(at.name, at.value);
   for (const at of [...a.attributes]) if (!at.name.startsWith('data-scv-') && !b.hasAttribute(at.name)) a.removeAttribute(at.name);
 };
+
 const morphChildren = (live, fresh) => {
   const lc = [...live.childNodes], fc = [...fresh.childNodes];
   for (let i = 0; i < Math.max(lc.length, fc.length); i++) {
@@ -692,6 +712,7 @@ const morphChildren = (live, fresh) => {
     if (a.nodeType === 1) { morphAttrs(a, b); morphChildren(a, b); }
   }
 };
+
 const morphShadow = (el, fragment) => { // false when markup holds nodes - caller remounts
   if (!el.shadowRoot || fragment.querySelector('scv-logic')) return false;
   morphChildren(el.shadowRoot, fragment);
@@ -709,6 +730,7 @@ const _compParts = tpl => {
   scripts.forEach(s => s.remove());
   return { frag, code };
 };
+
 const _compileComp = (tag, code) => {
   try { return new Function('root', 'host', 'emit', 'pulse', 'isPulse', 'shared', 'onTeardown', 'signal', 'asset', 'patch', code + '\n//# sourceURL=scv/' + tag); }
   catch (e) { console.warn('[scav] ' + tag + ' script does not parse', e); return null; }
@@ -771,6 +793,8 @@ class ScvItem extends HTMLElement {
   get states() { return this._internals.states; }
 }
 
+// RUNTIME ----------------------------------------------------------------------------------- LOGIC NODES - LOOKS, VARIABLES, BUILT-IN TYPES
+
 // state only in host attributes - internals in shadow, rebuilt on connect
 
 const NODE_CSS = `
@@ -814,6 +838,7 @@ const NODE_CSS = `
 :host([data-type="action"]) { --node: var(--action); }
 :host([data-type="sample"]) .input, :host([data-type="action"]) .input { color: var(--text-dim); }
 `;
+
 let _nodeSheet = null;
 const nodeSheet = () => { if (!_nodeSheet) { _nodeSheet = new CSSStyleSheet(); _nodeSheet.replaceSync(NODE_CSS); } return _nodeSheet; };
 const inputWidth = val => Math.min(240, Math.max(70, String(val).length * 8 + 20)); // ~8px per char, clamped
@@ -835,11 +860,12 @@ const varsOf = el => { const k = patchbayOf(el) || document; let s = _varStores.
 
 // left click and receives call onPulse, data calls onReceive, right click cycles modes
 
-const VERBS = ['toggle', 'hide', 'show', 'delete', 'clone', 'increment', 'decrement'];
+const VERBS      = ['toggle', 'hide', 'show', 'delete', 'clone', 'increment', 'decrement'];
 const NODE_TYPES = new Map(); // built in, every patchbay shares them
 const builtIn = (name, key, def) => NODE_TYPES.set(name, { name, key, builtIn: true, ...def });
 
 const _svg = d => `<svg viewBox="0 0 14 14" aria-hidden="true">${d}</svg>`; // old glyph sizes, 1px lines on half pixels
+
 const ICON = {
   clock: _svg('<circle cx="7" cy="7" r="3"/><path d="M7 5v2h1.5"/>'),
   offbeat: _svg('<circle cx="7" cy="7" r="3"/><path d="M7 9V7H5.5"/>'),
@@ -996,6 +1022,8 @@ builtIn('action', '9', {
   alt(ctx) { ctx.value = VERBS[(VERBS.indexOf(ctx.value.trim()) + 1) % VERBS.length]; ctx.showFloat(ctx.value); },
 });
 
+// RUNTIME ------------------------------------------------------------------------------------------- HARVEST DEFS, QUEST NODE, FRAME BRIDGE
+
 // canonical kernel defs - script defines tag, markup in one template literal
 
 const boxScopeCss = css => css.replace(/@media/g, '@container'); // harvested widget queries its box, never window
@@ -1010,7 +1038,8 @@ const literalAfter = (text, marker) => { // unescaped template literal following
   }
   return null;
 };
-const extractShadowMarkup = defText => literalAfter(defText, ".attachShadow({mode: 'open'}).innerHTML = `");
+
+const extractShadowMarkup = defText => literalAfter(defText, ".attachShadow({mode: 'open'}).innerHTML = `"); // pull component's baked shadow html, un-escaping embed() - lets refresh diff against live shadow without re-running def
 const embed = t => t.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$').replace(/<\/script/gi, '<\\/script').replace(/<!--/g, '<\\!--'); // kernel's escaping
 const defang = root => { // markup keeps no code: scripts, handlers, javascript: urls, inline-document frames, refresh
   root.querySelectorAll('script, meta, base, object, embed').forEach(s => s.remove());
@@ -1022,6 +1051,7 @@ const defang = root => { // markup keeps no code: scripts, handlers, javascript:
   root.querySelectorAll('template').forEach(t => defang(t.content));
   return root;
 };
+
 const harvestOf = defText => { // def read as data - its code never runs
   const tag = (defText.match(/customElements\.get\('(scv-[a-z0-9-]+)'\)/) || [])[1], raw = extractShadowMarkup(defText);
   if (!tag || raw == null) return null;
@@ -1030,6 +1060,7 @@ const harvestOf = defText => { // def read as data - its code never runs
   const id = (defText.match(/f\.id='(scv-fonts-[\w-]+)'/) || [])[1];
   return { tag, markup, fonts: id ? { id, css: literalAfter(defText, 'f.textContent=`') || '' } : null };
 };
+
 const defineHarvest = h => { // element built from markup, canonical def written for save
   if (h.fonts && !document.getElementById(h.fonts.id)) { const f = document.createElement('style'); f.id = h.fonts.id; f.textContent = h.fonts.css; document.head.append(f); } // @font-face is inert inside shadow
   if (customElements.get(h.tag)) return false;
@@ -1042,11 +1073,13 @@ const defineHarvest = h => { // element built from markup, canonical def written
   document.body.append(s);
   return true;
 };
+
 const remap = (el, map) => { // mapped channels renamed, others keep name - port stays
   for (const a of [ATTR_EMITS, ATTR_RECEIVES]) { const v = el.getAttribute(a); if (v) el.setAttribute(a, splitWords(v).map(t => map.has(chOf(t)) ? map.get(chOf(t)) + t.slice(chOf(t).length) : t).join(' ')); }
   const acts = el.getAttribute(ATTR_ACTION);
   if (acts) el.setAttribute(ATTR_ACTION, splitWords(acts).map(t => { const p = t.split(':'), i = COMPOUND_VERBS.includes(p[0]) ? 2 : 1; if (map.has(p[i])) p[i] = map.get(p[i]); return p.join(':'); }).join(' '));
 };
+
 const reframe = item => { // nested nodes come back real in item - attributes only, fresh inner wires
   const sr = item.firstElementChild?.shadowRoot, nested = sr ? [...sr.querySelectorAll('scv-logic')] : [];
   if (!nested.length) return;
@@ -1060,6 +1093,7 @@ const reframe = item => { // nested nodes come back real in item - attributes on
     n.remove(); item.append(node);
   });
 };
+
 const mountHarvest = (pb, { tag, script, x = 80, y = 80 }) => { // quest component - same rebuild as paste
   const h = pb && harvestOf(script);
   if (!h) return null;
@@ -1177,6 +1211,7 @@ const _unwire = v => {
   v.channels.forEach((c, i) => b.copyToChannel(c, i));
   return b;
 };
+
 const _eachWired = (pb, fn) => { // wiring elements this patchbay owns, light dom then shadows
   const walk = r => {
     r.querySelectorAll(WIRING_SEL).forEach(n => { if (patchbayOf(n) === pb) fn(n); });
@@ -1184,6 +1219,7 @@ const _eachWired = (pb, fn) => { // wiring elements this patchbay owns, light do
   };
   walk(pb);
 };
+
 const _describe = pb => { // what patch offers - read from dom, nothing runs
   const chs = new Map(), types = new Map(), data = list => JSON.parse(JSON.stringify(list || []));
   const note = (t, key) => { const name = chOf(t), c = chs.get(name) || chs.set(name, { name, emits: false, receives: false, ports: [] }).get(name); c[key] = true; if (portOf(t) && !c.ports.includes(portOf(t))) c.ports.push(portOf(t)); };
@@ -1195,6 +1231,7 @@ const _describe = pb => { // what patch offers - read from dom, nothing runs
   pb.querySelectorAll('scv-logic').forEach(n => { if (patchbayOf(n) === pb && !types.has(n.dataset.type)) types.set(n.dataset.type, { type: n.dataset.type, inputs: data(n.def.inputs), outputs: data(n.def.outputs) }); });
   return { scv: 'description', version: VERSION, channels: [...chs.values()], nodes: [...types.values()] };
 };
+
 let _bridged = false;
 const _bridge = () => {
   if (_bridged || window.parent === window) return;
@@ -1220,7 +1257,9 @@ const _bridge = () => {
   });
 };
 
-const UNKNOWN = { name: '', icon: ICON.unknown }; // def may arrive later
+// RUNTIME --------------------------------------------------------------------------------------------------------------------- NODE ELEMENT
+
+const UNKNOWN     = { name: '', icon: ICON.unknown };                               // def may arrive later
 const SAFE_INPUTS = new Set(['text', 'number', 'email', 'url', 'tel', 'password']); // def-supplied type must not inject attributes
 
 class ScvLogic extends HTMLElement {
@@ -1333,7 +1372,7 @@ class ScvLogic extends HTMLElement {
     const def = this._def, m = this._modeDef(), p = this._parts;
     const g = def.glyph?.(this._ctx) ?? m?.icon ?? def.icon ?? ICON.unknown;
     if (p.glyph !== g) { p.glyph = g; /^<svg[\s>]/.test(g) ? p.dot.innerHTML = g : p.dot.textContent = g; } // def icon is glyph or inline svg
-    const color = m?.color || def.color;
+    const color = m?.color || def.color; // per-mode color, falls back to base color
     if (color) { p.dot.style.setProperty('--node', color); p.input.style.setProperty('--node', color); }
     else if (def.custom) { p.dot.style.removeProperty('--node'); p.input.style.removeProperty('--node'); }
     const ph = m?.placeholder ?? def.placeholder ?? '';
@@ -1427,6 +1466,8 @@ class ScvLogic extends HTMLElement {
   }
 }
 
+// RUNTIME ----------------------------------------------------------------------------- PATCHBAY - OWN TYPES, ELEMENT, THEME TOKENS, VERSION
+
 // patchbay holds its types as children - node scripts, component templates
 
 const DEF_SEL = 'script[type="scv/node"][data-scv-node], template[data-scv-comp]'; // saver's format only - any other script stays defang's
@@ -1438,6 +1479,7 @@ const _valid = def => {
   if (NODE_TYPES.get(def.name)?.builtIn || RESERVED_TYPES.includes(def.name)) { console.warn('[scav] node type ' + def.name + ' is a built-in name, def ignored'); return false; }
   return true;
 };
+
 const _read = new WeakMap(); // script > { text, defs } - source runs once per text
 const nodeDefs = s => {
   const text = s.textContent;
@@ -1449,6 +1491,7 @@ const nodeDefs = s => {
   _read.set(s, r = { text, defs });
   return defs;
 };
+
 const typeOf = (el, name = el.dataset.type) => patchbayOf(el)?._typeOf?.(name) || NODE_TYPES.get(name) || UNKNOWN;
 const _defAt = pb => [...pb.children].find(c => !isDef(c)) || null; // defs lead, in arrival order
 const nodeScript = text => { // stored script always written here, inert - never parsed one moved in
@@ -1456,6 +1499,7 @@ const nodeScript = text => { // stored script always written here, inert - never
   s.type = 'scv/node'; s.setAttribute('data-scv-node', ''); s.textContent = text;
   return s;
 };
+
 const addNodeSource = (pb, text) => { // > names defined - script kept as child, older one fully redefined goes
   const held = [...pb.children].find(c => isNodeScript(c) && c.textContent === text);
   if (held) return nodeDefs(held).map(d => d.name); // same source - placed nodes keep running
@@ -1467,17 +1511,20 @@ const addNodeSource = (pb, text) => { // > names defined - script kept as child,
   pb._sync();
   return names;
 };
+
 const defineNode = (pb, def) => { // in code only - not saved
   if (!_valid(def)) return null;
   pb._code.set(def.name, { ...def, custom: true }); pb._dirty = true; pb._sync();
   return def.name;
 };
+
 const _tagOf = t => compTag(t.getAttribute('data-scv-comp') || '');
 const compsOf = pb => [...pb.children].filter(c => c.localName === 'template' && _comps.has(_tagOf(c)) && _holders(_comps.get(_tagOf(c))).includes(c)).map(_tagOf); // tags this patchbay holds
 const compConflict = (pb, tpl) => { // one element per tag on page - another patchbay keeps its version
   const c = _comps.get(_tagOf(tpl));
   return !!c && c.tpl.outerHTML !== tpl.outerHTML && _holders(c).some(t => t !== tpl && t.isConnected && patchbayOf(t) !== pb);
 };
+
 const addComponent = (pb, tpl) => { // > tag, null when refused
   if (compConflict(pb, tpl)) return null;
   const tag = _tagOf(tpl), held = [...pb.children].find(c => c.localName === 'template' && _tagOf(c) === tag);
@@ -1503,13 +1550,16 @@ scv-item > [data-scv-id] { display: block; min-height: 10px; }
 scv-logic { display: none; }
 scv-item:state(far) { content-visibility: hidden; contain-intrinsic-size: auto 1px auto 1px; } /* keeps last rendered size */
 `;
+
 const SHADOW_CSS = `
 :host { display: block; position: relative; background: var(--background-sunk); }
 .layer { position: relative; }
 `;
+
 const sheet = css => { const s = new CSSStyleSheet(); s.replaceSync(css); return s; };
 let _shadowSheet = null;
 const VERSION = '2.0.0'; // written into every save - never read from page
+
 const THEME_TOKENS = [ // theme's own - tokens tier and saver both check this list
   '--output', '--input', '--danger', '--success',
   '--background-sunk', '--background-raised',
@@ -1518,8 +1568,9 @@ const THEME_TOKENS = [ // theme's own - tokens tier and saver both check this li
   '--ease-out', '--ease-swift', '--duration-fast', '--duration-base', '--duration-slow',
   '--font-mono', '--fs-a', '--fs-b', '--fs-c', '--fs-d',
 ];
-const _addons = [];
-const _pbs = []; // weak - use() reaches patchbays already up
+
+const _addons     = [];
+const _pbs        = []; // weak - use() reaches patchbays already up
 const _pageSheets = [];
 const lendSheets = pb => { // page sheets style patchbay's children - shadow root mount needs them in that root
   const root = pb.getRootNode();
@@ -1527,12 +1578,14 @@ const lendSheets = pb => { // page sheets style patchbay's children - shadow roo
   const add = _pageSheets.filter(sh => !root.adoptedStyleSheets.includes(sh)); // once per root
   if (add.length) root.adoptedStyleSheets = [...root.adoptedStyleSheets, ...add];
 };
+
 const pageSheet = sh => { // > sh, on page and in every shadow root holding a patchbay
   _pageSheets.push(sh);
   document.adoptedStyleSheets = [...document.adoptedStyleSheets, sh];
   _pbs.forEach(r => { const pb = r.deref(); if (pb?.isConnected) lendSheets(pb); });
   return sh;
 };
+
 let _themed = false;
 const _themeCheck = pb => whenReady(() => { // style block may come after element, linked theme may still be loading
   const bare = () => !_themed && pb.isConnected && !getComputedStyle(pb).getPropertyValue('--background-sunk');
@@ -1542,6 +1595,7 @@ const _themeCheck = pb => whenReady(() => { // style block may come after elemen
   if (document.readyState !== 'complete') waits.push(new Promise(r => addEventListener('load', r, { once: true })));
   Promise.all(waits).then(() => { if (bare()) { _themed = true; console.warn('[scav] scv-runtime-css missing - patchbay has no theme'); } });
 });
+
 const kit = {}; // internals for canvas and studio
 
 class ScvPatchbay extends HTMLElement {
@@ -1656,11 +1710,14 @@ customElements.define('scv-patchbay', ScvPatchbay);
 </head>
 <body>
 <scv-patchbay></scv-patchbay>
+
 <script id="scv-canvas">(function scvCanvas() {
 'use strict';
 const PB = customElements.get('scv-patchbay');
 if (!PB) return void customElements.whenDefined('scv-patchbay').then(scvCanvas); // runtime comes later - start then
 PB.kit.sources.canvas = '(' + scvCanvas + ')()'; // block is one function - saves write it back whole
+
+// CANVAS ------------------------------------------------------------------------ PAN AND ZOOM - SHIPS IN QUINE AND CANVAS, NEVER IN PUBLISH
 
 // infinite pan and zoom - view never saved
 
@@ -1668,6 +1725,7 @@ const PAGE_CSS = new CSSStyleSheet(); // page level - beats runtime's own scv-pa
 PAGE_CSS.replaceSync(`scv-patchbay:state(canvas) { overflow: hidden; user-select: none; touch-action: none; }
 :root[data-scv-runtime] > body > scv-patchbay:state(canvas) { position: fixed; inset: 0; }`); // patchbay file fills window, mounted one fills its box
 PB.kit.pageSheet(PAGE_CSS);
+
 const CANVAS_CSS = `
 .layer:focus { outline: none; }
 .grid { position: absolute; inset: 0; pointer-events: none;
@@ -1675,6 +1733,7 @@ const CANVAS_CSS = `
   background-size: var(--cell, 24px) var(--cell, 24px); background-position: var(--grid-x, 0px) var(--grid-y, 0px); }
 .layer { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 `;
+
 let _sheet = null;
 let _rects = new WeakMap(); // patchbay > client rect - page listeners hold none, an unmounted one is collected
 addEventListener('resize', () => { _rects = new WeakMap(); });
@@ -1734,6 +1793,7 @@ PB.use((pb, kit) => {
   new MutationObserver(rs => rs.forEach(r => r.addedNodes.forEach(watch))).observe(pb, { childList: true });
 });
 })()</script>
+
 <script id="scv-studio">(function scvStudio() {
 'use strict';
 const PB = customElements.get('scv-patchbay');
@@ -1742,9 +1802,11 @@ PB.kit.sources.studio = '(' + scvStudio + ')()'; // block is one function - save
 const kit = PB.kit;
 const { ATTR_EMITS, ATTR_RECEIVES, ATTR_ACTION, splitWords, uid, px, itemOf, onFrame, isPulse } = kit;
 
-const LOCAL_QUESTS = 'http://127.0.0.1:9876'; // publish falls back to page origin
-const GRID = 24, HALF = GRID / 2, DRAG = 5, UNDO_MAX = 50, RING = 10; // 2px gap + 3px ring, each side
-const isMac = /mac/i.test(navigator.userAgentData?.platform || navigator.platform || '');
+// STUDIO --------------------------------------------------------- CHROME, CABLE GEOMETRY, KEY LIST - QUINE ONLY, NEVER IN CANVAS OR PUBLISH
+
+const LOCAL_QUESTS = 'http://127.0.0.1:9876';                                 // publish falls back to page origin
+const GRID         = 24, HALF = GRID / 2, DRAG = 5, UNDO_MAX = 50, RING = 10; // 2px gap + 3px ring, each side
+const isMac        = /mac/i.test(navigator.userAgentData?.platform || navigator.platform || '');
 const mod = e => isMac ? e.metaKey : e.ctrlKey; // ctrl is cmd on macos
 const snap = v => Math.round((v - HALF) / GRID) * GRID + HALF; // dot centres sit half a cell in
 const sheet = css => { const s = new CSSStyleSheet(); s.replaceSync(css); return s; };
@@ -1757,11 +1819,13 @@ scv-item:state(dimmed) { opacity: .5; }
 scv-item:state(dragging) { box-shadow: 0 0 28px rgba(0,0,0,.5); }
 `); // runtime hides nodes
 kit.pageSheet(DOC_CSS);
+
 const HOVER_TAGS = 'div, a, span, p, h1, h2, h3, h4, h5, h6, img, button, input, textarea, select, label, li, td, th, video, canvas, svg';
 const HOVER_CSS = sheet(`
 :is(${HOVER_TAGS}):hover { outline: 1px dashed var(--output) !important; background: var(--selection) !important; cursor: crosshair !important; }
 :is(${HOVER_TAGS}):has(:is(${HOVER_TAGS}):hover) { background: none !important; }
 `); // component shadows, edit mode only - innermost wire end lights up
+
 const CHROME_CSS = sheet(`
 .cables { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; z-index: 101; }
 .cable { fill: none; stroke: var(--cs, var(--cable)); stroke-width: 3px; stroke-linecap: round; pointer-events: visibleStroke; cursor: pointer; transition: stroke var(--duration-base); }
@@ -1815,35 +1879,40 @@ const edgePt = (x, y, w, h, dx, dy) => { // where ray meets rounded box + outwar
   const hw = w / 2, hh = h / 2, r = Math.min(hw, hh), len = Math.hypot(dx, dy) || 1;
   if (hw === 0 && hh === 0) return { x, y, nx: dx / len, ny: dy / len };
   const adx = Math.abs(dx) || 1e-9, ady = Math.abs(dy) || 1e-9;
-  const t = Math.min(hw / adx, hh / ady);
+  const t = Math.min(hw / adx, hh / ady); // ray ∩ the (square-cornered) box
   let ptX = dx * t, ptY = dy * t, nx, ny;
-  const cx = hw - r, cy = hh - r;
+  const cx = hw - r, cy = hh - r; // start of corner arcs
   if (Math.abs(ptX) > cx && Math.abs(ptY) > cy) {
     const kx = Math.sign(ptX) * cx, ky = Math.sign(ptY) * cy, ox = ptX - kx, oy = ptY - ky, ol = Math.hypot(ox, oy) || 1;
     nx = ox / ol; ny = oy / ol; ptX = kx + nx * r; ptY = ky + ny * r;
-  } else if (hw / adx < hh / ady) { nx = Math.sign(ptX) || 1; ny = 0; }
-  else { nx = 0; ny = Math.sign(ptY) || 1; }
+  } else if (hw / adx < hh / ady) { nx = Math.sign(ptX) || 1; ny = 0; } // left/right edge
+  else { nx = 0; ny = Math.sign(ptY) || 1; } // top/bottom edge
   return { x: x + ptX, y: y + ptY, nx, ny };
 };
+
 const edgeBox = (cx, cy, b, dx, dy) => { // open node aims at glyph, exits at body edge
   const hw = b.w / 2, hh = b.h / 2, ox = cx - b.x, oy = cy - b.y;
+  // t to exit each axis; inf when ray doesn't move along that axis
   const tx = dx > 0 ? (hw - ox) / dx : dx < 0 ? (-hw - ox) / dx : Infinity;
   const ty = dy > 0 ? (hh - oy) / dy : dy < 0 ? (-hh - oy) / dy : Infinity;
   const t = Math.min(tx, ty);
-  if (!isFinite(t)) return { x: cx, y: cy, nx: 0, ny: 0 };
+  if (!isFinite(t)) return { x: cx, y: cy, nx: 0, ny: 0 }; // degenerate (coincident)
   return { x: cx + dx * t, y: cy + dy * t, nx: tx < ty ? Math.sign(dx) : 0, ny: tx < ty ? 0 : Math.sign(dy) };
 };
+
 const axis = (nx, ny) => { const bx = nx * Math.abs(nx), by = ny * Math.abs(ny), l = Math.hypot(bx, by) || 1; return { x: bx / l, y: by / l }; };
 const handles = (p0, p3, dx, dy) => {
   const dl = Math.hypot(dx, dy) || 1, v2 = axis(p3.nx, p3.ny);
   const off = Math.max((Math.hypot(p3.x - p0.x, p3.y - p0.y) || 1) * 0.5, 50);
   return { ax: p0.x + dx / dl * off * 0.25, ay: p0.y + dy / dl * off * 0.25, bx: p3.x + v2.x * off, by: p3.y + v2.y * off };
 };
+
 const bez = (p0, h, p3, t) => { const u = 1 - t; return [u*u*u*p0.x + 3*u*u*t*h.ax + 3*u*t*t*h.bx + t*t*t*p3.x, u*u*u*p0.y + 3*u*u*t*h.ay + 3*u*t*t*h.by + t*t*t*p3.y]; };
 const curve = (a, x, y) => {
   const dx = x - a.x, dy = y - a.y, p0 = edgePt(a.x, a.y, a.w, a.h, dx, dy), p3 = { x, y, nx: -dx, ny: -dy }, h = handles(p0, p3, dx, dy);
   return `M ${p0.x} ${p0.y} C ${h.ax} ${h.ay}, ${h.bx} ${h.by}, ${x} ${y}`;
 };
+
 const arrow = (a, b) => { // stops short of target, with arrowhead - null when ends overlap
   const dx = b.x - a.x, dy = b.y - a.y;
   const p0 = a.fb ? edgeBox(a.x, a.y, a.fb, dx, dy) : edgePt(a.x, a.y, a.w, a.h, dx, dy);
@@ -1867,12 +1936,14 @@ const INTRO = keys => '<h1>s<span class="wm">&lt;</span>av<span class="wm">&gt;<
   + '<dt>alt</dt><dd>hold to snap to dot grid</dd><dt>del</dt><dd>remove selection</dd><dt>ctrl + z</dt><dd>undo</dd><dt>ctrl + y</dt><dd>redo</dd>'
   + '<dt>ctrl + s</dt><dd>save quine</dd><dt>ctrl + p</dt><dd>publish</dd><dt>?</dt><dd>show or hide this menu</dd></dl></div>';
 
+// STUDIO ---------------------------------------------------- EDITING PER PATCHBAY - UNDO, SELECTION, CABLES, WIRING, GESTURES, KEYS, IMPORT
+
 const studio = pb => {
   if (!pb.questApi) pb.questApi = LOCAL_QUESTS;
   const root = pb.shadowRoot, layer = pb.layer;
   root.adoptedStyleSheets = [...root.adoptedStyleSheets, CHROME_CSS];
   layer.tabIndex = -1;
-  const svg = svgEl('svg', 'cables');
+  const svg  = svgEl('svg', 'cables');
   const pend = { from: null, handoff: null }; // pending wire is one path - the cable it makes takes that same path
   let temp;
   const freshTemp = () => { temp = svgEl('path', 'temp'); temp.style.display = 'none'; svg.prepend(temp); };
@@ -1881,7 +1952,7 @@ const studio = pb => {
   box.innerHTML = '<i class="corner" data-c="nw"></i><i class="corner" data-c="ne"></i><i class="corner" data-c="sw"></i><i class="corner" data-c="se"></i>';
   layer.append(svg, box);
   const lasso = document.createElement('div'); lasso.className = 'lasso'; lasso.hidden = true;
-  const tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true;
+  const tip   = document.createElement('div'); tip.className = 'tip'; tip.hidden = true;
   const intro = document.createElement('div'); intro.className = 'intro';
   intro.innerHTML = INTRO([...kit.NODE_TYPES.values()].filter(d => d.key).sort((a, b) => ((+a.key || 10) - (+b.key || 10))).map(d => `<dt>${d.key}</dt><dd>${d.name}</dd>`).join(''));
   const bg = document.createElement('div'); bg.className = 'bg';
@@ -1995,13 +2066,13 @@ const studio = pb => {
 
   // wire index rebuilt when wiring changes - cables only re-derive geometry
 
-  const cables = new Map(); // key > { ch, src, tgt, path }
-  let wiresDirty = true;
-  const ids = new WeakMap(); let idN = 0;
+  const cables     = new Map(); // key > { ch, src, tgt, path }
+  let   wiresDirty = true;
+  const ids        = new WeakMap(); let idN = 0;
   const idOf = el => { let i = ids.get(el); if (!i) ids.set(el, i = ++idN); return i; };
   const onShadow = rs => { for (const r of rs) { if (r.type === 'attributes' && r.attributeName.startsWith('data-scv-')) wiresDirty = true; const u = itemOf(r.target); if (u) remeasure(u); } draw(); };
   const shadowMo = new MutationObserver(onShadow);
-  const watched = new WeakSet();
+  const watched  = new WeakSet();
   const watchShadow = sr => { // content or scroll moves inner ends
     if (watched.has(sr)) return;
     watched.add(sr);
@@ -2064,7 +2135,7 @@ const studio = pb => {
     if (rs.length) onMut(rs); if (ss.length) onShadow(ss);
     render(); return [...cables.values()].map(c => ({ ch: c.ch, src: c.src, tgt: c.tgt, sp: c.sp, tp: c.tp, d: c.d })); };
 
-  const flashed = new Set(); // channels routed this frame
+  const flashed = new Set();     // channels routed this frame
   const running = new WeakMap(); // el > its flash - restarted, never stacked
   const flash = (el, frames) => { running.get(el)?.cancel(); running.set(el, el.animate(frames, { duration: 400, easing: 'ease-out' })); }; // end named - implicit end mixes color-mix wrong
   pb.onRoute((ch, v) => {
@@ -2095,7 +2166,7 @@ const studio = pb => {
     tint();
   });
   const paintKey = {};
-  const hot = new Set(); // emitters the router stopped - it clears their error state on the next clean cascade, and these follow
+  const hot      = new Set(); // emitters the router stopped - it clears their error state on the next clean cascade, and these follow
   pb.addEventListener('scv-overload', e => { // blamed, one cleared, or all cleared - the cables follow
     const { node, reason } = e.detail || {};
     if (node) reason ? hot.add(node) : hot.delete(node);
@@ -2462,7 +2533,7 @@ const studio = pb => {
     if (k === '[' || k === ']') return zorder(k === ']' ? 1 : -1);
     if (k.startsWith('Arrow')) {
       e.preventDefault();
-      const step = e.altKey ? GRID : e.shiftKey ? 10 : 1;
+      const step = e.altKey ? GRID : e.shiftKey ? 10 : 1; // alt walks whole cells, shift coarse free move
       return nudge(k === 'ArrowLeft' ? -step : k === 'ArrowRight' ? step : 0, k === 'ArrowUp' ? -step : k === 'ArrowDown' ? step : 0, e.altKey, e.repeat);
     }
     if (k === 'Enter') { const sel = selection(); if (sel.length === 1 && sel[0].localName === 'scv-logic') { e.preventDefault(); sel[0].expand(true); draw(); } return; }
@@ -2579,7 +2650,7 @@ const studio = pb => {
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   const linkCard = (url, at) => { // instant card from url alone - quest server fills it in
     let u; try { u = new URL(url); } catch { return []; }
-    let path = u.pathname; try { path = decodeURIComponent(path); } catch {}
+    let path = u.pathname; try { path = decodeURIComponent(path); } catch {} // a malformed escape degrades to raw path, never throws
     path = path.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean).join(' / ');
     const card = document.createElement('div');
     card.className = 'scv-link-card'; card.dataset.scvId = 'x';
@@ -2625,7 +2696,7 @@ const studio = pb => {
   });
   pb.addEventListener('dragover', e => e.preventDefault());
   const followed = new Map(); // dropped source > last seen - session only, reload drops it
-  let followT = 0;
+  let   followT  = 0;
   const poll = async () => { // editor saves update canvas - metadata read once a second
     if (!pb.isConnected) followed.clear(); // patchbay unmounted - stop, and let it go
     for (const [h, seen] of followed) {
@@ -2682,12 +2753,14 @@ const studio = pb => {
   if (document.body.children[0] === pb || document.querySelectorAll('scv-patchbay').length === 1) layer.focus({ preventScroll: true }); // standalone takes focus on load
 };
 
+// STUDIO ---------------------------------------------------------------------------- SAVE - QUINE, CANVAS AND PUBLISH, WRITTEN ITEM BY ITEM
+
 // save by item into blob parts - peak is largest, never whole document
 
 const LICENSE = '<!DOCTYPE html>  <!-- scavenge.ar - © 2026 octantes.ar - SPDX-License-Identifier: Apache-2.0 -->\n\n';
-const NAMES = { quine: 'scavenger quine', canvas: 'scavenger canvas', publish: 'scavenger publish' };
+const NAMES   = { quine: 'scavenger quine', canvas: 'scavenger canvas', publish: 'scavenger publish' };
 const SCRIPTS = { quine: ['canvas', 'studio'], canvas: ['canvas'], publish: [] };
-const ICON = '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%226%22 fill=%22%23986c98%22/%3E%3C/svg%3E">'; // own icon, never host's
+const ICON    = '<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%226%22 fill=%22%23986c98%22/%3E%3C/svg%3E">'; // own icon, never host's
 
 const escAttr = v => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 const startTag = el => '<' + el.localName + [...el.attributes].map(a => ` ${a.name}="${escAttr(a.value)}"`).join('') + '>';
@@ -2710,11 +2783,12 @@ const themeOf = pb => { // > { text, el } - el is what carried it, so the head p
   console.warn('[scav] theme not saved - load scv-runtime-css inline or from the same origin');
   return { text: null, el: null };
 };
+
 const themeHtml = t => t == null ? '' : `<style id="scv-runtime-css">${t.replace(/<\/style/gi, '<\\/style')}<\/style>\n`;
 
 // head: owner's additions survive a save where they stood - before runtime runs first, after theme overrides it; scav's own carry scv- ids
 
-const HEAD_OWN = 'meta[charset], meta[name="viewport"], title, link[rel~="icon"]'; // the saver writes these itself
+const HEAD_OWN  = 'meta[charset], meta[name="viewport"], title, link[rel~="icon"]'; // the saver writes these itself
 const HEAD_DROP = 'base'; // rewrites how every other url in the file resolves - defang and the kernel drop it too, a portable file needs none
 const headOf = theme => { // > head after saver's own meta, in page order - theme and runtime rewritten in their places
   const out = [], done = new Set(), inHead = theme.el?.parentNode === document.head;
@@ -2746,6 +2820,7 @@ const _defs = () => { // tag > harvest def script
   });
   return m;
 };
+
 const _hashText = s => { let a = 0x811c9dc5, b = 0x01000193; for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); a = Math.imul(a ^ c, 16777619); b = Math.imul(b ^ c, 2246822507); } return (a >>> 0) * 4294967296 + (b >>> 0); }; // two fnv-1a lanes, no byte copy
 const _normal = new WeakMap(); // def > { len, hash } of normalized markup
 const _defPrint = async (tag, defs) => {
@@ -2758,6 +2833,7 @@ const _defPrint = async (tag, defs) => {
   }
   return _normal.get(key);
 };
+
 const _asDef = async (n, defs) => {
   if (n.shadowRoot.querySelector(kit.WIRING_SEL)) return false;
   const p = await _defPrint(n.localName, defs), html = p && n.shadowRoot.innerHTML;
@@ -2796,12 +2872,14 @@ const _item = async (el, defs, used) => { // component shadows only where they d
   for (const m of html.matchAll(/scv-asset[:-]([0-9a-f]{16,64})/g)) used.refs.add(m[1]);
   return html;
 };
+
 const _defsOf = async (used, defs) => { // what items use, each once
   const assets = [], harvests = [];
   for (const h of used.refs) assets.push(new Blob([await kit.asset.element(h)])); // referenced assets only
   new Set([...used.tags].map(t => defs.get(t)).filter(Boolean)).forEach(s => harvests.push(new Blob(['<script data-scv-def>', s.textContent, '<\/script>\n']))); // runs as written - rebuilt ones sit inert while live
   return { assets, harvests };
 };
+
 const _authored = (used, pb) => { // types copy needs, as its patchbay resolves them
   const out = [], wins = new Map();
   for (const c of pb.children) if (kit.isNodeScript(c)) kit.nodeDefs(c).forEach(d => wins.set(d.name, c)); // later script wins name
@@ -2809,6 +2887,7 @@ const _authored = (used, pb) => { // types copy needs, as its patchbay resolves 
   new Set([...used.nodes].map(n => wins.get(n)).filter(Boolean)).forEach(s => out.push(defHtml(s), '\n')); // one file may define several
   return out;
 };
+
 const clip = async (list, pb) => { // selection as mini save - items, then defs and assets they use
   const defs = _defs(), used = { tags: new Set(), nodes: new Set(), refs: new Set() }, parts = ['<scv-patchbay>\n'];
   for (const el of list) parts.push(new Blob([await _item(el, defs, used)]), '\n');
@@ -2853,5 +2932,6 @@ const download = (blob, name) => {
 
 PB.use(studio);
 })()</script>
+
 </body>
 </html>

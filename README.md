@@ -2,13 +2,6 @@
 
 <p align="center"> <img src="assets/loop.gif" width="100%"> </p>
 
-```
-Harvest anything from the web and wire it into something new
-Export it as a single html file, use it anywhere and publish it
-
-UI is a function of state, and in s<av> state is a function of DOM
-```
-
 ***The whole web is a component repository for your projects - steal a piece, rewire it, keep it forever.***
 
 **scavenger is a substrate for portable web tools.** Anything you build with scav becomes portable by definition, exporting into a single, standalone HTML file that works anywhere. No packages, no build step, no framework, no account, and *nothing phoning home* unless you explicitly want it to.
